@@ -1,0 +1,124 @@
+name: Android APK и handoff
+
+on:
+  push:
+    branches:
+      - main
+      - arena/8909ba29-lsmsnksoslalql
+  pull_request:
+    branches:
+      - main
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: noir-android-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  build-apk:
+    name: Сборка Android 36 и handoff
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    permissions:
+      contents: read
+    steps:
+      - name: Получить исходный код
+        uses: actions/checkout@v7
+
+      - name: Настроить JDK 17
+        uses: actions/setup-java@v6
+        with:
+          distribution: temurin
+          java-version: '17'
+
+      - name: Установить Android SDK
+        uses: android-actions/setup-android@v4
+
+      - name: Установить SDK 36 и Build Tools
+        run: sdkmanager "platforms;android-36" "build-tools;36.0.0"
+
+      - name: Настроить Gradle и кэш зависимостей
+        uses: gradle/actions/setup-gradle@v6
+
+      - name: Собрать debug APK
+        env:
+          TURN_URLS: ${{ secrets.TURN_URLS }}
+          TURN_USERNAME: ${{ secrets.TURN_USERNAME }}
+          TURN_CREDENTIAL: ${{ secrets.TURN_CREDENTIAL }}
+        run: |
+          ./gradlew --no-daemon clean assembleDebug \
+            -PturnUrls="$TURN_URLS" \
+            -PturnUsername="$TURN_USERNAME" \
+            -PturnCredential="$TURN_CREDENTIAL"
+
+      - name: Подготовить APK и ZIP исходников
+        run: |
+          mkdir -p handoff
+          cp app/build/outputs/apk/debug/app-debug.apk handoff/NoirP2P-debug.apk
+          python3 - <<'PY'
+          import pathlib
+          import subprocess
+          import zipfile
+
+          output = pathlib.Path('handoff/NoirP2P-source.zip')
+          tracked = subprocess.check_output(['git', 'ls-files', '-z']).decode().split('\0')
+          excluded_suffixes = ('.apk', '.aab', '.zip')
+          with zipfile.ZipFile(output, 'w', compression=zipfile.ZIP_DEFLATED, compresslevel=9) as archive:
+              for name in tracked:
+                  if not name or name.startswith('handoff/') and name.lower().endswith(excluded_suffixes):
+                      continue
+                  path = pathlib.Path(name)
+                  if path.is_file():
+                      archive.write(path, arcname='NoirP2P/' + name)
+          PY
+          {
+            echo "## Noir P2P · handoff"
+            echo "- APK: \`handoff/NoirP2P-debug.apk\`"
+            echo "- Исходники: \`handoff/NoirP2P-source.zip\`"
+            echo "- Android API: compile/target 36; min 26"
+            echo ""
+            echo "Артефакты доступны во вкладке Artifacts этого запуска GitHub Actions."
+          } >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Загрузить APK и ZIP исходников
+        uses: actions/upload-artifact@v7
+        with:
+          name: NoirP2P-handoff
+          path: handoff/
+          if-no-files-found: error
+          retention-days: 30
+
+  publish-handoff:
+    name: Положить свежие файлы в handoff/
+    needs: build-apk
+    if: github.event_name != 'pull_request' && github.ref == 'refs/heads/arena/8909ba29-lsmsnksoslalql'
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    permissions:
+      contents: write
+    steps:
+      - name: Получить ветку с исходниками
+        uses: actions/checkout@v7
+        with:
+          ref: arena/8909ba29-lsmsnksoslalql
+
+      - name: Скачать собранные файлы
+        uses: actions/download-artifact@v8
+        with:
+          name: NoirP2P-handoff
+          path: handoff/
+
+      - name: Обновить файлы в GitHub
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add -f handoff/NoirP2P-debug.apk handoff/NoirP2P-source.zip
+          if git diff --cached --quiet; then
+            echo "handoff/ уже содержит актуальные файлы"
+          else
+            git commit -m "ci: обновить Android handoff [skip ci]"
+            git push origin HEAD:arena/8909ba29-lsmsnksoslalql
+          fi

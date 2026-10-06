@@ -1,0 +1,20 @@
+# Gradle / Android Studio
+.gradle/
+**/build/
+local.properties
+.idea/
+*.iml
+
+# Local Android signing material
+*.jks
+*.keystore
+key.properties
+
+# CI-generated handoff artifacts (download from GitHub Actions)
+handoff/*.apk
+handoff/*.aab
+handoff/*.zip
+
+# OS/editor noise
+.DS_Store
+Thumbs.db

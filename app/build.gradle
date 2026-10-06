@@ -1,0 +1,59 @@
+plugins {
+    id 'com.android.application'
+}
+
+def buildValue = { String propertyName, String environmentName ->
+    providers.gradleProperty(propertyName)
+        .orElse(providers.environmentVariable(environmentName))
+        .getOrElse('')
+}
+def asBuildConfigString = { String value ->
+    '"' + value.replace('\\', '\\\\').replace('"', '\\"') + '"'
+}
+
+def turnUrls = buildValue('turnUrls', 'TURN_URLS')
+def turnUsername = buildValue('turnUsername', 'TURN_USERNAME')
+def turnCredential = buildValue('turnCredential', 'TURN_CREDENTIAL')
+
+android {
+    namespace 'com.noir.p2pchat'
+    compileSdk 36
+
+    defaultConfig {
+        applicationId 'com.noir.p2pchat'
+        minSdk 26
+        targetSdk 36
+        versionCode 1
+        versionName '1.0.0'
+
+        buildConfigField 'String', 'TURN_URLS', asBuildConfigString(turnUrls)
+        buildConfigField 'String', 'TURN_USERNAME', asBuildConfigString(turnUsername)
+        buildConfigField 'String', 'TURN_CREDENTIAL', asBuildConfigString(turnCredential)
+    }
+
+    buildFeatures {
+        buildConfig true
+    }
+
+    compileOptions {
+        sourceCompatibility JavaVersion.VERSION_17
+        targetCompatibility JavaVersion.VERSION_17
+    }
+
+    packaging {
+        resources {
+            excludes += [
+                'META-INF/DEPENDENCIES',
+                'META-INF/LICENSE*',
+                'META-INF/NOTICE*',
+                'META-INF/INDEX.LIST'
+            ]
+        }
+    }
+}
+
+dependencies {
+    implementation 'androidx.activity:activity:1.13.0'
+    implementation 'androidx.core:core:1.19.1'
+    implementation 'io.github.webrtc-sdk:android:150.7871.01'
+}

@@ -1,0 +1,47 @@
+{
+  "rules": {
+    ".read": false,
+    ".write": false,
+    "profiles": {
+      "$uid": {
+        ".read": "auth != null",
+        ".write": "auth != null && auth.uid === $uid",
+        ".validate": "newData.hasChildren(['app', 'protocol', 'updatedAt'])",
+        "app": { ".validate": "newData.isString() && newData.val() === 'NoirP2P'" },
+        "protocol": { ".validate": "newData.isNumber() && newData.val() === 1" },
+        "updatedAt": { ".validate": "newData.isNumber()" }
+      }
+    },
+    "inbox": {
+      "$uid": {
+        ".read": "auth != null && auth.uid === $uid",
+        "$sid": {
+          ".write": "auth != null && ((auth.uid === $uid && !newData.exists()) || (!newData.exists() && root.child('calls').child($sid).child('caller').val() === auth.uid && root.child('calls').child($sid).child('callee').val() === $uid) || (root.child('calls').child($sid).child('callee').val() === $uid && root.child('calls').child($sid).child('caller').val() === auth.uid && newData.child('from').val() === auth.uid))",
+          ".validate": "!newData.exists() || (newData.hasChildren(['from', 'createdAt']) && newData.child('from').val() === root.child('calls').child($sid).child('caller').val())",
+          "from": { ".validate": "newData.isString()" },
+          "createdAt": { ".validate": "newData.isNumber()" }
+        }
+      }
+    },
+    "calls": {
+      "$sid": {
+        ".read": "auth != null && (data.child('caller').val() === auth.uid || data.child('callee').val() === auth.uid)",
+        ".write": "auth != null && ((!data.exists() && newData.child('caller').val() === auth.uid && newData.child('callee').isString() && newData.child('callee').val() !== auth.uid) || (data.exists() && !newData.exists() && (data.child('caller').val() === auth.uid || data.child('callee').val() === auth.uid)))",
+        ".validate": "newData.hasChildren(['caller', 'callee', 'createdAt', 'offer']) && newData.child('offer').child('type').val() === 'offer' && newData.child('offer').child('sdp').isString() && newData.child('offer').child('sdp').val().length < 24000 && newData.child('createdAt').isNumber()",
+        "answer": {
+          ".write": "auth != null && root.child('calls').child($sid).child('callee').val() === auth.uid && !data.exists()",
+          ".validate": "newData.hasChildren(['type', 'sdp']) && newData.child('type').val() === 'answer' && newData.child('sdp').isString() && newData.child('sdp').val().length < 24000"
+        },
+        "candidates": {
+          "$owner": {
+            ".read": "auth != null && (root.child('calls').child($sid).child('caller').val() === auth.uid || root.child('calls').child($sid).child('callee').val() === auth.uid)",
+            ".write": "auth != null && auth.uid === $owner && (root.child('calls').child($sid).child('caller').val() === auth.uid || root.child('calls').child($sid).child('callee').val() === auth.uid)",
+            "$candidateId": {
+              ".validate": "newData.hasChildren(['sdpMLineIndex', 'candidate']) && newData.child('sdpMLineIndex').isNumber() && newData.child('candidate').isString() && newData.child('candidate').val().length < 2048"
+            }
+          }
+        }
+      }
+    }
+  }
+}
