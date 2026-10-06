@@ -67,9 +67,20 @@ jobs:
 
       - name: Подготовить APK и ZIP исходников
         run: |
-          mkdir -p handoff
-          cp app/build/outputs/apk/debug/app-debug.apk handoff/NoirP2P-debug.apk
-          python3 - <<'PY'
+          set -o pipefail
+          (
+            set -euo pipefail
+            mkdir -p handoff
+            APK_PATH="$(find app/build/outputs/apk -type f -name '*.apk' ! -path '*androidTest*' 2>/dev/null | sort | head -n 1 || true)"
+            if [ -z "$APK_PATH" ]; then
+              echo "::error title=APK missing::Gradle завершился без APK; найденные файлы:"
+              find app/build/outputs -maxdepth 5 -type f -print || true
+              exit 1
+            fi
+            echo "Использую APK: $APK_PATH"
+            cp "$APK_PATH" handoff/NoirP2P-debug.apk
+            test -s handoff/NoirP2P-debug.apk
+            python3 - <<'PY'
           import pathlib
           import subprocess
           import zipfile
@@ -85,14 +96,25 @@ jobs:
                   if path.is_file():
                       archive.write(path, arcname='NoirP2P/' + name)
           PY
-          {
-            echo "## Noir P2P · handoff"
-            echo "- APK: \`handoff/NoirP2P-debug.apk\`"
-            echo "- Исходники: \`handoff/NoirP2P-source.zip\`"
-            echo "- Android API: compile/target 36; min 26"
-            echo ""
-            echo "Артефакты доступны во вкладке Artifacts этого запуска GitHub Actions."
-          } >> "$GITHUB_STEP_SUMMARY"
+            {
+              echo "## Noir P2P · handoff"
+              echo "- APK: \`handoff/NoirP2P-debug.apk\`"
+              echo "- Исходники: \`handoff/NoirP2P-source.zip\`"
+              echo "- Android API: compile/target 36; min 26"
+              echo ""
+              echo "Артефакты доступны во вкладке Artifacts этого запуска GitHub Actions."
+            } >> "$GITHUB_STEP_SUMMARY"
+          ) 2>&1 | tee "$RUNNER_TEMP/handoff-package.log"
+
+      - name: Показать диагностику handoff при ошибке
+        if: failure()
+        run: |
+          echo "## Ошибка упаковки handoff" >> "$GITHUB_STEP_SUMMARY"
+          if [ -f "$RUNNER_TEMP/handoff-package.log" ]; then
+            tail -n 120 "$RUNNER_TEMP/handoff-package.log" | tee -a "$GITHUB_STEP_SUMMARY"
+          else
+            echo "Лог упаковки не создан." >> "$GITHUB_STEP_SUMMARY"
+          fi
 
       - name: Загрузить APK и ZIP исходников
         uses: actions/upload-artifact@v7
