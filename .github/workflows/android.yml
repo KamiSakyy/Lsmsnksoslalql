@@ -55,14 +55,23 @@ jobs:
             -PturnUsername="$TURN_USERNAME" \
             -PturnCredential="$TURN_CREDENTIAL" 2>&1 | tee "$RUNNER_TEMP/gradle-build.log"
 
-      - name: Показать диагностику Gradle при ошибке
-        if: failure()
+      - name: Показать результат Gradle
+        if: always()
+        env:
+          JOB_STATUS: ${{ job.status }}
         run: |
-          echo "## Ошибка сборки Android" >> "$GITHUB_STEP_SUMMARY"
+          APK_FILES="$(find app -type f -name '*.apk' -print 2>/dev/null | tr '\n' ',')"
+          echo "::notice title=APK scan::$APK_FILES"
           if [ -f "$RUNNER_TEMP/gradle-build.log" ]; then
+            grep -niE 'BUILD|Task |FAILURE|exception|error|output|apk' "$RUNNER_TEMP/gradle-build.log" | tail -n 18 | while IFS= read -r line; do
+              escaped="${line//'%'/'%25'}"
+              escaped="${escaped//$'\r'/'%0D'}"
+              echo "::notice title=Gradle summary::$escaped"
+            done
+          fi
+          if [ "$JOB_STATUS" = "failure" ]; then
+            echo "## Ошибка сборки Android" >> "$GITHUB_STEP_SUMMARY"
             tail -n 140 "$RUNNER_TEMP/gradle-build.log" >> "$GITHUB_STEP_SUMMARY"
-          else
-            echo "Gradle не создал лог сборки." >> "$GITHUB_STEP_SUMMARY"
           fi
 
       - name: Подготовить APK и ZIP исходников
