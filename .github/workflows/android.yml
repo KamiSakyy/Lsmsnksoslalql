@@ -110,6 +110,15 @@ jobs:
         if: failure()
         run: |
           echo "## Ошибка упаковки handoff" >> "$GITHUB_STEP_SUMMARY"
+          APK_FILES="$(find . -type f -name '*.apk' -print | tr '\n' ',')"
+          echo "::notice title=Найденные APK::$APK_FILES"
+          if [ -f "$RUNNER_TEMP/gradle-build.log" ]; then
+            tail -n 35 "$RUNNER_TEMP/gradle-build.log" | while IFS= read -r line; do
+              escaped="${line//'%'/'%25'}"
+              escaped="${escaped//$'\r'/'%0D'}"
+              echo "::notice title=Gradle output::$escaped"
+            done
+          fi
           if [ -f "$RUNNER_TEMP/handoff-package.log" ]; then
             tail -n 120 "$RUNNER_TEMP/handoff-package.log" | tee -a "$GITHUB_STEP_SUMMARY"
           else
