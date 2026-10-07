@@ -1,6 +1,7 @@
-# Android/Gradle build outputs
+# Android/Gradle and Node build outputs
 .gradle/
 **/build/
+node_modules/
 local.properties
 
 # Signing keys and local credentials
