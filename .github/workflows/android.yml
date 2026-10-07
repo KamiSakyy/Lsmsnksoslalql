@@ -49,7 +49,21 @@ jobs:
           fi
 
       - name: Build installable APKs
-        run: gradle --no-daemon --stacktrace :app:assembleDebug :app:assembleRelease
+        run: |
+          set -o pipefail
+          gradle --no-daemon --console=plain --stacktrace :app:assembleDebug :app:assembleRelease 2>&1 | tee gradle-build.log
+
+      - name: Publish concise Gradle failure details
+        if: failure()
+        run: |
+          if [ -f gradle-build.log ]; then
+            {
+              echo '## Gradle build diagnostics'
+              echo '```text'
+              tail -n 100 gradle-build.log
+              echo '```'
+            } >> "$GITHUB_STEP_SUMMARY"
+          fi
 
       - name: Run Signal ratchet round-trip on Android 16 emulator
         uses: reactivecircus/android-emulator-runner@v2.38.0
