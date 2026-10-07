@@ -1,0 +1,30 @@
+{
+  "project_info": {
+    "project_number": "906512822162",
+    "firebase_url": "https://meowmessenger-default-rtdb.europe-west1.firebasedatabase.app",
+    "project_id": "meowmessenger",
+    "storage_bucket": "meowmessenger.firebasestorage.app"
+  },
+  "client": [
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:906512822162:android:ce57bfb21f57090681db4b",
+        "android_client_info": {
+          "package_name": "com.meowmessenger.app"
+        }
+      },
+      "oauth_client": [],
+      "api_key": [
+        {
+          "current_key": "AIzaSyB06mboI0HKUbXjgyj3BYd_sbRVPEtit3"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": []
+        }
+      }
+    }
+  ],
+  "configuration_version": "1"
+}

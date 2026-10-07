@@ -1,0 +1,69 @@
+name: Build Android APK
+
+on:
+  push:
+    branches:
+      - 'arena/**'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  build-debug-apk:
+    name: Build MeowMessenger debug APK
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check out source
+        uses: actions/checkout@v4
+
+      - name: Require Firebase Android client configuration
+        run: |
+          if [ ! -f handoff/app/google-services.json ]; then
+            echo '::error::Missing handoff/app/google-services.json. Register com.meowmessenger.app in Firebase and add its client config.'
+            exit 1
+          fi
+
+      - name: Set up Java
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+
+      - name: Install Android SDK packages
+        shell: bash
+        run: |
+          test -n "$ANDROID_HOME" || { echo 'ANDROID_HOME is not set on this runner.'; exit 1; }
+          SDKMANAGER="$ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager"
+          if [ ! -x "$SDKMANAGER" ]; then
+            SDKMANAGER="$(find "$ANDROID_HOME/cmdline-tools" -type f -name sdkmanager 2>/dev/null | head -n 1)"
+          fi
+          test -x "$SDKMANAGER" || { echo "sdkmanager was not found under $ANDROID_HOME/cmdline-tools."; exit 1; }
+          set +o pipefail
+          if yes | "$SDKMANAGER" --licenses >/dev/null; then
+            license_status=0
+          else
+            license_status=$?
+          fi
+          set -o pipefail
+          test "$license_status" -eq 0 || { echo "Android SDK license acceptance failed (exit $license_status)."; exit "$license_status"; }
+          "$SDKMANAGER" 'platform-tools' 'platforms;android-35' 'build-tools;35.0.0'
+
+      - name: Set up Gradle
+        uses: gradle/actions/setup-gradle@v4
+        with:
+          gradle-version: '8.11.1'
+
+      - name: Assemble debug APK
+        run: gradle --no-daemon -p handoff :app:assembleDebug
+
+      - name: Upload APK artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: meowmessenger-debug-apk
+          path: handoff/app/build/outputs/apk/debug/app-debug.apk
+          if-no-files-found: error
+          retention-days: 14
+
+      - name: Add artifact link to run summary
+        run: echo "[Open this run to download the APK artifact](https://github.com/${GITHUB_REPOSITORY}/actions/runs/${GITHUB_RUN_ID})" >> "$GITHUB_STEP_SUMMARY"
