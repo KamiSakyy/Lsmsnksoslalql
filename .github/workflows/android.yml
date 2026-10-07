@@ -136,8 +136,8 @@ jobs:
             SDK_ROOT="${ANDROID_HOME:-${ANDROID_SDK_ROOT:?}}"
             APKSIGNER="$SDK_ROOT/build-tools/36.0.0/apksigner"
             "$APKSIGNER" verify --verbose --print-certs "$APK_TARGET" > "$RUNNER_TEMP/apk-cert.txt"
-            EXPECTED_CERT="$(openssl x509 -in signing/NoirP2P-release-cert.pem -noout -fingerprint -sha256 | cut -d= -f2 | tr -d ':')"
-            ACTUAL_CERT="$(awk -F': ' '/Signer #1 certificate SHA-256 digest/ { print $2; exit }' "$RUNNER_TEMP/apk-cert.txt" | tr -d ':')"
+            EXPECTED_CERT="$(openssl x509 -in signing/NoirP2P-release-cert.pem -noout -fingerprint -sha256 | cut -d= -f2 | tr -d ':' | tr '[:lower:]' '[:upper:]')"
+            ACTUAL_CERT="$(awk -F': ' '/Signer #1 certificate SHA-256 digest/ { print $2; exit }' "$RUNNER_TEMP/apk-cert.txt" | tr -d ':' | tr '[:lower:]' '[:upper:]')"
             if [ -z "$ACTUAL_CERT" ] || [ "$EXPECTED_CERT" != "$ACTUAL_CERT" ]; then
               echo "::error title=APK signature mismatch::APK подписан не постоянным release-сертификатом."
               cat "$RUNNER_TEMP/apk-cert.txt"
