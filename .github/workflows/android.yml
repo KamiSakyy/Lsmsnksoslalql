@@ -129,34 +129,51 @@ jobs:
               tail -n 120 "$LOG" >> "$DIAGNOSTICS"
             fi
           done
-          RESULTS_DIR="app/build/outputs/androidTest-results/connected/debug"
-          if [ -d "$RESULTS_DIR" ]; then
-            echo "===== Android instrumentation test result XML =====" >> "$DIAGNOSTICS"
-            python3 - "$RESULTS_DIR" >> "$DIAGNOSTICS" <<'PY'
+          python3 - app/build <<'PY' | tee -a "$DIAGNOSTICS"
+          import html
           import pathlib
+          import re
           import sys
           import xml.etree.ElementTree as ET
 
           root = pathlib.Path(sys.argv[1])
-          files = sorted(root.glob('TEST-*.xml'))
-          if not files:
-              print(f'No TEST-*.xml result files found under {root}')
-          for path in files:
-              print(f'--- {path} ---')
+          failures = []
+          result_files = 0
+          for path in sorted(root.rglob('*.xml')):
               try:
                   suite = ET.parse(path).getroot()
-              except ET.ParseError as error:
-                  print(f'Could not parse test result XML: {error}')
+              except (ET.ParseError, OSError):
                   continue
-              for case in suite.iter('testcase'):
-                  print(f"TEST {case.get('classname', '')}.{case.get('name', '')} ({case.get('time', '?')}s)")
+              cases = list(suite.iter('testcase'))
+              if not cases:
+                  continue
+              result_files += 1
+              for case in cases:
+                  label = f"{case.get('classname', '')}.{case.get('name', '')}"
+                  print(f"TEST {label} ({case.get('time', '?')}s)")
                   for result in list(case):
                       if result.tag in ('failure', 'error'):
-                          print(f"{result.tag.upper()}: {result.get('message', '')}")
+                          detail = result.get('message', '')
                           if result.text:
-                              print(result.text.strip())
+                              detail += '\n' + result.text.strip()
+                          failures.append(f'{result.tag.upper()} {label}: {detail}')
+          print(f'Parsed {result_files} Android/JUnit XML result file(s).')
+          for detail in failures:
+              print(detail)
+
+          report = root / 'reports/androidTests/connected/debug'
+          for path in sorted(report.rglob('*.html')) if report.exists() else []:
+              text = html.unescape(re.sub(r'<[^>]+>', ' ', path.read_text(errors='replace')))
+              text = re.sub(r'\s+', ' ', text).strip()
+              if re.search(r'failed|failure|error', text, re.IGNORECASE):
+                  print(f'HTML REPORT {path}: {text[:1500]}')
+          if failures:
+              message = '\n'.join(failures)[:3000]
+              escaped = message.replace('%', '%25').replace('\r', '%0D').replace('\n', '%0A')
+              print(f'::error title=Android instrumentation assertion::{escaped}')
           PY
-          fi
+          echo "===== Android instrumentation report files =====" >> "$DIAGNOSTICS"
+          find app/build -type f \( -path '*androidTest*' -o -path '*androidTests*' \) \( -name '*.xml' -o -name '*.html' \) -print 2>/dev/null | head -n 80 >> "$DIAGNOSTICS" || true
           if [ -s "$DIAGNOSTICS" ]; then
             echo "## Android native smoke failure" >> "$GITHUB_STEP_SUMMARY"
             cat "$DIAGNOSTICS" >> "$GITHUB_STEP_SUMMARY"
