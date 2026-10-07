@@ -79,6 +79,12 @@ jobs:
       - name: Настроить Gradle и кэш
         uses: gradle/actions/setup-gradle@v6
 
+      - name: Разрешить Android-эмулятору доступ к KVM
+        run: |
+          echo 'KERNEL=="kvm", GROUP="kvm", MODE="0666", OPTIONS+="static_node=kvm"' | sudo tee /etc/udev/rules.d/99-kvm4all.rules
+          sudo udevadm control --reload-rules
+          sudo udevadm trigger --name-match=kvm
+
       - name: Запустить тест Signal + WebRTC на Android-эмуляторе
         uses: reactivecircus/android-emulator-runner@v2
         with:
@@ -89,7 +95,29 @@ jobs:
           emulator-options: -no-window -no-audio -no-boot-anim -no-snapshot -gpu swiftshader_indirect
           emulator-boot-timeout: 900
           disable-animations: true
-          script: ./gradlew --no-daemon --stacktrace connectedDebugAndroidTest -PandroidAbiFilters=x86_64
+          script: |
+            set -o pipefail
+            ./gradlew --no-daemon --stacktrace connectedDebugAndroidTest -PandroidAbiFilters=x86_64 2>&1 | tee "$RUNNER_TEMP/direct-native-smoke.log"
+
+      - name: Опубликовать детали ошибки smoke-теста
+        if: failure()
+        run: |
+          LOG="$RUNNER_TEMP/direct-native-smoke.log"
+          if [ -s "$LOG" ]; then
+            echo "## Ошибка Android native smoke test" >> "$GITHUB_STEP_SUMMARY"
+            tail -n 100 "$LOG" >> "$GITHUB_STEP_SUMMARY"
+            python3 - "$LOG" <<'PY'
+          import pathlib
+          import sys
+
+          text = pathlib.Path(sys.argv[1]).read_text(errors='replace')[-12000:]
+          escaped = text.replace('%', '%25').replace('\r', '%0D').replace('\n', '%0A')
+          print(f'::error title=Android native smoke failure::{escaped}')
+          PY
+          else
+            echo "No Gradle output was produced; emulator-runner failed before invoking the test command." >> "$GITHUB_STEP_SUMMARY"
+            echo "::error title=Android emulator startup failure::No Gradle test process ran; emulator-runner failed before invoking the test command."
+          fi
 
   build-apk:
     if: github.event_name == 'workflow_dispatch' && inputs.build_apk == true
