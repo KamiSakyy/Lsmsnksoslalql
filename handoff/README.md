@@ -28,6 +28,6 @@ The workflow at `.github/workflows/android-build.yml` builds a debug APK and upl
 
 ## Important limits for the zero-bundle test
 
-FCM is a server-to-device push channel, not a device-to-device send API. Sending from this app requires a small HTTPS call to the callable function; the function then sends the push using FCM. For this to work with a zero remaining data bundle, Tinkoff Mobile must allow the phone to reach **both** the function endpoint and Google FCM/Play Services. An allowance for Telegram alone does not automatically whitelist this app or its function. Test on the exact SIM/tariff; the app cannot override carrier filtering or billing.
+FCM is a server-to-device push channel, not a device-to-device send API. Sending from this app requires a small HTTPS call to the callable function; the function then sends the push using FCM. For this to work when the phone has access only to the Tinkoff Mobile self-service app, the carrier must also allow this app's HTTPS function endpoint and Google FCM/Play Services traffic. Zero-rating the operator app does not automatically whitelist either endpoint. If the SIM blocks both, the app cannot send or receive remotely; no Firebase setting or FCM key can bypass carrier filtering or billing. Test on the exact SIM/tariff.
 
 FCM is best-effort and may delay/drop messages; pending messages can expire. The function currently sets a seven-day TTL. This prototype sends message text in the FCM payload without end-to-end encryption, as requested. Do not use it for sensitive data.
