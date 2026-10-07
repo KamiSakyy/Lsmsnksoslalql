@@ -92,6 +92,7 @@ import javax.crypto.spec.SecretKeySpec;
  */
 public final class P2pEngine {
     private static final String TAG = "NoirP2P";
+    private static volatile boolean webRtcLibraryInitialized;
     private static final int MAX_FILE_BYTES = FileTransferProtocol.MAX_FILE_BYTES;
     private static final int FILE_CHUNK_BYTES = FileTransferProtocol.CHUNK_BYTES;
     private static final long MAX_BUFFERED_BYTES = 512 * 1024;
@@ -149,6 +150,7 @@ public final class P2pEngine {
     private final AtomicBoolean manuallyStopped = new AtomicBoolean(false);
     private final AtomicBoolean inboxReadRunning = new AtomicBoolean(false);
     private final AtomicBoolean inboxReadRequested = new AtomicBoolean(false);
+    private volatile PeerConnectionFactory dataFactory;
     private volatile PeerConnectionFactory factory;
     private volatile EglBase eglBase;
     private volatile EncryptedSignalProtocolStore signalStore;
@@ -444,30 +446,63 @@ public final class P2pEngine {
 
     private volatile FirebaseRestClient.StreamHandle inboxStream;
 
-    private void initializeWebRtc() throws IOException {
-        if (factory != null) return;
+    private void initializeWebRtcLibrary() throws IOException {
+        if (webRtcLibraryInitialized) return;
         synchronized (P2pEngine.class) {
-            if (factory != null) return;
+            if (webRtcLibraryInitialized) return;
             try {
                 PeerConnectionFactory.InitializationOptions options =
                         PeerConnectionFactory.InitializationOptions.builder(appContext).createInitializationOptions();
                 PeerConnectionFactory.initialize(options);
-                eglBase = EglBase.create();
+                webRtcLibraryInitialized = true;
+            } catch (LinkageError e) {
+                throw new IOException("Не загрузилась нативная библиотека WebRTC: " + safeError(e), e);
+            }
+        }
+    }
+
+    /** Data-channel chat needs no EGL context or hardware video codecs. */
+    private void initializeDataWebRtc() throws IOException {
+        if (dataFactory != null) return;
+        synchronized (P2pEngine.class) {
+            if (dataFactory != null) return;
+            initializeWebRtcLibrary();
+            try {
+                PeerConnectionFactory initializedFactory = PeerConnectionFactory.builder()
+                        .createPeerConnectionFactory();
+                if (initializedFactory == null) throw new IOException("WebRTC не создал DataChannel factory");
+                dataFactory = initializedFactory;
+            } catch (LinkageError e) {
+                throw new IOException("Не загрузился WebRTC DataChannel: " + safeError(e), e);
+            }
+        }
+    }
+
+    /** Audio/video codecs and EGL are loaded only when the user starts or answers a call. */
+    private void initializeMediaWebRtc() throws IOException {
+        if (factory != null) return;
+        synchronized (P2pEngine.class) {
+            if (factory != null) return;
+            initializeWebRtcLibrary();
+            try {
+                if (eglBase == null) eglBase = EglBase.create();
                 EglBase.Context eglContext = eglBase.getEglBaseContext();
                 PeerConnectionFactory initializedFactory = PeerConnectionFactory.builder()
                         .setVideoEncoderFactory(new DefaultVideoEncoderFactory(eglContext, true, true))
                         .setVideoDecoderFactory(new DefaultVideoDecoderFactory(eglContext))
                         .createPeerConnectionFactory();
-                if (initializedFactory == null) throw new IOException("WebRTC не создал PeerConnectionFactory");
+                if (initializedFactory == null) throw new IOException("WebRTC не создал медиа-фабрику");
                 factory = initializedFactory;
             } catch (LinkageError e) {
                 EglBase failedEglBase = eglBase;
                 eglBase = null;
                 if (failedEglBase != null) {
                     try { failedEglBase.release(); }
-                    catch (RuntimeException cleanupError) { Log.w(TAG, "Could not release failed WebRTC EGL context", cleanupError); }
+                    catch (RuntimeException | LinkageError cleanupError) {
+                        Log.w(TAG, "Could not release failed WebRTC EGL context", cleanupError);
+                    }
                 }
-                throw new IOException("Не загрузился нативный компонент WebRTC: " + safeError(e), e);
+                throw new IOException("Не загрузился медиа-компонент WebRTC: " + safeError(e), e);
             }
         }
     }
@@ -553,6 +588,7 @@ public final class P2pEngine {
         if (!session.signalHandshakeStarted.compareAndSet(false, true)) return;
         ioExecutor.execute(() -> {
             try {
+                setStatus("P2P-канал открыт · готовим Signal E2E…");
                 EncryptedSignalProtocolStore store = ensureSignalReady();
                 if (store.hasSession(session.peerUid)) {
                     sendSignalInit(session);
@@ -750,7 +786,7 @@ public final class P2pEngine {
         try {
             ensureSignalSession(call.peerUid);
             if (call.closed.get()) return;
-            initializeWebRtc();
+            initializeMediaWebRtc();
             createMediaPeerConnection(call);
             addLocalCallTracks(call);
             call.peerConnection.createOffer(new SdpObserverAdapter() {
@@ -785,7 +821,7 @@ public final class P2pEngine {
             SessionDescription offer = sessionDescriptionFromJson(offerJson);
             if (offer.type != SessionDescription.Type.OFFER) throw new IOException("Некорректное Signal SDP-предложение");
             call.signalReady = true;
-            initializeWebRtc();
+            initializeMediaWebRtc();
             createMediaPeerConnection(call);
             addLocalCallTracks(call);
             call.remoteDescriptionStarted.set(true);
@@ -826,8 +862,9 @@ public final class P2pEngine {
     }
 
     private void createMediaPeerConnection(MediaCallSession call) throws IOException {
+        initializeMediaWebRtc();
         PeerConnectionFactory currentFactory = factory;
-        if (currentFactory == null) throw new IOException("WebRTC не инициализирован");
+        if (currentFactory == null) throw new IOException("WebRTC медиа-фабрика не инициализирована");
         PeerConnection.RTCConfiguration configuration = new PeerConnection.RTCConfiguration(iceServers());
         configuration.sdpSemantics = PeerConnection.SdpSemantics.UNIFIED_PLAN;
         call.peerConnection = currentFactory.createPeerConnection(configuration, new PeerConnection.Observer() {
@@ -1284,8 +1321,8 @@ public final class P2pEngine {
         if (previous != null) previous.close();
         sessionsById.put(sessionId, session);
         notifyPeerState(peerUid, "Создаём P2P-канал…");
+        setStatus("Открываем прямой канал передачи данных…");
         try {
-            ensureSignalReady();
             createPeerConnection(session);
             session.dataChannel = session.peerConnection.createDataChannel("noir-chat-v1", orderedChannel());
             watchDataChannel(session, session.dataChannel);
@@ -1351,8 +1388,8 @@ public final class P2pEngine {
         sessionsById.put(sessionId, session);
         pendingInvites.remove(peerUid);
         notifyPeerState(peerUid, "Принимаем P2P-подключение…");
+        setStatus("Принимаем прямой канал передачи данных…");
         try {
-            ensureSignalReady();
             createPeerConnection(session);
             watchSignaling(session);
             JSONObject offerJson = call.optJSONObject("offer");
@@ -1465,9 +1502,9 @@ public final class P2pEngine {
     }
 
     private void createPeerConnection(PeerSession session) throws IOException {
-        initializeWebRtc();
-        PeerConnectionFactory currentFactory = factory;
-        if (currentFactory == null) throw new IOException("WebRTC не инициализирован");
+        initializeDataWebRtc();
+        PeerConnectionFactory currentFactory = dataFactory;
+        if (currentFactory == null) throw new IOException("WebRTC DataChannel не инициализирован");
         List<PeerConnection.IceServer> servers = iceServers();
         PeerConnection.RTCConfiguration configuration = new PeerConnection.RTCConfiguration(servers);
         configuration.sdpSemantics = PeerConnection.SdpSemantics.UNIFIED_PLAN;
@@ -1675,6 +1712,7 @@ public final class P2pEngine {
 
     private void failSession(PeerSession session, String error) {
         Log.e(TAG, error);
+        setStatus(error);
         notifyPeerState(session.peerUid, error);
         closeSession(session);
     }
@@ -1688,7 +1726,7 @@ public final class P2pEngine {
         }
         boolean queued = false;
         synchronized (pendingTextLock) {
-            if (uid == null || factory == null) {
+            if (uid == null) {
                 if (pendingTextCount.incrementAndGet() > 16) {
                     pendingTextCount.decrementAndGet();
                     setStatus("Очередь ответов из уведомлений заполнена");
