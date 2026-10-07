@@ -70,13 +70,18 @@ public final class ChatConnectionService extends Service implements P2pEngine.Li
     }
 
     private int foregroundServiceType() {
-        if (Build.VERSION.SDK_INT < 34) return 0;
-        int type = ServiceInfo.FOREGROUND_SERVICE_TYPE_REMOTE_MESSAGING;
-        if (mediaCallActive) {
-            type |= ServiceInfo.FOREGROUND_SERVICE_TYPE_MICROPHONE;
-            if (videoCallActive) type |= ServiceInfo.FOREGROUND_SERVICE_TYPE_CAMERA;
+        final int type;
+        if (Build.VERSION.SDK_INT >= 34) {
+            type = ServiceInfo.FOREGROUND_SERVICE_TYPE_REMOTE_MESSAGING;
+        } else if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
+            type = ServiceInfo.FOREGROUND_SERVICE_TYPE_DATA_SYNC;
+        } else {
+            return 0;
         }
-        return type;
+        if (!mediaCallActive) return type;
+        int activeType = type | ServiceInfo.FOREGROUND_SERVICE_TYPE_MICROPHONE;
+        if (videoCallActive) activeType |= ServiceInfo.FOREGROUND_SERVICE_TYPE_CAMERA;
+        return activeType;
     }
 
     private android.app.Notification foregroundNotification(String fallback) {

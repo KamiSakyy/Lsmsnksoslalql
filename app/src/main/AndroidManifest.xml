@@ -7,6 +7,7 @@
     <uses-permission android:name="android.permission.CAMERA" />
     <uses-permission android:name="android.permission.MODIFY_AUDIO_SETTINGS" />
     <uses-permission android:name="android.permission.FOREGROUND_SERVICE" />
+    <uses-permission android:name="android.permission.FOREGROUND_SERVICE_DATA_SYNC" />
     <uses-permission android:name="android.permission.FOREGROUND_SERVICE_REMOTE_MESSAGING" />
     <uses-permission android:name="android.permission.FOREGROUND_SERVICE_MICROPHONE" />
     <uses-permission android:name="android.permission.FOREGROUND_SERVICE_CAMERA" />
@@ -49,7 +50,7 @@
         <service
             android:name=".service.ChatConnectionService"
             android:exported="false"
-            android:foregroundServiceType="remoteMessaging|microphone|camera"
+            android:foregroundServiceType="remoteMessaging|dataSync|microphone|camera"
             android:stopWithTask="false" />
 
         <receiver
