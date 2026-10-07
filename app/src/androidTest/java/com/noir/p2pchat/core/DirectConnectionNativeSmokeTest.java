@@ -5,9 +5,15 @@ import static org.junit.Assert.assertNotNull;
 import static org.junit.Assert.assertTrue;
 
 import android.content.Context;
+import android.content.Intent;
 
+import androidx.test.core.app.ActivityScenario;
 import androidx.test.ext.junit.runners.AndroidJUnit4;
 import androidx.test.platform.app.InstrumentationRegistry;
+
+import com.noir.p2pchat.AppKernel;
+import com.noir.p2pchat.service.ChatConnectionService;
+import com.noir.p2pchat.ui.ChatActivity;
 
 import org.json.JSONObject;
 import org.junit.Test;
@@ -23,8 +29,10 @@ import org.webrtc.RtpTransceiver;
 import org.webrtc.SdpObserver;
 import org.webrtc.SessionDescription;
 
+import java.lang.reflect.Field;
 import java.util.Collections;
 import java.util.concurrent.CountDownLatch;
+import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicReference;
 
@@ -106,6 +114,29 @@ public final class DirectConnectionNativeSmokeTest {
             peer.close();
             peer.dispose();
             factory.dispose();
+        }
+    }
+
+    @Test
+    public void directChatScreenAndForegroundServiceStartWithoutFirebase() throws Exception {
+        Context context = InstrumentationRegistry.getInstrumentation().getTargetContext();
+        AppKernel app = (AppKernel) context.getApplicationContext();
+        P2pEngine engine = app.p2p();
+        Field startedField = P2pEngine.class.getDeclaredField("started");
+        startedField.setAccessible(true);
+        AtomicBoolean started = (AtomicBoolean) startedField.get(engine);
+        started.set(true);
+
+        Intent chatIntent = new Intent(context, ChatActivity.class)
+                .putExtra(ChatActivity.EXTRA_PEER_UID, "smoke-peer-36");
+        try (ActivityScenario<ChatActivity> scenario = ActivityScenario.launch(chatIntent)) {
+            scenario.onActivity(activity -> assertNotNull(
+                    "Direct chat activity failed to create its content view",
+                    activity.findViewById(android.R.id.content)));
+            InstrumentationRegistry.getInstrumentation().waitForIdleSync();
+        } finally {
+            engine.stop();
+            context.stopService(new Intent(context, ChatConnectionService.class));
         }
     }
 
