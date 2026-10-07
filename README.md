@@ -1,5 +1,5 @@
 # MeowMessenger
 
-Android Java + Firebase Cloud Messaging prototype. Source and setup notes are in [`handoff/`](handoff/README.md).
+Android Java + Firebase Cloud Messaging prototype with a Railway HTTPS relay. Source, Docker deployment, and the Railway one-click link are in [`handoff/README.md`](handoff/README.md).
 
-**Security:** never put a Firebase Admin SDK service-account JSON/private key in the Android app or Git. The Android app uses `google-services.json` (client configuration); FCM sends are performed by the trusted Cloud Function in `handoff/functions/`.
+**Security:** never commit Firebase Admin SDK credentials or put them in the APK. The Railway service reads its credential from a Railway environment variable; the Android app uses only Firebase client configuration.

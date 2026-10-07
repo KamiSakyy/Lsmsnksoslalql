@@ -5,6 +5,7 @@ import android.app.Activity;
 import android.content.ClipData;
 import android.content.ClipboardManager;
 import android.content.Context;
+import android.content.SharedPreferences;
 import android.content.pm.PackageManager;
 import android.graphics.Color;
 import android.os.Build;
@@ -21,20 +22,25 @@ import androidx.core.content.ContextCompat;
 
 import com.google.firebase.FirebaseApp;
 import com.google.firebase.auth.FirebaseAuth;
-import com.google.firebase.functions.FirebaseFunctions;
+import com.google.firebase.auth.FirebaseUser;
 import com.google.firebase.messaging.FirebaseMessaging;
 
-import java.util.HashMap;
-import java.util.Map;
+import java.util.concurrent.ExecutorService;
+import java.util.concurrent.Executors;
 
 public class MainActivity extends Activity {
     private static final String CHANNEL_ID = "meow_messages";
+    private static final String PREFS = "meow_settings";
+    private static final String PREF_RAILWAY_URL = "railway_url";
 
+    private final ExecutorService networkExecutor = Executors.newSingleThreadExecutor();
     private TextView tokenValue;
     private TextView statusValue;
+    private EditText railwayUrlInput;
     private EditText recipientTokenInput;
     private EditText messageInput;
     private Button sendButton;
+    private Button checkServerButton;
     private boolean signedIn;
 
     @Override
@@ -50,8 +56,9 @@ public class MainActivity extends Activity {
         }
 
         if (FirebaseApp.initializeApp(this) == null) {
-            setStatus("Не найдена Firebase-конфигурация. Добавьте app/google-services.json.");
+            setStatus("Не найдена Firebase-конфигурация.");
             sendButton.setEnabled(false);
+            checkServerButton.setEnabled(false);
             return;
         }
 
@@ -71,12 +78,31 @@ public class MainActivity extends Activity {
                 ViewGroup.LayoutParams.MATCH_PARENT,
                 ViewGroup.LayoutParams.WRAP_CONTENT));
 
-        TextView title = text("MeowMessenger", 26, true);
-        content.addView(title, matchWrap());
+        content.addView(text("MeowMessenger", 26, true), matchWrap());
         addSpace(content, 8);
-        content.addView(text("Прототип отправляет обычный текст через FCM. Сквозного шифрования и истории сообщений нет.", 14, false), matchWrap());
-        addSpace(content, 22);
+        content.addView(text("Android → Railway HTTPS → FCM. Текст без сквозного шифрования; истории нет.", 14, false), matchWrap());
 
+        addSpace(content, 18);
+        content.addView(text("Адрес Railway API", 16, true), matchWrap());
+        railwayUrlInput = new EditText(this);
+        railwayUrlInput.setSingleLine(true);
+        railwayUrlInput.setInputType(InputType.TYPE_CLASS_TEXT | InputType.TYPE_TEXT_VARIATION_URI);
+        railwayUrlInput.setHint("https://ваш-сервис.up.railway.app");
+        SharedPreferences preferences = getSharedPreferences(PREFS, MODE_PRIVATE);
+        railwayUrlInput.setText(preferences.getString(PREF_RAILWAY_URL, ""));
+        content.addView(railwayUrlInput, matchWrap());
+
+        Button saveUrlButton = new Button(this);
+        saveUrlButton.setText("Сохранить адрес Railway");
+        saveUrlButton.setOnClickListener(view -> saveRailwayUrl());
+        content.addView(saveUrlButton, matchWrap());
+
+        checkServerButton = new Button(this);
+        checkServerButton.setText("Проверить подключение к Railway");
+        checkServerButton.setOnClickListener(view -> checkRailwayServer());
+        content.addView(checkServerButton, matchWrap());
+
+        addSpace(content, 14);
         content.addView(text("Ваш FCM-токен", 16, true), matchWrap());
         addSpace(content, 6);
         tokenValue = text("Получаю токен…", 12, false);
@@ -93,10 +119,10 @@ public class MainActivity extends Activity {
         refreshButton.setOnClickListener(view -> refreshFcmToken());
         content.addView(refreshButton, matchWrap());
 
-        addSpace(content, 16);
+        addSpace(content, 14);
         content.addView(text("Токен собеседника", 16, true), matchWrap());
         recipientTokenInput = new EditText(this);
-        recipientTokenInput.setHint("Вставьте FCM-токен устройства собеседника");
+        recipientTokenInput.setHint("Вставьте FCM-токен получателя");
         recipientTokenInput.setSingleLine(true);
         recipientTokenInput.setInputType(InputType.TYPE_CLASS_TEXT | InputType.TYPE_TEXT_VARIATION_VISIBLE_PASSWORD);
         content.addView(recipientTokenInput, matchWrap());
@@ -112,31 +138,31 @@ public class MainActivity extends Activity {
         content.addView(messageInput, matchWrap());
 
         sendButton = new Button(this);
-        sendButton.setText("Отправить через FCM");
+        sendButton.setText("Отправить: Railway → FCM");
         sendButton.setOnClickListener(view -> sendMessage());
         content.addView(sendButton, matchWrap());
 
-        statusValue = text("Подключение…", 14, false);
+        statusValue = text("Ожидание подключения…", 14, false);
         content.addView(statusValue, matchWrap());
         addSpace(content, 10);
-        content.addView(text("Для теста скопируйте токен получателя в приложение отправителя. Токен может измениться после переустановки приложения.", 13, false), matchWrap());
+        content.addView(text("Для теста на одном телефоне скопируйте свой токен и вставьте его как токен получателя. Для отправки нужен доступ к адресу Railway.", 13, false), matchWrap());
 
         setContentView(scrollView);
     }
 
     private void signInAnonymously() {
-        setStatus("Подключаю анонимную Firebase-сессию…");
+        setStatus("Подключаю Firebase Auth…");
         FirebaseAuth auth = FirebaseAuth.getInstance();
         if (auth.getCurrentUser() != null) {
             signedIn = true;
-            setStatus("Готово. Можно отправлять сообщения.");
+            setStatus("Firebase Auth готов. Укажите Railway URL.");
             return;
         }
 
         auth.signInAnonymously().addOnCompleteListener(this, task -> {
             if (task.isSuccessful()) {
                 signedIn = true;
-                setStatus("Готово. Можно отправлять сообщения.");
+                setStatus("Firebase Auth готов. Укажите Railway URL.");
             } else {
                 signedIn = false;
                 setStatus("Не удалось войти. В Firebase Console включите Anonymous sign-in.");
@@ -167,9 +193,51 @@ public class MainActivity extends Activity {
         }
     }
 
+    private void saveRailwayUrl() {
+        String url = normalizeUrl(railwayUrlInput.getText().toString());
+        if (!isHttpsUrl(url)) {
+            railwayUrlInput.setError("Введите HTTPS-адрес сервиса Railway");
+            return;
+        }
+        getSharedPreferences(PREFS, MODE_PRIVATE).edit().putString(PREF_RAILWAY_URL, url).apply();
+        railwayUrlInput.setText(url);
+        setStatus("Адрес Railway сохранён.");
+    }
+
+    private void checkRailwayServer() {
+        String baseUrl = normalizeUrl(railwayUrlInput.getText().toString());
+        if (!isHttpsUrl(baseUrl)) {
+            railwayUrlInput.setError("Введите HTTPS-адрес сервиса Railway");
+            return;
+        }
+        checkServerButton.setEnabled(false);
+        setStatus("Проверяю Railway…");
+        networkExecutor.execute(() -> {
+            try {
+                String response = RailwayApiClient.checkHealth(baseUrl);
+                runOnUiThread(() -> {
+                    checkServerButton.setEnabled(true);
+                    getSharedPreferences(PREFS, MODE_PRIVATE).edit().putString(PREF_RAILWAY_URL, baseUrl).apply();
+                    setStatus("Railway отвечает: " + response);
+                });
+            } catch (Exception error) {
+                runOnUiThread(() -> {
+                    checkServerButton.setEnabled(true);
+                    setStatus("Railway недоступен: " + error.getMessage());
+                });
+            }
+        });
+    }
+
     private void sendMessage() {
+        String baseUrl = normalizeUrl(railwayUrlInput.getText().toString());
         String recipientToken = recipientTokenInput.getText().toString().trim();
         String message = messageInput.getText().toString().trim();
+
+        if (!isHttpsUrl(baseUrl)) {
+            railwayUrlInput.setError("Сначала укажите HTTPS-адрес Railway");
+            return;
+        }
         if (recipientToken.isEmpty()) {
             recipientTokenInput.setError("Нужен FCM-токен получателя");
             return;
@@ -182,29 +250,55 @@ public class MainActivity extends Activity {
             messageInput.setError("Максимум 2000 символов");
             return;
         }
-        if (!signedIn || FirebaseAuth.getInstance().getCurrentUser() == null) {
-            setStatus("Ожидаю Firebase-вход. Проверьте, что Anonymous sign-in включён.");
+        FirebaseUser user = FirebaseAuth.getInstance().getCurrentUser();
+        if (!signedIn || user == null) {
+            setStatus("Ожидаю Firebase Auth. Проверьте Anonymous sign-in.");
             return;
         }
 
         sendButton.setEnabled(false);
-        setStatus("Отправляю запрос…");
-        Map<String, Object> payload = new HashMap<>();
-        payload.put("recipientToken", recipientToken);
-        payload.put("text", message);
-
-        FirebaseFunctions.getInstance("europe-west1")
-                .getHttpsCallable("sendMessage")
-                .call(payload)
-                .addOnSuccessListener(this, result -> {
-                    sendButton.setEnabled(true);
-                    messageInput.setText("");
-                    setStatus("FCM принял сообщение для отправки.");
+        setStatus("Получаю токен авторизации Firebase…");
+        user.getIdToken(false)
+                .addOnSuccessListener(this, tokenResult -> {
+                    String idToken = tokenResult.getToken();
+                    if (idToken == null || idToken.isEmpty()) {
+                        sendButton.setEnabled(true);
+                        setStatus("Firebase не выдал токен авторизации.");
+                        return;
+                    }
+                    setStatus("Отправляю запрос на Railway…");
+                    networkExecutor.execute(() -> {
+                        try {
+                            String response = RailwayApiClient.sendMessage(baseUrl, idToken, recipientToken, message);
+                            runOnUiThread(() -> {
+                                sendButton.setEnabled(true);
+                                messageInput.setText("");
+                                setStatus("Railway передал сообщение в FCM: " + response);
+                            });
+                        } catch (Exception error) {
+                            runOnUiThread(() -> {
+                                sendButton.setEnabled(true);
+                                setStatus("Ошибка отправки: " + error.getMessage());
+                            });
+                        }
+                    });
                 })
                 .addOnFailureListener(this, error -> {
                     sendButton.setEnabled(true);
-                    setStatus("Ошибка отправки: " + error.getLocalizedMessage());
+                    setStatus("Не удалось получить Firebase ID token: " + error.getLocalizedMessage());
                 });
+    }
+
+    private boolean isHttpsUrl(String value) {
+        return value != null && value.startsWith("https://") && value.length() > "https://".length();
+    }
+
+    private String normalizeUrl(String value) {
+        String url = value == null ? "" : value.trim();
+        while (url.endsWith("/")) {
+            url = url.substring(0, url.length() - 1);
+        }
+        return url;
     }
 
     private void createNotificationChannel() {
@@ -249,5 +343,11 @@ public class MainActivity extends Activity {
 
     private int dp(int value) {
         return (int) (value * getResources().getDisplayMetrics().density + 0.5f);
+    }
+
+    @Override
+    protected void onDestroy() {
+        networkExecutor.shutdownNow();
+        super.onDestroy();
     }
 }
