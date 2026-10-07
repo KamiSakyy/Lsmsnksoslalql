@@ -101,8 +101,8 @@ jobs:
           force-avd-creation: false
           pre-emulator-launch-script: |
             echo "Android SDK=$ANDROID_HOME"
-            emulator -version
-            emulator -accel-check || true
+            "$ANDROID_HOME/emulator/emulator" -version
+            "$ANDROID_HOME/emulator/emulator" -accel-check || true
           emulator-options: -no-window -gpu swiftshader_indirect -no-snapshot -noaudio -no-boot-anim
           emulator-boot-timeout: 900
           disable-animations: true
