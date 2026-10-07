@@ -1,14 +1,13 @@
 name: Android release APK и handoff
 
 on:
-  push:
-    branches:
-      - main
-      - arena/8909ba29-lsmsnksoslalql
-  pull_request:
-    branches:
-      - main
   workflow_dispatch:
+    inputs:
+      build_apk:
+        description: 'Собирать APK только после завершения всех функций'
+        type: boolean
+        required: true
+        default: false
 
 permissions:
   contents: read
@@ -19,6 +18,7 @@ concurrency:
 
 jobs:
   build-apk:
+    if: github.event_name == 'workflow_dispatch' && inputs.build_apk == true
     name: Android 36 arm64 · R8 · release signing
     runs-on: ubuntu-latest
     timeout-minutes: 45
@@ -226,7 +226,7 @@ jobs:
   publish-handoff:
     name: Опубликовать подписанный release в handoff/
     needs: build-apk
-    if: github.event_name != 'pull_request' && github.ref == 'refs/heads/arena/8909ba29-lsmsnksoslalql'
+    if: github.event_name == 'workflow_dispatch' && inputs.build_apk == true && github.ref == 'refs/heads/arena/8909ba29-lsmsnksoslalql'
     runs-on: ubuntu-latest
     timeout-minutes: 10
     permissions:

@@ -1,6 +1,6 @@
 # Handoff
 
-После успешной GitHub Actions release-сборки здесь будут:
+APK сейчас намеренно не запускается автоматически. После завершения всех функций и ручного запуска GitHub Actions с `build_apk=true` здесь появятся:
 
 - `NoirP2P-release.apk` — актуальный подписанный release APK;
 - `releases/NoirP2P-<versionName>+<versionCode>.apk` — неизменяемая копия каждой версии; старые версии не удаляются;

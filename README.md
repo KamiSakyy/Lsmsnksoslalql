@@ -45,13 +45,13 @@ UID анонимного Firebase-пользователя хранится на
 
 ## Сборка, подпись и получение файлов через GitHub Actions
 
-APK собирается **только в GitHub Actions**, не локально. Workflow `.github/workflows/android.yml` запускается при push в `main`/рабочую ветку, для PR в `main` или вручную через **Actions → Android release APK и handoff → Run workflow**. PR проверяется отдельным debug APK; push и ручной запуск выпускают только подписанный release.
+APK собирается **только в GitHub Actions**, не локально. На время реализации функций workflow не запускается на push/PR. Он доступен вручную через **Actions → Android release APK и handoff → Run workflow**, с `build_apk=false` по умолчанию; ставить `true` следует только после завершения реализации и проверок.
 
 CI использует Android SDK/target API 36, Java 17, R8 и только ABI `arm64-v8a`; workflow проверяет ABI, наличие mapping-файла, APK-подпись и отпечаток сертификата. `versionCode` равен возрастающему номеру GitHub Actions run, `versionName` — `1.0.<номер запуска>`.
 
 Постоянный PKCS#12-keystore и пароль находятся в `handoff/NoirP2P-release-keystore.p12` и `handoff/NoirP2P-release-keystore-password.txt`; GitHub Actions читает их прямо из checkout, Actions Secrets для подписи не нужны. `signing/NoirP2P-release-cert.pem` — публичный сертификат, с ним сверяются подпись APK и keystore; alias — `noirp2p-release`. Инструкции и важное предупреждение — в [`signing/README.md`](signing/README.md).
 
-После успешного запуска в `handoff/` публикуются `NoirP2P-release.apk`, `NoirP2P-source.zip` и новая версия `releases/NoirP2P-<versionName>+<versionCode>.apk`. Предыдущие версии не удаляются. Текущий запуск также предоставляет APK/ZIP во вкладке **Artifacts** (release — 30 дней, PR debug — 7 дней). Исходный ZIP не включает APK и прежние ZIP.
+После разрешённого ручного release-запуска в `handoff/` публикуются `NoirP2P-release.apk`, `NoirP2P-source.zip` и новая версия `releases/NoirP2P-<versionName>+<versionCode>.apk`. Предыдущие версии не удаляются. Текущий запуск также предоставляет APK/ZIP во вкладке **Artifacts** на 30 дней. Исходный ZIP не включает APK и прежние ZIP.
 
 **Безопасность:** владелец попросил поместить приватный signing key и пароль в `handoff/`, поэтому они будут публичны вместе с исходниками и Git-историей. Любой сможет подписать вредоносное APK, которое Android сочтёт обновлением Noir P2P; это небезопасно и необратимо для уже опубликованных копий. APK содержит подпись/сертификат, а не сам приватный ключ. Более безопасный вариант — Actions Secrets.
 
