@@ -35,6 +35,7 @@ import java.nio.charset.StandardCharsets;
 import java.util.Collections;
 import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.atomic.AtomicBoolean;
+import java.util.concurrent.atomic.AtomicInteger;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicReference;
 
@@ -158,7 +159,9 @@ public final class DirectConnectionNativeSmokeTest {
             assertNotNull("Answerer did not retain gathered ICE candidates", answer);
             setDescription(offerer, false, answer);
 
-            assertTrue("Offerer did not receive an open DataChannel",
+            assertTrue("Offerer did not receive an open DataChannel; offerer "
+                            + offererObserver.diagnostics() + " " + describeLocalSdp(offerer)
+                            + "; answerer " + answererObserver.diagnostics() + " " + describeLocalSdp(answerer),
                     outgoingObserver.open.await(20, TimeUnit.SECONDS));
             assertTrue("Answerer did not receive the negotiated DataChannel",
                     answererObserver.dataChannelCreated.await(15, TimeUnit.SECONDS));
@@ -215,6 +218,17 @@ public final class DirectConnectionNativeSmokeTest {
             engine.stop();
             context.stopService(new Intent(context, ChatConnectionService.class));
         }
+    }
+
+    private static String describeLocalSdp(PeerConnection peer) {
+        SessionDescription description = peer.getLocalDescription();
+        if (description == null || description.description == null) return "local SDP=null";
+        int candidates = 0;
+        for (String line : description.description.split("\\r?\\n")) {
+            if (line.startsWith("a=candidate:")) candidates++;
+        }
+        return "local SDP{application=" + description.description.contains("m=application")
+                + ", candidates=" + candidates + "}";
     }
 
     private static PeerConnection.RTCConfiguration rtcConfiguration() {
@@ -286,6 +300,11 @@ public final class DirectConnectionNativeSmokeTest {
             if (dataChannel.state() == DataChannel.State.OPEN) open.countDown();
         }
 
+        String stateDescription() {
+            DataChannel current = channel;
+            return current == null ? "none" : String.valueOf(current.state());
+        }
+
         @Override public void onBufferedAmountChange(long previousAmount) { }
         @Override public void onStateChange() {
             DataChannel current = channel;
@@ -303,12 +322,27 @@ public final class DirectConnectionNativeSmokeTest {
     private static final class PeerObserver extends NoopObserver {
         private final CountDownLatch dataChannelCreated = new CountDownLatch(1);
         private final AtomicReference<DataChannel> dataChannel = new AtomicReference<>();
+        private final AtomicReference<PeerConnection.IceConnectionState> iceState =
+                new AtomicReference<>(PeerConnection.IceConnectionState.NEW);
+        private final AtomicInteger gatheredCandidates = new AtomicInteger();
         private final ChannelObserver channelObserver = new ChannelObserver();
 
+        @Override public void onIceConnectionChange(PeerConnection.IceConnectionState state) {
+            iceState.set(state);
+        }
+        @Override public void onIceCandidate(IceCandidate candidate) {
+            gatheredCandidates.incrementAndGet();
+        }
         @Override public void onDataChannel(DataChannel channel) {
             dataChannel.set(channel);
             channelObserver.attach(channel);
             dataChannelCreated.countDown();
+        }
+
+        String diagnostics() {
+            return "ICE=" + iceState.get() + ", gatheredCandidates=" + gatheredCandidates.get()
+                    + ", remoteDataChannel=" + (dataChannel.get() != null)
+                    + ", remoteChannelState=" + channelObserver.stateDescription();
         }
     }
 
