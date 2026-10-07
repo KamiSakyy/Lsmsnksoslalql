@@ -79,8 +79,8 @@ jobs:
       - name: Настроить Gradle и кэш
         uses: gradle/actions/setup-gradle@v6
 
-      - name: Подготовить образ Android 30 для эмулятора
-        run: sdkmanager "platforms;android-30" "system-images;android-30;default;x86_64" "emulator"
+      - name: Подготовить образ Android 36 для эмулятора
+        run: sdkmanager "platforms;android-36" "system-images;android-36;default;x86_64" "emulator"
 
       - name: Разрешить Android-эмулятору доступ к KVM
         run: |
@@ -89,7 +89,7 @@ jobs:
           sudo udevadm trigger --name-match=kvm
 
       - name: Создать AVD для smoke-тестов
-        run: echo no | avdmanager create avd --force --name ci-smoke --package "system-images;android-30;default;x86_64"
+        run: echo no | avdmanager create avd --force --name ci-smoke --package "system-images;android-36;default;x86_64"
 
       - name: Запустить Android-эмулятор и тест Signal + WebRTC
         run: |
