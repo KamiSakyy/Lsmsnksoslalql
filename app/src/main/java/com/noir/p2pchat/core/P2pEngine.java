@@ -193,7 +193,7 @@ public final class P2pEngine {
     }
 
     public String startMediaCall(String peerUid, boolean video) {
-        if (!isValidUid(peerUid) || peerUid.equals(uid) || uid == null || factory == null) {
+        if (!isValidUid(peerUid) || peerUid.equals(uid) || uid == null) {
             setStatus("Подождите, пока приложение подключится к Firebase");
             return null;
         }
@@ -394,8 +394,8 @@ public final class P2pEngine {
                 synchronized (pendingTextLock) {
                     uid = authenticatedUid;
                 }
+                setStatus("Firebase авторизован · готовим Signal-ключи…");
                 signalStore = new EncryptedSignalProtocolStore(appContext);
-                initializeWebRtc();
                 publishProfile();
                 if (!started.get()) return;
                 notifyIdentity(uid);
@@ -416,6 +416,12 @@ public final class P2pEngine {
                         if (!manuallyStopped.get()) start();
                     }, 8, TimeUnit.SECONDS);
                 }
+            } catch (LinkageError e) {
+                // Native crypto may fail with UnsatisfiedLinkError/Error rather than Exception.
+                // Keep the app open and expose the actual failing component instead of crashing silently.
+                Log.e(TAG, "Native Signal crypto component failed during startup", e);
+                started.set(false);
+                setStatus("Ошибка загрузки Signal · " + safeError(e));
             }
         });
     }
@@ -437,19 +443,31 @@ public final class P2pEngine {
 
     private volatile FirebaseRestClient.StreamHandle inboxStream;
 
-    private void initializeWebRtc() {
+    private void initializeWebRtc() throws IOException {
         if (factory != null) return;
         synchronized (P2pEngine.class) {
             if (factory != null) return;
-            PeerConnectionFactory.InitializationOptions options =
-                    PeerConnectionFactory.InitializationOptions.builder(appContext).createInitializationOptions();
-            PeerConnectionFactory.initialize(options);
-            eglBase = EglBase.create();
-            EglBase.Context eglContext = eglBase.getEglBaseContext();
-            factory = PeerConnectionFactory.builder()
-                    .setVideoEncoderFactory(new DefaultVideoEncoderFactory(eglContext, true, true))
-                    .setVideoDecoderFactory(new DefaultVideoDecoderFactory(eglContext))
-                    .createPeerConnectionFactory();
+            try {
+                PeerConnectionFactory.InitializationOptions options =
+                        PeerConnectionFactory.InitializationOptions.builder(appContext).createInitializationOptions();
+                PeerConnectionFactory.initialize(options);
+                eglBase = EglBase.create();
+                EglBase.Context eglContext = eglBase.getEglBaseContext();
+                PeerConnectionFactory initializedFactory = PeerConnectionFactory.builder()
+                        .setVideoEncoderFactory(new DefaultVideoEncoderFactory(eglContext, true, true))
+                        .setVideoDecoderFactory(new DefaultVideoDecoderFactory(eglContext))
+                        .createPeerConnectionFactory();
+                if (initializedFactory == null) throw new IOException("WebRTC не создал PeerConnectionFactory");
+                factory = initializedFactory;
+            } catch (LinkageError e) {
+                EglBase failedEglBase = eglBase;
+                eglBase = null;
+                if (failedEglBase != null) {
+                    try { failedEglBase.release(); }
+                    catch (RuntimeException cleanupError) { Log.w(TAG, "Could not release failed WebRTC EGL context", cleanupError); }
+                }
+                throw new IOException("Не загрузился нативный компонент WebRTC: " + safeError(e), e);
+            }
         }
     }
 
@@ -1149,7 +1167,7 @@ public final class P2pEngine {
         });
     }
 
-    private static String safeError(Exception e) {
+    private static String safeError(Throwable e) {
         return e.getMessage() == null ? e.getClass().getSimpleName() : e.getMessage();
     }
 
@@ -1420,6 +1438,7 @@ public final class P2pEngine {
     }
 
     private void createPeerConnection(PeerSession session) throws IOException {
+        initializeWebRtc();
         PeerConnectionFactory currentFactory = factory;
         if (currentFactory == null) throw new IOException("WebRTC не инициализирован");
         List<PeerConnection.IceServer> servers = iceServers();
