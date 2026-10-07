@@ -14,6 +14,16 @@ def asBuildConfigString = { String value ->
 def turnUrls = buildValue('turnUrls', 'TURN_URLS')
 def turnUsername = buildValue('turnUsername', 'TURN_USERNAME')
 def turnCredential = buildValue('turnCredential', 'TURN_CREDENTIAL')
+def appVersionCode = providers.gradleProperty('appVersionCode')
+        .orElse(providers.environmentVariable('APP_VERSION_CODE'))
+        .getOrElse('1').toInteger()
+def appVersionName = providers.gradleProperty('appVersionName')
+        .orElse(providers.environmentVariable('APP_VERSION_NAME'))
+        .getOrElse('1.0.0')
+def releaseStoreFile = providers.environmentVariable('ANDROID_SIGNING_STORE_FILE').getOrElse('')
+def releaseStorePassword = providers.environmentVariable('ANDROID_SIGNING_STORE_PASSWORD').getOrElse('')
+def releaseKeyAlias = providers.environmentVariable('ANDROID_SIGNING_KEY_ALIAS').getOrElse('noirp2p-release')
+def releaseKeyPassword = providers.environmentVariable('ANDROID_SIGNING_KEY_PASSWORD').getOrElse('')
 
 android {
     namespace 'com.noir.p2pchat'
@@ -23,8 +33,8 @@ android {
         applicationId 'com.noir.p2pchat'
         minSdk 26
         targetSdk 36
-        versionCode 1
-        versionName '1.0.0'
+        versionCode appVersionCode
+        versionName appVersionName
 
         buildConfigField 'String', 'TURN_URLS', asBuildConfigString(turnUrls)
         buildConfigField 'String', 'TURN_USERNAME', asBuildConfigString(turnUsername)
@@ -33,6 +43,18 @@ android {
         // The WebRTC AAR contains native libraries for four ABIs; ship only the requested 64-bit ARM ABI.
         ndk {
             abiFilters 'arm64-v8a'
+        }
+    }
+
+    signingConfigs {
+        release {
+            if (!releaseStoreFile.isEmpty()) {
+                storeFile rootProject.file(releaseStoreFile)
+                storeType 'PKCS12'
+                storePassword releaseStorePassword
+                keyAlias releaseKeyAlias
+                keyPassword releaseKeyPassword
+            }
         }
     }
 
@@ -45,6 +67,7 @@ android {
         release {
             minifyEnabled true
             shrinkResources true
+            signingConfig signingConfigs.release
             proguardFiles getDefaultProguardFile('proguard-android-optimize.txt'), 'proguard-rules.pro'
         }
     }

@@ -1,4 +1,4 @@
-name: Android APK и handoff
+name: Android release APK и handoff
 
 on:
   push:
@@ -19,11 +19,14 @@ concurrency:
 
 jobs:
   build-apk:
-    name: Сборка Android 36 arm64/R8 и handoff
+    name: Android 36 arm64 · R8 · release signing
     runs-on: ubuntu-latest
     timeout-minutes: 45
     permissions:
       contents: read
+    outputs:
+      version_code: ${{ steps.version.outputs.code }}
+      version_name: ${{ steps.version.outputs.name }}
     steps:
       - name: Получить исходный код
         uses: actions/checkout@v7
@@ -43,15 +46,74 @@ jobs:
       - name: Настроить Gradle и кэш зависимостей
         uses: gradle/actions/setup-gradle@v6
 
-      - name: Собрать минифицированный arm64 debug APK
-        id: build
+      - name: Назначить монотонную версию приложения
+        id: version
+        run: |
+          echo "code=$GITHUB_RUN_NUMBER" >> "$GITHUB_OUTPUT"
+          echo "name=1.0.$GITHUB_RUN_NUMBER" >> "$GITHUB_OUTPUT"
+
+      - name: Проверить keystore и сертификат подписи
+        if: github.event_name != 'pull_request'
+        id: signing
+        env:
+          ANDROID_SIGNING_KEYSTORE_BASE64: ${{ secrets.ANDROID_SIGNING_KEYSTORE_BASE64 }}
+          ANDROID_SIGNING_STORE_PASSWORD: ${{ secrets.ANDROID_SIGNING_STORE_PASSWORD }}
+          ANDROID_SIGNING_KEY_PASSWORD: ${{ secrets.ANDROID_SIGNING_KEY_PASSWORD }}
+        run: |
+          set -euo pipefail
+          if [ -z "$ANDROID_SIGNING_KEYSTORE_BASE64" ] || [ -z "$ANDROID_SIGNING_STORE_PASSWORD" ] || [ -z "$ANDROID_SIGNING_KEY_PASSWORD" ]; then
+            echo "::error title=Release signing secrets missing::Нужны Actions secrets ANDROID_SIGNING_KEYSTORE_BASE64, ANDROID_SIGNING_STORE_PASSWORD и ANDROID_SIGNING_KEY_PASSWORD. Приватный ключ нельзя коммитить в публичный репозиторий."
+            exit 1
+          fi
+          KEYSTORE_PATH="$RUNNER_TEMP/noirp2p-release.p12"
+          printf '%s' "$ANDROID_SIGNING_KEYSTORE_BASE64" | base64 --decode > "$KEYSTORE_PATH"
+          chmod 600 "$KEYSTORE_PATH"
+          export P12_PASSWORD="$ANDROID_SIGNING_STORE_PASSWORD"
+          openssl pkcs12 -in "$KEYSTORE_PATH" -clcerts -nokeys -passin env:P12_PASSWORD \
+            -out "$RUNNER_TEMP/keystore-cert.pem"
+          EXPECTED_CERT="$(openssl x509 -in signing/NoirP2P-release-cert.pem -noout -fingerprint -sha256 | cut -d= -f2 | tr -d ':')"
+          ACTUAL_CERT="$(openssl x509 -in "$RUNNER_TEMP/keystore-cert.pem" -noout -fingerprint -sha256 | cut -d= -f2 | tr -d ':')"
+          if [ "$EXPECTED_CERT" != "$ACTUAL_CERT" ]; then
+            echo "::error title=Signing key mismatch::Keystore не совпадает с публичным сертификатом signing/NoirP2P-release-cert.pem. Не заменяйте ключ уже выпущенной версии."
+            exit 1
+          fi
+          echo "keystore_path=$KEYSTORE_PATH" >> "$GITHUB_OUTPUT"
+          echo "Постоянный сертификат подписи совпадает с исходным публичным сертификатом."
+
+      - name: Собрать подписанный release APK
+        if: github.event_name != 'pull_request'
         env:
           TURN_URLS: ${{ secrets.TURN_URLS }}
           TURN_USERNAME: ${{ secrets.TURN_USERNAME }}
           TURN_CREDENTIAL: ${{ secrets.TURN_CREDENTIAL }}
+          ANDROID_SIGNING_STORE_FILE: ${{ steps.signing.outputs.keystore_path }}
+          ANDROID_SIGNING_STORE_PASSWORD: ${{ secrets.ANDROID_SIGNING_STORE_PASSWORD }}
+          ANDROID_SIGNING_KEY_ALIAS: noirp2p-release
+          ANDROID_SIGNING_KEY_PASSWORD: ${{ secrets.ANDROID_SIGNING_KEY_PASSWORD }}
+          APP_VERSION_CODE: ${{ steps.version.outputs.code }}
+          APP_VERSION_NAME: ${{ steps.version.outputs.name }}
+        run: |
+          set -euo pipefail
+          ./gradlew --no-daemon --stacktrace clean assembleRelease \
+            -PappVersionCode="$APP_VERSION_CODE" \
+            -PappVersionName="$APP_VERSION_NAME" \
+            -PturnUrls="$TURN_URLS" \
+            -PturnUsername="$TURN_USERNAME" \
+            -PturnCredential="$TURN_CREDENTIAL" 2>&1 | tee "$RUNNER_TEMP/gradle-build.log"
+
+      - name: Собрать debug APK для проверки pull request
+        if: github.event_name == 'pull_request'
+        env:
+          TURN_URLS: ${{ secrets.TURN_URLS }}
+          TURN_USERNAME: ${{ secrets.TURN_USERNAME }}
+          TURN_CREDENTIAL: ${{ secrets.TURN_CREDENTIAL }}
+          APP_VERSION_CODE: ${{ steps.version.outputs.code }}
+          APP_VERSION_NAME: ${{ steps.version.outputs.name }}
         run: |
           set -euo pipefail
           ./gradlew --no-daemon --stacktrace clean assembleDebug \
+            -PappVersionCode="$APP_VERSION_CODE" \
+            -PappVersionName="$APP_VERSION_NAME" \
             -PturnUrls="$TURN_URLS" \
             -PturnUsername="$TURN_USERNAME" \
             -PturnCredential="$TURN_CREDENTIAL" 2>&1 | tee "$RUNNER_TEMP/gradle-build.log"
@@ -63,26 +125,46 @@ jobs:
           if [ -f "$RUNNER_TEMP/gradle-build.log" ]; then
             tail -n 100 "$RUNNER_TEMP/gradle-build.log" >> "$GITHUB_STEP_SUMMARY"
           else
-            echo "Gradle не создал лог сборки." >> "$GITHUB_STEP_SUMMARY"
+            echo "Gradle не создал лог сборки. Для release проверьте Actions secrets подписи." >> "$GITHUB_STEP_SUMMARY"
           fi
 
-      - name: Подготовить APK и ZIP исходников
+      - name: Проверить и подготовить APK и ZIP исходников
+        if: success()
+        env:
+          BUILD_VARIANT: ${{ github.event_name == 'pull_request' && 'debug' || 'release' }}
+          APP_VERSION_CODE: ${{ steps.version.outputs.code }}
+          APP_VERSION_NAME: ${{ steps.version.outputs.name }}
         run: |
-          set -o pipefail
-          (
-            set -euo pipefail
-            mkdir -p handoff
-            APK_PATH="$(find app/build/outputs/apk -type f -name '*.apk' ! -path '*androidTest*' 2>/dev/null | sort | head -n 1 || true)"
-            if [ -z "$APK_PATH" ]; then
-              echo "::error title=APK missing::Gradle завершился без APK; найденные файлы:"
-              find app/build/outputs -maxdepth 5 -type f -print || true
+          set -euo pipefail
+          mkdir -p handoff/releases
+          APK_PATH="$(find "app/build/outputs/apk/$BUILD_VARIANT" -type f -name '*.apk' ! -path '*androidTest*' 2>/dev/null | sort | head -n 1 || true)"
+          if [ -z "$APK_PATH" ]; then
+            echo "::error title=APK missing::Gradle завершился без APK в варианте $BUILD_VARIANT."
+            find app/build/outputs -maxdepth 5 -type f -print || true
+            exit 1
+          fi
+          test -s "app/build/outputs/mapping/$BUILD_VARIANT/mapping.txt"
+          if [ "$BUILD_VARIANT" = "release" ]; then
+            APK_TARGET="handoff/NoirP2P-release.apk"
+            VERSIONED_APK="handoff/releases/NoirP2P-${APP_VERSION_NAME}+${APP_VERSION_CODE}.apk"
+            cp "$APK_PATH" "$APK_TARGET"
+            cp "$APK_PATH" "$VERSIONED_APK"
+            SDK_ROOT="${ANDROID_HOME:-${ANDROID_SDK_ROOT:?}}"
+            APKSIGNER="$SDK_ROOT/build-tools/36.0.0/apksigner"
+            "$APKSIGNER" verify --verbose --print-certs "$APK_TARGET" > "$RUNNER_TEMP/apk-cert.txt"
+            EXPECTED_CERT="$(openssl x509 -in signing/NoirP2P-release-cert.pem -noout -fingerprint -sha256 | cut -d= -f2 | tr -d ':')"
+            ACTUAL_CERT="$(awk -F': ' '/Signer #1 certificate SHA-256 digest/ { print $2; exit }' "$RUNNER_TEMP/apk-cert.txt" | tr -d ':')"
+            if [ -z "$ACTUAL_CERT" ] || [ "$EXPECTED_CERT" != "$ACTUAL_CERT" ]; then
+              echo "::error title=APK signature mismatch::APK подписан не постоянным release-сертификатом."
+              cat "$RUNNER_TEMP/apk-cert.txt"
               exit 1
             fi
-            echo "Использую APK: $APK_PATH"
-            cp "$APK_PATH" handoff/NoirP2P-debug.apk
-            test -s handoff/NoirP2P-debug.apk
-            test -s app/build/outputs/mapping/debug/mapping.txt
-            python3 - handoff/NoirP2P-debug.apk <<'APK_CHECK'
+          else
+            APK_TARGET="handoff/NoirP2P-debug.apk"
+            cp "$APK_PATH" "$APK_TARGET"
+          fi
+          test -s "$APK_TARGET"
+          python3 - "$APK_TARGET" <<'APK_CHECK'
           import sys
           import zipfile
 
@@ -95,9 +177,9 @@ jobs:
                   raise SystemExit(f'Expected arm64-v8a only, found: {abis}')
               if 'AndroidManifest.xml' not in names:
                   raise SystemExit('APK is missing AndroidManifest.xml')
-          print('Verified ABI: arm64-v8a only; debug R8 mapping is present.')
+          print('Verified APK manifest, arm64-v8a-only ABI and R8 mapping file.')
           APK_CHECK
-            python3 - <<'PY'
+          python3 - <<'PY'
           import pathlib
           import subprocess
           import zipfile
@@ -113,62 +195,87 @@ jobs:
                   if path.is_file():
                       archive.write(path, arcname='NoirP2P/' + name)
           PY
-            {
-              echo "## Noir P2P · handoff"
-              echo "- APK: \`handoff/NoirP2P-debug.apk\`"
-              echo "- Исходники: \`handoff/NoirP2P-source.zip\`"
-              echo "- Android API: compile/target 36; min 26"
-              echo ""
-              echo "Артефакты доступны во вкладке Artifacts этого запуска GitHub Actions."
-            } >> "$GITHUB_STEP_SUMMARY"
-          ) 2>&1 | tee "$RUNNER_TEMP/handoff-package.log"
+          {
+            echo "## Noir P2P · Android $APP_VERSION_NAME ($APP_VERSION_CODE)"
+            echo "- Variant: $BUILD_VARIANT"
+            echo "- APK: \`$APK_TARGET\`"
+            echo "- Исходники: \`handoff/NoirP2P-source.zip\`"
+            echo "- ABI: arm64-v8a only · R8 minification/resources enabled"
+            if [ "$BUILD_VARIANT" = "release" ]; then
+              echo "- APK signed with the persistent release certificate."
+              echo "- Старые APK в handoff/releases/ сохраняются; новая версия добавляется отдельным файлом."
+            fi
+            echo ""
+            echo "Файлы текущего запуска находятся во вкладке Artifacts."
+          } >> "$GITHUB_STEP_SUMMARY"
 
       - name: Показать диагностику handoff при ошибке
         if: failure()
         run: |
           echo "## Ошибка подготовки APK и исходников" >> "$GITHUB_STEP_SUMMARY"
-          if [ -f "$RUNNER_TEMP/handoff-package.log" ]; then
-            tail -n 120 "$RUNNER_TEMP/handoff-package.log" >> "$GITHUB_STEP_SUMMARY"
-          else
-            echo "Лог подготовки handoff не создан." >> "$GITHUB_STEP_SUMMARY"
-          fi
+          echo "Проверьте логи предыдущих шагов и Actions secrets подписи." >> "$GITHUB_STEP_SUMMARY"
 
-      - name: Загрузить APK и ZIP исходников
+      - name: Загрузить signed release APK и исходники
+        if: success() && github.event_name != 'pull_request'
         uses: actions/upload-artifact@v7
         with:
-          name: NoirP2P-handoff
-          path: handoff/
+          name: NoirP2P-release-v${{ steps.version.outputs.name }}
+          path: |
+            handoff/NoirP2P-release.apk
+            handoff/releases/NoirP2P-${{ steps.version.outputs.name }}+${{ steps.version.outputs.code }}.apk
+            handoff/NoirP2P-source.zip
+            signing/NoirP2P-release-cert.pem
           if-no-files-found: error
           retention-days: 30
 
+      - name: Загрузить debug APK для pull request
+        if: success() && github.event_name == 'pull_request'
+        uses: actions/upload-artifact@v7
+        with:
+          name: NoirP2P-debug-check
+          path: |
+            handoff/NoirP2P-debug.apk
+            handoff/NoirP2P-source.zip
+          if-no-files-found: error
+          retention-days: 7
+
   publish-handoff:
-    name: Положить свежие файлы в handoff/
+    name: Опубликовать подписанный release в handoff/
     needs: build-apk
     if: github.event_name != 'pull_request' && github.ref == 'refs/heads/arena/8909ba29-lsmsnksoslalql'
     runs-on: ubuntu-latest
     timeout-minutes: 10
     permissions:
       contents: write
+    env:
+      APP_VERSION_CODE: ${{ needs.build-apk.outputs.version_code }}
+      APP_VERSION_NAME: ${{ needs.build-apk.outputs.version_name }}
     steps:
       - name: Получить ветку с исходниками
         uses: actions/checkout@v7
         with:
           ref: arena/8909ba29-lsmsnksoslalql
 
-      - name: Скачать собранные файлы
+      - name: Скачать подписанные файлы
         uses: actions/download-artifact@v8
         with:
-          name: NoirP2P-handoff
-          path: handoff/
+          name: NoirP2P-release-v${{ needs.build-apk.outputs.version_name }}
+          path: .
 
-      - name: Обновить файлы в GitHub
+      - name: Сохранить новую версию, не удаляя предыдущие
         run: |
+          set -euo pipefail
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-          git add -f handoff/NoirP2P-debug.apk handoff/NoirP2P-source.zip
+          test -s handoff/NoirP2P-release.apk
+          test -s "handoff/releases/NoirP2P-${APP_VERSION_NAME}+${APP_VERSION_CODE}.apk"
+          test -s handoff/NoirP2P-source.zip
+          git add -f handoff/NoirP2P-release.apk \
+            "handoff/releases/NoirP2P-${APP_VERSION_NAME}+${APP_VERSION_CODE}.apk" \
+            handoff/NoirP2P-source.zip signing/NoirP2P-release-cert.pem
           if git diff --cached --quiet; then
-            echo "handoff/ уже содержит актуальные файлы"
+            echo "Эта версия уже опубликована; предыдущие APK не удалялись."
           else
-            git commit -m "ci: обновить Android handoff [skip ci]"
+            git commit -m "ci: publish Noir P2P ${APP_VERSION_NAME} (${APP_VERSION_CODE}) [skip ci]"
             git push origin HEAD:arena/8909ba29-lsmsnksoslalql
           fi

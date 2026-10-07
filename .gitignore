@@ -5,10 +5,13 @@ local.properties
 .idea/
 *.iml
 
-# Local Android signing material
+# Private Android signing material must never enter this public repository.
 *.jks
 *.keystore
+*.p12
 key.properties
+signing/*private*.pem
+signing/*PASSWORD*.txt
 
 # CI-generated handoff artifacts (download from GitHub Actions)
 handoff/*.apk
