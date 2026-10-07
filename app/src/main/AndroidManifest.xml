@@ -41,6 +41,10 @@
             android:foregroundServiceType="remoteMessaging"
             android:stopWithTask="false" />
 
+        <receiver
+            android:name=".NotificationActionReceiver"
+            android:exported="false" />
+
         <provider
             android:name="androidx.core.content.FileProvider"
             android:authorities="${applicationId}.files"

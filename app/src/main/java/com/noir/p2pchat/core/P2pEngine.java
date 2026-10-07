@@ -16,6 +16,18 @@ import com.noir.p2pchat.core.MessageStore.Message;
 
 import org.json.JSONException;
 import org.json.JSONObject;
+import org.signal.libsignal.protocol.IdentityKey;
+import org.signal.libsignal.protocol.NoSessionException;
+import org.signal.libsignal.protocol.SessionBuilder;
+import org.signal.libsignal.protocol.SessionCipher;
+import org.signal.libsignal.protocol.SignalProtocolAddress;
+import org.signal.libsignal.protocol.UntrustedIdentityException;
+import org.signal.libsignal.protocol.ecc.ECPublicKey;
+import org.signal.libsignal.protocol.kem.KEMPublicKey;
+import org.signal.libsignal.protocol.message.CiphertextMessage;
+import org.signal.libsignal.protocol.message.PreKeySignalMessage;
+import org.signal.libsignal.protocol.message.SignalMessage;
+import org.signal.libsignal.protocol.state.PreKeyBundle;
 import org.webrtc.DataChannel;
 import org.webrtc.IceCandidate;
 import org.webrtc.MediaConstraints;
@@ -41,6 +53,7 @@ import java.util.Map;
 import java.util.Set;
 import java.util.UUID;
 import java.util.concurrent.ConcurrentHashMap;
+import java.util.concurrent.ConcurrentLinkedQueue;
 import java.util.concurrent.CopyOnWriteArraySet;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
@@ -53,14 +66,13 @@ import javax.crypto.Mac;
 import javax.crypto.spec.SecretKeySpec;
 
 /**
- * P2P messaging engine. Firebase Realtime Database is used only for authenticated WebRTC signaling;
- * message text and media bytes travel through encrypted WebRTC DataChannels.
+ * P2P messaging engine. Firebase Realtime Database carries authenticated WebRTC signaling and public
+ * Signal prekeys; all chat text, file metadata and media chunks are Signal-encrypted before DataChannel send.
  */
 public final class P2pEngine {
     private static final String TAG = "NoirP2P";
-    private static final int MAX_FILE_BYTES = 50 * 1024 * 1024;
-    private static final int FILE_HEADER_BYTES = 41;
-    private static final int FILE_CHUNK_BYTES = 15_000;
+    private static final int MAX_FILE_BYTES = FileTransferProtocol.MAX_FILE_BYTES;
+    private static final int FILE_CHUNK_BYTES = FileTransferProtocol.CHUNK_BYTES;
     private static final long MAX_BUFFERED_BYTES = 512 * 1024;
     private static final long PUBLIC_TURN_CREDENTIAL_TTL_SECONDS = 7L * 24 * 60 * 60;
 
@@ -94,13 +106,20 @@ public final class P2pEngine {
     private final CopyOnWriteArraySet<Listener> listeners = new CopyOnWriteArraySet<>();
     private final Map<String, PeerSession> sessionsByPeer = new ConcurrentHashMap<>();
     private final Map<String, PeerSession> sessionsById = new ConcurrentHashMap<>();
+    private final Map<String, Object> signalLocks = new ConcurrentHashMap<>();
+    private final Set<String> signalReadyPeers = ConcurrentHashMap.newKeySet();
     private final Map<String, Set<String>> pendingInvites = new ConcurrentHashMap<>();
+    private final Object pendingTextLock = new Object();
+    private final ConcurrentLinkedQueue<QueuedText> pendingTexts = new ConcurrentLinkedQueue<>();
+    private final AtomicInteger pendingTextCount = new AtomicInteger();
+    private final Set<String> pendingInviteDeclines = ConcurrentHashMap.newKeySet();
     private final Map<String, AtomicInteger> reconnectAttempts = new ConcurrentHashMap<>();
     private final AtomicBoolean started = new AtomicBoolean(false);
     private final AtomicBoolean manuallyStopped = new AtomicBoolean(false);
     private final AtomicBoolean inboxReadRunning = new AtomicBoolean(false);
     private final AtomicBoolean inboxReadRequested = new AtomicBoolean(false);
     private volatile PeerConnectionFactory factory;
+    private volatile EncryptedSignalProtocolStore signalStore;
     private volatile String uid;
     private volatile String status = "Ожидание подключения к Firebase";
     private volatile String activeChatPeer;
@@ -148,8 +167,12 @@ public final class P2pEngine {
             try {
                 firebase.ensureIdToken();
                 if (!started.get()) return;
-                uid = firebase.currentUid();
-                if (uid == null) throw new IOException("Firebase не вернул идентификатор пользователя");
+                String authenticatedUid = firebase.currentUid();
+                if (authenticatedUid == null) throw new IOException("Firebase не вернул идентификатор пользователя");
+                synchronized (pendingTextLock) {
+                    uid = authenticatedUid;
+                }
+                signalStore = new EncryptedSignalProtocolStore(appContext);
                 initializeWebRtc();
                 publishProfile();
                 if (!started.get()) return;
@@ -157,6 +180,8 @@ public final class P2pEngine {
                 setStatus("Сигналинг Firebase активен");
                 startInboxStream();
                 processPendingOutbox();
+                drainPendingTexts();
+                processPendingInviteDeclines();
             } catch (Exception e) {
                 Log.e(TAG, "Unable to start signaling", e);
                 started.set(false);
@@ -181,6 +206,7 @@ public final class P2pEngine {
         for (PeerSession session : sessionsByPeer.values()) session.close();
         sessionsByPeer.clear();
         sessionsById.clear();
+        signalReadyPeers.clear();
         reconnectAttempts.clear();
         setStatus("P2P-сервис остановлен");
     }
@@ -203,7 +229,106 @@ public final class P2pEngine {
         profile.put("app", "NoirP2P");
         profile.put("protocol", 1);
         profile.put("updatedAt", System.currentTimeMillis());
+        profile.put("signalVersion", 1);
+        profile.put("signal", signalStore.publicBundle());
         firebase.put("profiles/" + uid, profile);
+    }
+
+    private PreKeyBundle parsePreKeyBundle(JSONObject json) throws Exception {
+        if (json == null || json.optInt("version", -1) != 1) {
+            throw new IOException("Собеседник не опубликовал Signal prekey bundle v1");
+        }
+        int deviceId = json.optInt("deviceId", -1);
+        int registrationId = json.optInt("registrationId", -1);
+        int signedId = json.optInt("signedPreKeyId", -1);
+        int kyberId = json.optInt("kyberPreKeyId", -1);
+        if (deviceId < 1 || deviceId > 127 || registrationId < 1 || registrationId > 16380
+                || signedId < 1 || kyberId < 1) {
+            throw new IOException("Некорректные идентификаторы Signal prekey bundle");
+        }
+        byte[] identityBytes = EncryptedSignalProtocolStore.decodePublicKey(json.optString("identityKey", null));
+        byte[] signedBytes = EncryptedSignalProtocolStore.decodePublicKey(json.optString("signedPreKey", null));
+        byte[] signedSignature = EncryptedSignalProtocolStore.decodePublicKey(json.optString("signedPreKeySignature", null));
+        byte[] kyberBytes = EncryptedSignalProtocolStore.decodePublicKey(json.optString("kyberPreKey", null));
+        byte[] kyberSignature = EncryptedSignalProtocolStore.decodePublicKey(json.optString("kyberPreKeySignature", null));
+        if (signedSignature.length == 0 || kyberSignature.length == 0) {
+            throw new IOException("Пустая подпись в Signal prekey bundle");
+        }
+        IdentityKey identityKey = new IdentityKey(identityBytes);
+        ECPublicKey signedPublic = new ECPublicKey(signedBytes);
+        KEMPublicKey kyberPublic = new KEMPublicKey(kyberBytes);
+        return new PreKeyBundle(registrationId, deviceId, PreKeyBundle.NULL_PRE_KEY_ID, null,
+                signedId, signedPublic, signedSignature, identityKey,
+                kyberId, kyberPublic, kyberSignature);
+    }
+
+    private void ensureSignalSession(String peerUid) throws Exception {
+        String localUid = uid;
+        EncryptedSignalProtocolStore store = signalStore;
+        if (localUid == null || store == null) throw new IOException("Signal identity is not initialized");
+        Object lock = signalLocks.computeIfAbsent(peerUid, ignored -> new Object());
+        synchronized (lock) {
+            SignalProtocolAddress localAddress = new SignalProtocolAddress(localUid, store.getLocalDeviceId());
+            SignalProtocolAddress remoteAddress = new SignalProtocolAddress(peerUid, store.getLocalDeviceId());
+            if (store.containsSession(remoteAddress)) return;
+            JSONObject profile = firebase.get("profiles/" + peerUid);
+            JSONObject bundleJson = profile == null ? null : profile.optJSONObject("signal");
+            if (bundleJson == null) throw new IOException("Собеседнику нужно обновить Noir для Signal E2E");
+            PreKeyBundle bundle = parsePreKeyBundle(bundleJson);
+            new SessionBuilder(store, remoteAddress, localAddress).process(bundle);
+        }
+    }
+
+    private void startSignalHandshake(PeerSession session) {
+        if (!session.signalHandshakeStarted.compareAndSet(false, true)) return;
+        ioExecutor.execute(() -> {
+            try {
+                EncryptedSignalProtocolStore store = signalStore;
+                if (store == null) throw new IOException("Signal identity is not initialized");
+                if (store.hasSession(session.peerUid)) {
+                    sendSignalInit(session);
+                } else if (uid.compareTo(session.peerUid) < 0) {
+                    ensureSignalSession(session.peerUid);
+                    sendSignalInit(session);
+                } else {
+                    notifyPeerState(session.peerUid, "Устанавливаем Signal E2E-сессию…");
+                }
+            } catch (UntrustedIdentityException untrusted) {
+                Log.w(TAG, "Signal peer identity changed; refusing silent trust replacement", untrusted);
+                notifyPeerState(session.peerUid, "Signal identity изменился · сверка ключа обязательна");
+            } catch (Exception e) {
+                Log.w(TAG, "Signal session setup failed", e);
+                notifyPeerState(session.peerUid, "Signal E2E не готов · проверяем профиль и соединение");
+                session.signalHandshakeStarted.set(false);
+                scheduler.schedule(() -> {
+                    if (session.isOpen() && sessionsByPeer.get(session.peerUid) == session) {
+                        startSignalHandshake(session);
+                    }
+                }, 8, TimeUnit.SECONDS);
+            }
+        });
+    }
+
+    private void sendSignalInit(PeerSession session) throws JSONException, IOException {
+        JSONObject hello = new JSONObject();
+        hello.put("type", "signal_init");
+        hello.put("protocol", 1);
+        if (!sendJson(session, hello)) throw new IOException("Не удалось отправить Signal handshake");
+    }
+
+    public String getPeerFingerprint(String peerUid) {
+        EncryptedSignalProtocolStore store = signalStore;
+        return store == null ? null : store.fingerprint(peerUid);
+    }
+
+    public boolean isPeerIdentityVerified(String peerUid) {
+        EncryptedSignalProtocolStore store = signalStore;
+        return store != null && store.isVerified(peerUid);
+    }
+
+    public void markPeerIdentityVerified(String peerUid) {
+        EncryptedSignalProtocolStore store = signalStore;
+        if (store != null && isValidUid(peerUid)) store.markVerified(peerUid);
     }
 
     private synchronized void startInboxStream() {
@@ -297,9 +422,46 @@ public final class P2pEngine {
         }
         messages.addContact(clean);
         pendingInvites.remove(clean);
+        MessageNotifications.cancelIncoming(appContext, clean);
         notifyContactsChanged();
         readInbox();
         requestConnection(clean);
+    }
+
+    public void declineInvite(String peerUid) {
+        if (!isValidUid(peerUid) || peerUid.equals(uid)) return;
+        if (uid == null) {
+            pendingInviteDeclines.add(peerUid);
+            start();
+            return;
+        }
+        String currentUid = uid;
+        pendingInvites.remove(peerUid);
+        MessageNotifications.cancelIncoming(appContext, peerUid);
+        notifyInvite(peerUid);
+        ioExecutor.execute(() -> {
+            try {
+                JSONObject inbox = firebase.get("inbox/" + currentUid);
+                if (inbox == null) return;
+                Iterator<String> keys = inbox.keys();
+                while (keys.hasNext()) {
+                    String sessionId = keys.next();
+                    JSONObject invite = inbox.optJSONObject(sessionId);
+                    if (invite == null || !peerUid.equals(invite.optString("from", ""))) continue;
+                    firebase.delete("inbox/" + currentUid + "/" + sessionId);
+                    try { firebase.delete("calls/" + sessionId); }
+                    catch (IOException ignored) { }
+                }
+            } catch (Exception e) {
+                Log.w(TAG, "Could not decline incoming invite", e);
+            }
+        });
+    }
+
+    private void processPendingInviteDeclines() {
+        for (String peerUid : new ArrayList<>(pendingInviteDeclines)) {
+            if (pendingInviteDeclines.remove(peerUid)) declineInvite(peerUid);
+        }
     }
 
     public void requestConnection(String peerUid) {
@@ -321,6 +483,7 @@ public final class P2pEngine {
         if (!started.get() || uid == null || uid.compareTo(peerUid) >= 0) return;
         PeerSession existing = sessionsByPeer.get(peerUid);
         if (existing != null && !existing.closed.get()) return;
+        signalReadyPeers.remove(peerUid);
         String sessionId = UUID.randomUUID().toString().replace("-", "");
         PeerSession session = new PeerSession(sessionId, peerUid, true);
         PeerSession previous = sessionsByPeer.put(peerUid, session);
@@ -386,6 +549,7 @@ public final class P2pEngine {
             if (current.id.equals(sessionId)) refreshCall(current);
             return;
         }
+        signalReadyPeers.remove(peerUid);
         PeerSession session = new PeerSession(sessionId, peerUid, false);
         PeerSession previous = sessionsByPeer.put(peerUid, session);
         if (previous != null) previous.close();
@@ -628,10 +792,10 @@ public final class P2pEngine {
                 DataChannel.State state = channel.state();
                 if (state == DataChannel.State.OPEN) {
                     reconnectAttempts.remove(session.peerUid);
-                    notifyPeerState(session.peerUid, "P2P-соединение защищено и активно");
-                    setStatus("P2P-канал активен · сообщения идут напрямую");
+                    notifyPeerState(session.peerUid, "Канал WebRTC открыт · устанавливаем Signal E2E");
+                    setStatus("P2P-канал активен · устанавливаем Signal E2E");
                     scheduleSignalingCleanup(session);
-                    dispatchPending(session.peerUid);
+                    startSignalHandshake(session);
                 } else if (state == DataChannel.State.CLOSED) {
                     notifyPeerState(session.peerUid, "P2P-канал закрыт · переподключаемся");
                 }
@@ -643,7 +807,7 @@ public final class P2pEngine {
                 protocolExecutor.execute(() -> processChannelData(session, buffer.binary, bytes));
             }
         });
-        if (channel.state() == DataChannel.State.OPEN) dispatchPending(session.peerUid);
+        if (channel.state() == DataChannel.State.OPEN) startSignalHandshake(session);
     }
 
     private void scheduleSignalingCleanup(PeerSession session) {
@@ -694,6 +858,7 @@ public final class P2pEngine {
 
     private void closeSession(PeerSession session) {
         if (sessionsByPeer.remove(session.peerUid, session)) {
+            signalReadyPeers.remove(session.peerUid);
             sessionsById.remove(session.id, session);
             discardSignaling(session);
             session.close();
@@ -719,14 +884,47 @@ public final class P2pEngine {
 
     public void sendText(String peerUid, String text) {
         String body = text == null ? "" : text.trim();
-        if (body.isEmpty()) return;
+        if (body.isEmpty() || !isValidUid(peerUid)) return;
         if (body.length() > 12_000) {
             setStatus("Сообщение слишком длинное (лимит 12 000 символов)");
             return;
         }
-        if (!isValidUid(peerUid) || uid == null) return;
+        boolean queued = false;
+        synchronized (pendingTextLock) {
+            if (uid == null || factory == null) {
+                if (pendingTextCount.incrementAndGet() > 16) {
+                    pendingTextCount.decrementAndGet();
+                    setStatus("Очередь ответов из уведомлений заполнена");
+                    return;
+                }
+                pendingTexts.add(new QueuedText(peerUid, body));
+                queued = true;
+            }
+        }
+        if (queued) {
+            start();
+            return;
+        }
+        storeAndDispatchText(peerUid, body);
+    }
+
+    private void drainPendingTexts() {
+        ArrayList<QueuedText> queued = new ArrayList<>();
+        synchronized (pendingTextLock) {
+            QueuedText item;
+            while ((item = pendingTexts.poll()) != null) {
+                pendingTextCount.decrementAndGet();
+                queued.add(item);
+            }
+        }
+        for (QueuedText item : queued) storeAndDispatchText(item.peerUid, item.body);
+    }
+
+    private void storeAndDispatchText(String peerUid, String body) {
+        String senderUid = uid;
+        if (senderUid == null) return;
         long now = System.currentTimeMillis();
-        Message message = new Message(UUID.randomUUID().toString(), peerUid, uid, "text", body,
+        Message message = new Message(UUID.randomUUID().toString(), peerUid, senderUid, "text", body,
                 "text/plain", null, now, true, "pending", 0);
         messages.insertMessage(message);
         notifyMessages(peerUid);
@@ -806,7 +1004,8 @@ public final class P2pEngine {
 
     private void dispatchPending(String peerUid) {
         PeerSession session = sessionsByPeer.get(peerUid);
-        if (session == null || !session.isOpen() || !session.dispatching.compareAndSet(false, true)) return;
+        if (session == null || !session.isOpen() || !signalReadyPeers.contains(peerUid)
+                || !session.dispatching.compareAndSet(false, true)) return;
         ioExecutor.execute(() -> {
             try {
                 for (Message message : messages.getPending(peerUid, 100)) {
@@ -818,10 +1017,18 @@ public final class P2pEngine {
                     messages.markSent(message.id);
                     notifyMessages(peerUid);
                 }
+            } catch (RuntimeException e) {
+                Log.e(TAG, "Could not read/decrypt a queued local message; refusing to send substitute text", e);
+                setStatus("Локальное содержимое недоступно · сообщение не отправлено");
             } finally {
                 session.dispatching.set(false);
-                if (session.isOpen() && !messages.getPending(peerUid, 1).isEmpty()) {
-                    scheduler.schedule(() -> dispatchPending(peerUid), 500, TimeUnit.MILLISECONDS);
+                try {
+                    if (session.isOpen() && signalReadyPeers.contains(peerUid)
+                            && !messages.getPending(peerUid, 1).isEmpty()) {
+                        scheduler.schedule(() -> dispatchPending(peerUid), 500, TimeUnit.MILLISECONDS);
+                    }
+                } catch (RuntimeException e) {
+                    Log.e(TAG, "Could not inspect the pending message queue", e);
                 }
             }
         });
@@ -863,15 +1070,8 @@ public final class P2pEngine {
             int read;
             while ((read = input.read(payload)) != -1) {
                 if (!session.isOpen() || !started.get()) return false;
-                ByteBuffer frame = ByteBuffer.allocate(FILE_HEADER_BYTES + read);
-                frame.put((byte) 'F');
-                byte[] id = message.id.getBytes(StandardCharsets.US_ASCII);
-                byte[] paddedId = new byte[36];
-                System.arraycopy(id, 0, paddedId, 0, Math.min(36, id.length));
-                frame.put(paddedId);
-                frame.putInt(index++);
-                frame.put(payload, 0, read);
-                if (!sendBinaryWaiting(session, frame.array())) return false;
+                byte[] frame = FileTransferProtocol.encodeChunk(message.id, index++, payload, 0, read);
+                if (!sendBinaryWaiting(session, frame)) return false;
             }
         } catch (IOException e) {
             Log.w(TAG, "Attachment transfer read failed", e);
@@ -887,45 +1087,133 @@ public final class P2pEngine {
     }
 
     private boolean sendJsonWaiting(PeerSession session, JSONObject json) {
-        byte[] bytes = json.toString().getBytes(StandardCharsets.UTF_8);
-        long deadline = System.currentTimeMillis() + TimeUnit.MINUTES.toMillis(2);
-        while (session.isOpen() && started.get() && System.currentTimeMillis() < deadline) {
-            if (session.dataChannel.bufferedAmount() < MAX_BUFFERED_BYTES
-                    && session.dataChannel.send(new DataChannel.Buffer(ByteBuffer.wrap(bytes), false))) return true;
-            sleepQuietly(40);
-        }
-        return false;
+        return sendEncryptedWaiting(session, json.toString().getBytes(StandardCharsets.UTF_8),
+                TimeUnit.MINUTES.toMillis(2));
     }
 
     private boolean sendBinaryWaiting(PeerSession session, byte[] bytes) {
-        long deadline = System.currentTimeMillis() + TimeUnit.MINUTES.toMillis(2);
+        return sendEncryptedWaiting(session, bytes, TimeUnit.MINUTES.toMillis(2));
+    }
+
+    private boolean sendJson(PeerSession session, JSONObject json) {
+        return sendEncryptedWaiting(session, json.toString().getBytes(StandardCharsets.UTF_8),
+                TimeUnit.SECONDS.toMillis(10));
+    }
+
+    private boolean sendEncryptedWaiting(PeerSession session, byte[] cleartext, long timeoutMillis) {
+        long deadline = System.currentTimeMillis() + timeoutMillis;
         while (session.isOpen() && started.get() && System.currentTimeMillis() < deadline) {
-            if (session.dataChannel.bufferedAmount() < MAX_BUFFERED_BYTES
-                    && session.dataChannel.send(new DataChannel.Buffer(ByteBuffer.wrap(bytes), true))) return true;
+            Object lock = signalLocks.computeIfAbsent(session.peerUid, ignored -> new Object());
+            synchronized (lock) {
+                if (session.isOpen() && session.dataChannel.bufferedAmount() < MAX_BUFFERED_BYTES) {
+                    EncryptedSignalProtocolStore store = signalStore;
+                    String localUid = uid;
+                    if (store == null || localUid == null) return false;
+                    SignalProtocolAddress localAddress = new SignalProtocolAddress(localUid, store.getLocalDeviceId());
+                    SignalProtocolAddress remoteAddress = new SignalProtocolAddress(session.peerUid, store.getLocalDeviceId());
+                    org.signal.libsignal.protocol.state.SessionRecord previous = store.loadSession(remoteAddress);
+                    byte[] previousState = previous == null ? null : previous.serialize();
+                    try {
+                        SessionCipher cipher = new SessionCipher(store, localAddress, remoteAddress);
+                        CiphertextMessage ciphertext = cipher.encrypt(cleartext);
+                        byte[] frame = SignalEnvelope.encode(ciphertext.getType(), ciphertext.serialize());
+                        boolean accepted = session.dataChannel.send(
+                                new DataChannel.Buffer(ByteBuffer.wrap(frame), true));
+                        if (accepted) return true;
+                        restoreSignalSession(store, remoteAddress, previousState);
+                        return false;
+                    } catch (Exception e) {
+                        restoreSignalSession(store, remoteAddress, previousState);
+                        Log.w(TAG, "Could not encrypt/send a Signal frame", e);
+                        return false;
+                    }
+                }
+            }
             sleepQuietly(30);
         }
         return false;
     }
 
-    private static boolean sendJson(PeerSession session, JSONObject json) {
-        if (!session.isOpen()) return false;
-        byte[] bytes = json.toString().getBytes(StandardCharsets.UTF_8);
-        return session.dataChannel.send(new DataChannel.Buffer(ByteBuffer.wrap(bytes), false));
+    private static void restoreSignalSession(EncryptedSignalProtocolStore store,
+                                             SignalProtocolAddress remoteAddress,
+                                             byte[] previousState) {
+        try {
+            if (previousState == null) {
+                store.deleteSession(remoteAddress);
+            } else {
+                store.storeSession(remoteAddress,
+                        new org.signal.libsignal.protocol.state.SessionRecord(previousState));
+            }
+        } catch (Exception e) {
+            Log.e(TAG, "Could not roll back an unsent Signal ratchet step", e);
+        }
     }
 
     private void processChannelData(PeerSession session, boolean binary, byte[] bytes) {
         if (session.closed.get()) return;
-        if (binary) {
-            receiveFileChunk(session, bytes);
+        if (!binary) {
+            Log.w(TAG, "Rejected a non-binary DataChannel frame; plaintext is not accepted");
             return;
         }
+        SignalEnvelope.Envelope envelope = SignalEnvelope.decode(bytes);
+        if (envelope == null) {
+            Log.w(TAG, "Rejected malformed or non-Signal DataChannel frame");
+            return;
+        }
+        final byte[] cleartext;
         try {
-            JSONObject json = new JSONObject(new String(bytes, StandardCharsets.UTF_8));
+            cleartext = decryptSignalFrame(session, envelope);
+        } catch (Exception e) {
+            Log.w(TAG, "Signal E2E message authentication/decryption failed", e);
+            notifyPeerState(session.peerUid, "Signal E2E ошибка · ключи не совпадают или сообщение повреждено");
+            return;
+        }
+        if (cleartext.length > 0 && cleartext[0] == (byte) 'F') {
+            receiveFileChunk(session, cleartext);
+            return;
+        }
+        processClearJson(session, cleartext);
+    }
+
+    private byte[] decryptSignalFrame(PeerSession session, SignalEnvelope.Envelope envelope) throws Exception {
+        EncryptedSignalProtocolStore store = signalStore;
+        String localUid = uid;
+        if (store == null || localUid == null) throw new IOException("Signal identity is not initialized");
+        Object lock = signalLocks.computeIfAbsent(session.peerUid, ignored -> new Object());
+        synchronized (lock) {
+            SignalProtocolAddress localAddress = new SignalProtocolAddress(localUid, store.getLocalDeviceId());
+            SignalProtocolAddress remoteAddress = new SignalProtocolAddress(session.peerUid, store.getLocalDeviceId());
+            SessionCipher cipher = new SessionCipher(store, localAddress, remoteAddress);
+            if (envelope.type == CiphertextMessage.PREKEY_TYPE) {
+                return cipher.decrypt(new PreKeySignalMessage(envelope.ciphertext));
+            }
+            if (envelope.type == CiphertextMessage.WHISPER_TYPE) {
+                return cipher.decrypt(new SignalMessage(envelope.ciphertext));
+            }
+            throw new IOException("Unsupported Signal message type");
+        }
+    }
+
+    private void processClearJson(PeerSession session, byte[] cleartext) {
+        try {
+            JSONObject json = new JSONObject(new String(cleartext, StandardCharsets.UTF_8));
             String type = json.optString("type", "");
-            if ("text".equals(type)) {
+            if ("signal_init".equals(type) && json.optInt("protocol", -1) == 1) {
+                JSONObject ready = new JSONObject().put("type", "signal_ready").put("protocol", 1);
+                if (!sendJson(session, ready)) Log.w(TAG, "Could not send Signal handshake acknowledgment");
+            } else if ("signal_ready".equals(type) && json.optInt("protocol", -1) == 1) {
+                signalReadyPeers.add(session.peerUid);
+                EncryptedSignalProtocolStore store = signalStore;
+                String verification = store != null && store.isVerified(session.peerUid)
+                        ? "Signal E2E активно · ключ подтверждён"
+                        : "Signal E2E активно · сравните отпечаток ключа";
+                notifyPeerState(session.peerUid, verification);
+                setStatus("Соединение защищено Signal Protocol");
+                dispatchPending(session.peerUid);
+            } else if ("text".equals(type)) {
                 String id = json.optString("id", "");
                 String body = json.optString("body", "");
-                if (id.isEmpty() || body.length() > 12_000) return;
+                if (!FileTransferProtocol.isValidMessageId(id) || body.length() > 12_000) return;
                 messages.insertMessage(new Message(id, session.peerUid, session.peerUid, "text", body,
                         "text/plain", null, json.optLong("timestamp", System.currentTimeMillis()), false,
                         "received", 0));
@@ -945,7 +1233,7 @@ public final class P2pEngine {
                 notifyMessages(session.peerUid);
             }
         } catch (JSONException e) {
-            Log.w(TAG, "Ignored invalid DataChannel message", e);
+            Log.w(TAG, "Ignored invalid decrypted Signal application message", e);
         }
     }
 
@@ -980,13 +1268,13 @@ public final class P2pEngine {
     }
 
     private void receiveFileChunk(PeerSession session, byte[] frame) {
-        if (frame.length < FILE_HEADER_BYTES || frame[0] != (byte) 'F') return;
-        String id = new String(frame, 1, 36, StandardCharsets.US_ASCII).trim();
-        int index = ByteBuffer.wrap(frame, 37, 4).getInt();
+        FileTransferProtocol.Chunk chunk = FileTransferProtocol.decodeChunk(frame);
+        if (chunk == null) return;
         IncomingFile file = session.incomingFile;
-        if (file == null || !file.id.equals(id) || index != file.nextChunk) return;
-        int payloadLength = frame.length - FILE_HEADER_BYTES;
-        if (file.receivedBytes + payloadLength > file.expectedSize || file.receivedBytes + payloadLength > MAX_FILE_BYTES) {
+        if (file == null || !file.id.equals(chunk.id) || chunk.index != file.nextChunk) return;
+        int payloadLength = chunk.payload.length;
+        if (file.receivedBytes + payloadLength > file.expectedSize || file.receivedBytes + payloadLength > MAX_FILE_BYTES
+                || (file.receivedBytes + payloadLength < file.expectedSize && payloadLength != FILE_CHUNK_BYTES)) {
             file.closeQuietly();
             session.incomingFile = null;
             messages.updateStatus(file.id, "failed");
@@ -994,7 +1282,7 @@ public final class P2pEngine {
             return;
         }
         try {
-            file.output.write(frame, FILE_HEADER_BYTES, payloadLength);
+            file.output.write(chunk.payload);
             file.receivedBytes += payloadLength;
             file.nextChunk++;
         } catch (IOException e) {
@@ -1123,6 +1411,16 @@ public final class P2pEngine {
         return "Firebase: " + (message.isEmpty() ? "ошибка подключения" : message);
     }
 
+    private static final class QueuedText {
+        final String peerUid;
+        final String body;
+
+        QueuedText(String peerUid, String body) {
+            this.peerUid = peerUid;
+            this.body = body;
+        }
+    }
+
     private static final class IncomingFile {
         final String id;
         final File partial;
@@ -1159,6 +1457,7 @@ public final class P2pEngine {
         final AtomicBoolean remoteDescriptionStarted = new AtomicBoolean(false);
         final AtomicBoolean remoteDescriptionReady = new AtomicBoolean(false);
         final AtomicBoolean dispatching = new AtomicBoolean(false);
+        final AtomicBoolean signalHandshakeStarted = new AtomicBoolean(false);
         final AtomicBoolean reconnectScheduled = new AtomicBoolean(false);
         final AtomicBoolean cleanupScheduled = new AtomicBoolean(false);
         final Set<String> remoteCandidateKeys = ConcurrentHashMap.newKeySet();

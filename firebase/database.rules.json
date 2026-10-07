@@ -9,7 +9,21 @@
         ".validate": "newData.hasChildren(['app', 'protocol', 'updatedAt'])",
         "app": { ".validate": "newData.isString() && newData.val() === 'NoirP2P'" },
         "protocol": { ".validate": "newData.isNumber() && newData.val() === 1" },
-        "updatedAt": { ".validate": "newData.isNumber()" }
+        "updatedAt": { ".validate": "newData.isNumber()" },
+        "signalVersion": { ".validate": "newData.isNumber() && newData.val() === 1" },
+        "signal": {
+          ".validate": "newData.hasChildren(['version', 'deviceId', 'registrationId', 'identityKey', 'signedPreKeyId', 'signedPreKey', 'signedPreKeySignature', 'kyberPreKeyId', 'kyberPreKey', 'kyberPreKeySignature']) && newData.child('version').val() === 1 && newData.child('deviceId').val() >= 1 && newData.child('deviceId').val() <= 127 && newData.child('registrationId').val() >= 1 && newData.child('registrationId').val() <= 16380",
+          "version": { ".validate": "newData.isNumber()" },
+          "deviceId": { ".validate": "newData.isNumber()" },
+          "registrationId": { ".validate": "newData.isNumber()" },
+          "identityKey": { ".validate": "newData.isString() && newData.val().length <= 256" },
+          "signedPreKeyId": { ".validate": "newData.isNumber() && newData.val() > 0" },
+          "signedPreKey": { ".validate": "newData.isString() && newData.val().length <= 256" },
+          "signedPreKeySignature": { ".validate": "newData.isString() && newData.val().length <= 512" },
+          "kyberPreKeyId": { ".validate": "newData.isNumber() && newData.val() > 0" },
+          "kyberPreKey": { ".validate": "newData.isString() && newData.val().length <= 4096" },
+          "kyberPreKeySignature": { ".validate": "newData.isString() && newData.val().length <= 512" }
+        }
       }
     },
     "inbox": {

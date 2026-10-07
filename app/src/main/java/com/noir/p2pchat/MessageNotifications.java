@@ -10,6 +10,7 @@ import android.os.Build;
 
 import androidx.core.app.NotificationCompat;
 import androidx.core.app.NotificationManagerCompat;
+import androidx.core.app.RemoteInput;
 
 import com.noir.p2pchat.ui.ChatActivity;
 import com.noir.p2pchat.ui.MainActivity;
@@ -56,38 +57,74 @@ public final class MessageNotifications {
         Intent open = new Intent(context, ChatActivity.class);
         open.putExtra(ChatActivity.EXTRA_PEER_UID, peerUid);
         open.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK | Intent.FLAG_ACTIVITY_CLEAR_TOP);
-        PendingIntent pending = PendingIntent.getActivity(context, peerUid.hashCode(), open,
+        PendingIntent openPending = PendingIntent.getActivity(context, requestCode(peerUid, 0), open,
                 PendingIntent.FLAG_UPDATE_CURRENT | PendingIntent.FLAG_IMMUTABLE);
-        Notification notification = new NotificationCompat.Builder(context, CHANNEL_INVITES)
+
+        NotificationCompat.Builder builder = new NotificationCompat.Builder(context, CHANNEL_INVITES)
                 .setSmallIcon(R.drawable.ic_stat_chat)
-                .setContentTitle("Запрос на P2P-подключение")
-                .setContentText("ID собеседника: " + shortId(peerUid) + " · нажмите, чтобы принять")
-                .setContentIntent(pending)
+                .setContentTitle("Входящее приглашение")
+                .setContentText("ID собеседника: " + shortId(peerUid))
+                .setContentIntent(openPending)
                 .setAutoCancel(true)
+                .setVisibility(NotificationCompat.VISIBILITY_PRIVATE)
                 .setCategory(NotificationCompat.CATEGORY_MESSAGE)
                 .setPriority(NotificationCompat.PRIORITY_DEFAULT)
-                .build();
-        notifySafely(context, Math.abs(peerUid.hashCode()) + 2200, notification);
+                .addAction(R.drawable.ic_stat_chat, "Принять",
+                        inviteAction(context, NotificationActionReceiver.ACTION_ACCEPT_INVITE, peerUid, 1))
+                .addAction(R.drawable.ic_stat_chat, "Отклонить",
+                        inviteAction(context, NotificationActionReceiver.ACTION_DECLINE_INVITE, peerUid, 2));
+        notifySafely(context, notificationId(peerUid, 2200), builder.build());
+    }
+
+    public static void cancelIncoming(Context context, String peerUid) {
+        NotificationManagerCompat.from(context).cancel(notificationId(peerUid, 2200));
     }
 
     public static void showMessage(Context context, String peerUid, String body) {
         Intent open = new Intent(context, ChatActivity.class);
         open.putExtra(ChatActivity.EXTRA_PEER_UID, peerUid);
         open.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK | Intent.FLAG_ACTIVITY_CLEAR_TOP);
-        PendingIntent pending = PendingIntent.getActivity(context, peerUid.hashCode(), open,
+        PendingIntent pending = PendingIntent.getActivity(context, requestCode(peerUid, 3), open,
                 PendingIntent.FLAG_UPDATE_CURRENT | PendingIntent.FLAG_IMMUTABLE);
         String preview = body == null ? "Новое сообщение" : body.replace('\n', ' ');
         if (preview.length() > 90) preview = preview.substring(0, 87) + "…";
-        Notification notification = new NotificationCompat.Builder(context, CHANNEL_MESSAGES)
+
+        NotificationCompat.Builder builder = new NotificationCompat.Builder(context, CHANNEL_MESSAGES)
                 .setSmallIcon(R.drawable.ic_stat_chat)
                 .setContentTitle("Сообщение · " + shortId(peerUid))
                 .setContentText(preview)
                 .setContentIntent(pending)
                 .setAutoCancel(true)
+                .setVisibility(NotificationCompat.VISIBILITY_PRIVATE)
                 .setCategory(NotificationCompat.CATEGORY_MESSAGE)
-                .setPriority(NotificationCompat.PRIORITY_DEFAULT)
+                .setPriority(NotificationCompat.PRIORITY_DEFAULT);
+
+        Intent replyIntent = new Intent(context, NotificationActionReceiver.class)
+                .setAction(NotificationActionReceiver.ACTION_REPLY)
+                .putExtra(NotificationActionReceiver.EXTRA_PEER_UID, peerUid);
+        int replyFlags = PendingIntent.FLAG_UPDATE_CURRENT;
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) replyFlags |= PendingIntent.FLAG_MUTABLE;
+        PendingIntent replyPending = PendingIntent.getBroadcast(context, requestCode(peerUid, 4),
+                replyIntent, replyFlags);
+        RemoteInput remoteInput = new RemoteInput.Builder(NotificationActionReceiver.EXTRA_REPLY_TEXT)
+                .setLabel("Ответить")
                 .build();
-        notifySafely(context, Math.abs(peerUid.hashCode()) + 3300, notification);
+        NotificationCompat.Action replyAction = new NotificationCompat.Action.Builder(
+                R.drawable.ic_stat_chat, "Ответить", replyPending)
+                .addRemoteInput(remoteInput)
+                .setAllowGeneratedReplies(true)
+                .setSemanticAction(NotificationCompat.Action.SEMANTIC_ACTION_REPLY)
+                .build();
+        builder.addAction(replyAction);
+        notifySafely(context, notificationId(peerUid, 3300), builder.build());
+    }
+
+    private static PendingIntent inviteAction(Context context, String action, String peerUid, int salt) {
+        Intent intent = new Intent(context, NotificationActionReceiver.class)
+                .setAction(action)
+                .putExtra(NotificationActionReceiver.EXTRA_PEER_UID, peerUid);
+        return PendingIntent.getBroadcast(context, requestCode(peerUid, salt), intent,
+                PendingIntent.FLAG_UPDATE_CURRENT | PendingIntent.FLAG_IMMUTABLE);
     }
 
     private static void notifySafely(Context context, int id, Notification notification) {
@@ -96,6 +133,14 @@ public final class MessageNotifications {
         } catch (SecurityException ignored) {
             // Android 13+: the app remains usable if the user declines POST_NOTIFICATIONS.
         }
+    }
+
+    private static int requestCode(String uid, int salt) {
+        return (uid == null ? 0 : uid.hashCode()) * 31 + salt;
+    }
+
+    private static int notificationId(String uid, int base) {
+        return base + (uid == null ? 0 : uid.hashCode() & 0x3fffffff);
     }
 
     private static String shortId(String uid) {

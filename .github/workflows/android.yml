@@ -1,6 +1,13 @@
 name: Android release APK и handoff
 
 on:
+  push:
+    branches:
+      - main
+      - arena/8909ba29-lsmsnksoslalql
+  pull_request:
+    branches:
+      - main
   workflow_dispatch:
     inputs:
       build_apk:
@@ -17,6 +24,35 @@ concurrency:
   cancel-in-progress: true
 
 jobs:
+  source-check:
+    if: github.event_name != 'workflow_dispatch' || inputs.build_apk != true
+    name: Java source tests · APK не собирается
+    runs-on: ubuntu-latest
+    timeout-minutes: 35
+    permissions:
+      contents: read
+    steps:
+      - name: Получить исходный код
+        uses: actions/checkout@v7
+
+      - name: Настроить JDK 21 (libsignal 0.105.0)
+        uses: actions/setup-java@v6
+        with:
+          distribution: temurin
+          java-version: '21'
+
+      - name: Установить Android SDK
+        uses: android-actions/setup-android@v4
+
+      - name: Установить SDK 36
+        run: sdkmanager "platforms;android-36" "build-tools;36.0.0"
+
+      - name: Настроить Gradle и кэш
+        uses: gradle/actions/setup-gradle@v6
+
+      - name: Компилировать исходники и выполнить JVM unit tests (без сборки APK)
+        run: ./gradlew --no-daemon --stacktrace testDebugUnitTest
+
   build-apk:
     if: github.event_name == 'workflow_dispatch' && inputs.build_apk == true
     name: Android 36 arm64 · R8 · release signing
@@ -31,11 +67,11 @@ jobs:
       - name: Получить исходный код
         uses: actions/checkout@v7
 
-      - name: Настроить JDK 17
+      - name: Настроить JDK 21 (libsignal 0.105.0)
         uses: actions/setup-java@v6
         with:
           distribution: temurin
-          java-version: '17'
+          java-version: '21'
 
       - name: Установить Android SDK
         uses: android-actions/setup-android@v4
@@ -91,17 +127,6 @@ jobs:
             -PappVersionCode="$APP_VERSION_CODE" \
             -PappVersionName="$APP_VERSION_NAME" 2>&1 | tee "$RUNNER_TEMP/gradle-build.log"
 
-      - name: Собрать debug APK для проверки pull request
-        if: github.event_name == 'pull_request'
-        env:
-          APP_VERSION_CODE: ${{ steps.version.outputs.code }}
-          APP_VERSION_NAME: ${{ steps.version.outputs.name }}
-        run: |
-          set -euo pipefail
-          ./gradlew --no-daemon --stacktrace clean assembleDebug \
-            -PappVersionCode="$APP_VERSION_CODE" \
-            -PappVersionName="$APP_VERSION_NAME" 2>&1 | tee "$RUNNER_TEMP/gradle-build.log"
-
       - name: Показать диагностику Gradle при ошибке
         if: failure()
         run: |
@@ -115,7 +140,7 @@ jobs:
       - name: Проверить и подготовить APK и ZIP исходников
         if: success()
         env:
-          BUILD_VARIANT: ${{ github.event_name == 'pull_request' && 'debug' || 'release' }}
+          BUILD_VARIANT: release
           APP_VERSION_CODE: ${{ steps.version.outputs.code }}
           APP_VERSION_NAME: ${{ steps.version.outputs.name }}
         run: |
@@ -211,17 +236,6 @@ jobs:
             signing/NoirP2P-release-cert.pem
           if-no-files-found: error
           retention-days: 30
-
-      - name: Загрузить debug APK для pull request
-        if: success() && github.event_name == 'pull_request'
-        uses: actions/upload-artifact@v7
-        with:
-          name: NoirP2P-debug-check
-          path: |
-            handoff/NoirP2P-debug.apk
-            handoff/NoirP2P-source.zip
-          if-no-files-found: error
-          retention-days: 7
 
   publish-handoff:
     name: Опубликовать подписанный release в handoff/

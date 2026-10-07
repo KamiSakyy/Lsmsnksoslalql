@@ -13,7 +13,8 @@ import java.util.List;
 /** Local-only conversation and message index. Message content never passes through Firebase. */
 public final class MessageStore extends SQLiteOpenHelper {
     private static final String DB_NAME = "noir_chat.db";
-    private static final int DB_VERSION = 1;
+    private static final int DB_VERSION = 2;
+    private final MessageContentCipher contentCipher = new MessageContentCipher();
 
     public MessageStore(Context context) {
         super(context.getApplicationContext(), DB_NAME, null, DB_VERSION);
@@ -31,7 +32,24 @@ public final class MessageStore extends SQLiteOpenHelper {
 
     @Override
     public void onUpgrade(SQLiteDatabase db, int oldVersion, int newVersion) {
-        // Keep user messages during forward migrations; add explicit migrations here when schema changes.
+        if (oldVersion < 2) encryptExistingMessageContent(db);
+    }
+
+    private void encryptExistingMessageContent(SQLiteDatabase db) {
+        ArrayList<String> messageIds = new ArrayList<>();
+        ArrayList<String> encryptedBodies = new ArrayList<>();
+        try (Cursor cursor = db.rawQuery("SELECT id,body FROM messages", null)) {
+            while (cursor.moveToNext()) {
+                String id = cursor.getString(0);
+                messageIds.add(id);
+                encryptedBodies.add(contentCipher.encrypt(id, "body", cursor.getString(1)));
+            }
+        }
+        for (int i = 0; i < messageIds.size(); i++) {
+            ContentValues values = new ContentValues();
+            values.put("body", encryptedBodies.get(i));
+            db.update("messages", values, "id=?", new String[]{messageIds.get(i)});
+        }
     }
 
     public synchronized void addContact(String uid) {
@@ -86,7 +104,7 @@ public final class MessageStore extends SQLiteOpenHelper {
                 "SELECT id,peer_uid,sender_uid,kind,body,mime,file_path,created_at,outgoing,status,transfer_size " +
                         "FROM messages WHERE peer_uid=? ORDER BY created_at DESC LIMIT ?",
                 new String[]{peerUid, Integer.toString(limit)})) {
-            while (cursor.moveToNext()) items.add(readMessage(cursor));
+            while (cursor.moveToNext()) items.add(readMessage(cursor, false));
         }
         java.util.Collections.reverse(items);
         return items;
@@ -99,7 +117,7 @@ public final class MessageStore extends SQLiteOpenHelper {
                         "FROM messages WHERE peer_uid=? AND outgoing=1 AND status='pending' " +
                         "ORDER BY created_at ASC LIMIT ?",
                 new String[]{peerUid, Integer.toString(limit)})) {
-            while (cursor.moveToNext()) items.add(readMessage(cursor));
+            while (cursor.moveToNext()) items.add(readMessage(cursor, true));
         }
         return items;
     }
@@ -108,17 +126,17 @@ public final class MessageStore extends SQLiteOpenHelper {
         try (Cursor cursor = getReadableDatabase().rawQuery(
                 "SELECT id,peer_uid,sender_uid,kind,body,mime,file_path,created_at,outgoing,status,transfer_size " +
                         "FROM messages WHERE id=? LIMIT 1", new String[]{id})) {
-            return cursor.moveToFirst() ? readMessage(cursor) : null;
+            return cursor.moveToFirst() ? readMessage(cursor, false) : null;
         }
     }
 
-    private static ContentValues valuesFor(Message message) {
+    private ContentValues valuesFor(Message message) {
         ContentValues values = new ContentValues();
         values.put("id", message.id);
         values.put("peer_uid", message.peerUid);
         values.put("sender_uid", message.senderUid);
         values.put("kind", message.kind);
-        values.put("body", message.body == null ? "" : message.body);
+        values.put("body", contentCipher.encrypt(message.id, "body", message.body == null ? "" : message.body));
         values.put("mime", message.mime);
         values.put("file_path", message.filePath);
         values.put("created_at", message.createdAt);
@@ -128,10 +146,23 @@ public final class MessageStore extends SQLiteOpenHelper {
         return values;
     }
 
-    private static Message readMessage(Cursor c) {
-        return new Message(c.getString(0), c.getString(1), c.getString(2), c.getString(3), c.getString(4),
-                c.isNull(5) ? null : c.getString(5), c.isNull(6) ? null : c.getString(6), c.getLong(7),
+    private Message readMessage(Cursor c, boolean failOnContentError) {
+        String id = c.getString(0);
+        String body = decryptLocalField(id, "body", c.getString(4), failOnContentError);
+        String mime = c.isNull(5) ? null : c.getString(5);
+        return new Message(id, c.getString(1), c.getString(2), c.getString(3), body,
+                mime, c.isNull(6) ? null : c.getString(6), c.getLong(7),
                 c.getInt(8) != 0, c.getString(9), c.getLong(10));
+    }
+
+    private String decryptLocalField(String messageId, String field, String value, boolean failOnError) {
+        try {
+            return contentCipher.decrypt(messageId, field, value);
+        } catch (IllegalStateException e) {
+            android.util.Log.e("NoirMessageStore", "Local message content is unavailable", e);
+            if (failOnError) throw e;
+            return "[локальное содержимое недоступно]";
+        }
     }
 
     public static final class Message {

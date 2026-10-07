@@ -247,9 +247,17 @@ public final class MainActivity extends ComponentActivity implements P2pEngine.L
             idParams.topMargin = Ui.dp(this, 5);
             details.addView(id, idParams);
             row.addView(details, new LinearLayout.LayoutParams(0, -2, 1));
+            android.widget.Button decline = Ui.button(this, "Отклонить", false);
+            decline.setOnClickListener(v -> {
+                engine.declineInvite(peerUid);
+                renderLists();
+            });
+            row.addView(decline, new LinearLayout.LayoutParams(-2, Ui.dp(this, 42)));
             android.widget.Button accept = Ui.button(this, "Принять", true);
             accept.setOnClickListener(v -> openConversation(peerUid));
-            row.addView(accept, new LinearLayout.LayoutParams(-2, Ui.dp(this, 42)));
+            LinearLayout.LayoutParams acceptParams = new LinearLayout.LayoutParams(-2, Ui.dp(this, 42));
+            acceptParams.leftMargin = Ui.dp(this, 6);
+            row.addView(accept, acceptParams);
             LinearLayout.LayoutParams rowParams = new LinearLayout.LayoutParams(-1, -2);
             rowParams.bottomMargin = Ui.dp(this, 8);
             inviteList.addView(row, rowParams);

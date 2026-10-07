@@ -1,8 +1,11 @@
 package com.noir.p2pchat.ui;
 
 import android.Manifest;
+import android.app.AlertDialog;
 import android.content.Intent;
 import android.content.pm.PackageManager;
+import android.graphics.Bitmap;
+import android.graphics.BitmapFactory;
 import android.graphics.Color;
 import android.graphics.Typeface;
 import android.media.AudioAttributes;
@@ -42,11 +45,16 @@ import com.noir.p2pchat.service.ChatConnectionService;
 import java.io.File;
 import java.text.SimpleDateFormat;
 import java.util.Date;
+import java.util.HashSet;
 import java.util.List;
 import java.util.Locale;
+import java.util.Set;
+import java.util.concurrent.ExecutorService;
+import java.util.concurrent.Executors;
 
 public final class ChatActivity extends ComponentActivity implements P2pEngine.Listener {
     public static final String EXTRA_PEER_UID = "peer_uid";
+    public static final String EXTRA_DRAFT_TEXT = "draft_text";
     private AppKernel app;
     private P2pEngine engine;
     private String peerUid;
@@ -55,6 +63,7 @@ public final class ChatActivity extends ComponentActivity implements P2pEngine.L
     private ScrollView messagesScroll;
     private EditText composer;
     private TextView connectionStatus;
+    private TextView identityStatusIndicator;
     private TextView recordingButton;
     private ActivityResultLauncher<String> contentPicker;
     private ActivityResultLauncher<String> microphonePermission;
@@ -66,6 +75,8 @@ public final class ChatActivity extends ComponentActivity implements P2pEngine.L
     private File voiceFile;
     private boolean recording;
     private MediaPlayer mediaPlayer;
+    private final ExecutorService previewExecutor = Executors.newFixedThreadPool(2);
+    private final Set<String> previewImageMessageIds = new HashSet<>();
 
     @Override
     protected void onCreate(Bundle savedInstanceState) {
@@ -98,6 +109,8 @@ public final class ChatActivity extends ComponentActivity implements P2pEngine.L
             }
         });
         setContentView(buildScreen());
+        String draft = getIntent().getStringExtra(EXTRA_DRAFT_TEXT);
+        if (draft != null && !draft.isEmpty()) composer.setText(draft);
         ViewCompat.setOnApplyWindowInsetsListener(root, (view, windowInsets) -> {
             Insets bars = windowInsets.getInsets(WindowInsetsCompat.Type.systemBars()
                     | WindowInsetsCompat.Type.displayCutout());
@@ -155,10 +168,11 @@ public final class ChatActivity extends ComponentActivity implements P2pEngine.L
         titleBlock.addView(title);
         titleBlock.addView(connectionStatus, stateParams);
         header.addView(titleBlock, new LinearLayout.LayoutParams(0, -2, 1));
-        TextView secure = Ui.text(this, "●", 12, Ui.GREEN);
-        secure.setContentDescription("Защищённый P2P-чат");
-        secure.setPadding(Ui.dp(this, 9), Ui.dp(this, 8), Ui.dp(this, 3), Ui.dp(this, 8));
-        header.addView(secure);
+        identityStatusIndicator = Ui.text(this, "●", 12, Ui.MUTED);
+        identityStatusIndicator.setContentDescription("Signal E2E · нажмите, чтобы проверить отпечаток ключа");
+        identityStatusIndicator.setPadding(Ui.dp(this, 9), Ui.dp(this, 8), Ui.dp(this, 3), Ui.dp(this, 8));
+        identityStatusIndicator.setOnClickListener(v -> showSignalIdentity());
+        header.addView(identityStatusIndicator);
         root.addView(header);
 
         messagesScroll = new ScrollView(this);
@@ -214,6 +228,44 @@ public final class ChatActivity extends ComponentActivity implements P2pEngine.L
         composerRow.addView(send, sendParams);
         root.addView(composerRow);
         return root;
+    }
+
+    private void showSignalIdentity() {
+        String fingerprint = engine.getPeerFingerprint(peerUid);
+        if (fingerprint == null) {
+            new AlertDialog.Builder(this)
+                    .setTitle("Signal E2E")
+                    .setMessage("Ключ собеседника ещё не получен. Установите P2P-соединение и убедитесь, что у обоих пользователей актуальная версия Noir.")
+                    .setPositiveButton("Понятно", null)
+                    .show();
+            return;
+        }
+        boolean verified = engine.isPeerIdentityVerified(peerUid);
+        String message = "SHA-256 отпечаток identity key:\n" + formatFingerprint(fingerprint)
+                + "\n\n" + (verified
+                ? "Вы отметили этот ключ как сверенный. При смене ключа Signal-сессия будет отклонена."
+                : "Сверьте весь отпечаток с собеседником по независимому каналу. До этого действует TOFU: первое полученное identity key сохранено, но вручную не подтверждено.");
+        AlertDialog.Builder dialog = new AlertDialog.Builder(this)
+                .setTitle("Идентичность Signal")
+                .setMessage(message)
+                .setNegativeButton("Закрыть", null);
+        if (!verified) {
+            dialog.setPositiveButton("Я сверил отпечаток", (view, which) -> {
+                engine.markPeerIdentityVerified(peerUid);
+                if (identityStatusIndicator != null) identityStatusIndicator.setTextColor(Ui.GREEN);
+                Toast.makeText(this, "Отпечаток отмечен как сверенный", Toast.LENGTH_SHORT).show();
+            });
+        }
+        dialog.show();
+    }
+
+    private static String formatFingerprint(String fingerprint) {
+        StringBuilder formatted = new StringBuilder(fingerprint.length() + fingerprint.length() / 4);
+        for (int i = 0; i < fingerprint.length(); i++) {
+            if (i > 0 && i % 4 == 0) formatted.append(' ');
+            formatted.append(fingerprint.charAt(i));
+        }
+        return formatted.toString();
     }
 
     private void showAttachmentMenu() {
@@ -352,6 +404,11 @@ public final class ChatActivity extends ComponentActivity implements P2pEngine.L
                 >= messagesScroll.getChildAt(0).getHeight() - Ui.dp(this, 100);
         messagesContainer.removeAllViews();
         List<MessageStore.Message> items = app.messages().getMessages(peerUid, 300);
+        previewImageMessageIds.clear();
+        for (int i = items.size() - 1; i >= 0 && previewImageMessageIds.size() < 12; i--) {
+            MessageStore.Message message = items.get(i);
+            if ("image".equals(message.kind)) previewImageMessageIds.add(message.id);
+        }
         if (items.isEmpty()) {
             LinearLayout empty = new LinearLayout(this);
             empty.setOrientation(LinearLayout.VERTICAL);
@@ -416,6 +473,9 @@ public final class ChatActivity extends ComponentActivity implements P2pEngine.L
     }
 
     private void addAttachmentCard(LinearLayout parent, MessageStore.Message message) {
+        if ("image".equals(message.kind) && previewImageMessageIds.contains(message.id)) {
+            addInlineImagePreview(parent, message);
+        }
         LinearLayout card = new LinearLayout(this);
         card.setGravity(Gravity.CENTER_VERTICAL);
         TextView icon = Ui.text(this, attachmentGlyph(message.kind), 18, Ui.ACCENT);
@@ -438,6 +498,58 @@ public final class ChatActivity extends ComponentActivity implements P2pEngine.L
         parent.addView(card, new LinearLayout.LayoutParams(-1, -2));
         card.setOnClickListener(v -> openAttachment(message));
         parent.setOnClickListener(v -> openAttachment(message));
+    }
+
+    private void addInlineImagePreview(LinearLayout parent, MessageStore.Message message) {
+        if (message.filePath == null || "receiving".equals(message.status)) return;
+        File file = new File(message.filePath);
+        if (!file.isFile() || file.length() <= 0L) return;
+
+        ImageView preview = new ImageView(this);
+        preview.setScaleType(ImageView.ScaleType.CENTER_CROP);
+        preview.setBackground(Ui.rounded(Ui.SURFACE_ALT, Ui.dp(this, 14), Ui.STROKE));
+        preview.setClipToOutline(true);
+        preview.setContentDescription("Предпросмотр изображения · " + message.body);
+        preview.setTag(file.getAbsolutePath());
+        LinearLayout.LayoutParams params = new LinearLayout.LayoutParams(
+                Math.min(Ui.dp(this, 270), getResources().getDisplayMetrics().widthPixels - Ui.dp(this, 100)),
+                Ui.dp(this, 190));
+        params.bottomMargin = Ui.dp(this, 8);
+        parent.addView(preview, 0, params);
+        preview.setOnClickListener(v -> openAttachment(message));
+
+        previewExecutor.execute(() -> {
+            Bitmap bitmap = decodePreview(file, 768);
+            if (bitmap == null) return;
+            runOnUiThread(() -> {
+                if (isFinishing() || isDestroyed() || !file.getAbsolutePath().equals(preview.getTag())) {
+                    bitmap.recycle();
+                    return;
+                }
+                preview.setImageBitmap(bitmap);
+            });
+        });
+    }
+
+    private static Bitmap decodePreview(File file, int maxDimensionPx) {
+        try {
+            BitmapFactory.Options bounds = new BitmapFactory.Options();
+            bounds.inJustDecodeBounds = true;
+            BitmapFactory.decodeFile(file.getAbsolutePath(), bounds);
+            if (bounds.outWidth <= 0 || bounds.outHeight <= 0) return null;
+
+            int sampleSize = 1;
+            while (bounds.outWidth / sampleSize > maxDimensionPx
+                    || bounds.outHeight / sampleSize > maxDimensionPx) {
+                sampleSize *= 2;
+            }
+            BitmapFactory.Options options = new BitmapFactory.Options();
+            options.inSampleSize = sampleSize;
+            options.inPreferredConfig = Bitmap.Config.ARGB_8888;
+            return BitmapFactory.decodeFile(file.getAbsolutePath(), options);
+        } catch (OutOfMemoryError | RuntimeException ignored) {
+            return null;
+        }
     }
 
     private String attachmentTitle(MessageStore.Message message) {
@@ -599,13 +711,20 @@ public final class ChatActivity extends ComponentActivity implements P2pEngine.L
     @Override
     protected void onDestroy() {
         stopVoiceRecording(false);
+        previewExecutor.shutdownNow();
         releasePlayer();
         super.onDestroy();
     }
 
     @Override
     public void onPeerState(String changedPeerUid, String state) {
-        if (peerUid.equals(changedPeerUid)) connectionStatus.setText(state);
+        if (!peerUid.equals(changedPeerUid)) return;
+        if (connectionStatus != null) connectionStatus.setText(state);
+        if (identityStatusIndicator != null && state.startsWith("Signal E2E активно")) {
+            identityStatusIndicator.setTextColor(engine.isPeerIdentityVerified(peerUid) ? Ui.GREEN : Ui.ACCENT);
+        } else if (identityStatusIndicator != null && state.startsWith("Signal E2E ошибка")) {
+            identityStatusIndicator.setTextColor(Color.rgb(255, 129, 142));
+        }
     }
 
     @Override

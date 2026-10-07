@@ -15,6 +15,11 @@ import com.noir.p2pchat.core.P2pEngine;
 /** User-visible foreground owner for Firebase SSE signaling and active P2P DataChannels. */
 public final class ChatConnectionService extends Service implements P2pEngine.Listener {
     public static final String ACTION_STOP = "com.noir.p2pchat.action.STOP_CONNECTION";
+    public static final String ACTION_SEND_TEXT = "com.noir.p2pchat.action.SEND_TEXT";
+    public static final String ACTION_ACCEPT_INVITE = "com.noir.p2pchat.action.ACCEPT_INVITE";
+    public static final String ACTION_DECLINE_INVITE = "com.noir.p2pchat.action.DECLINE_INVITE";
+    public static final String EXTRA_PEER_UID = "peer_uid";
+    public static final String EXTRA_MESSAGE_TEXT = "message_text";
     private AppKernel app;
 
     @Override
@@ -36,6 +41,18 @@ public final class ChatConnectionService extends Service implements P2pEngine.Li
         }
         startAsForeground(MessageNotifications.connectionNotification(this, app.p2p().getStatus()));
         app.p2p().start();
+        if (intent != null) {
+            String peerUid = intent.getStringExtra(EXTRA_PEER_UID);
+            String action = intent.getAction();
+            if (ACTION_ACCEPT_INVITE.equals(action) && peerUid != null) {
+                app.p2p().addContact(peerUid);
+            } else if (ACTION_DECLINE_INVITE.equals(action) && peerUid != null) {
+                app.p2p().declineInvite(peerUid);
+            } else if (ACTION_SEND_TEXT.equals(action) && peerUid != null) {
+                app.p2p().addContact(peerUid);
+                app.p2p().sendText(peerUid, intent.getStringExtra(EXTRA_MESSAGE_TEXT));
+            }
+        }
         return START_STICKY;
     }
 

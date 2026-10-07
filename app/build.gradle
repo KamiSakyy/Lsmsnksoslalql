@@ -82,12 +82,17 @@ android {
     }
 
     packaging {
+        jniLibs {
+            excludes += ['**/libsignal_jni_testing.so']
+        }
         resources {
             excludes += [
                 'META-INF/DEPENDENCIES',
                 'META-INF/LICENSE*',
                 'META-INF/NOTICE*',
-                'META-INF/INDEX.LIST'
+                'META-INF/INDEX.LIST',
+                'libsignal_jni*.dylib',
+                'signal_jni*.dll'
             ]
         }
     }
@@ -97,4 +102,7 @@ dependencies {
     implementation 'androidx.activity:activity:1.12.4'
     implementation 'androidx.core:core:1.17.0'
     implementation 'io.github.webrtc-sdk:android:150.7871.01'
+    implementation 'org.signal:libsignal-android:0.105.0'
+    implementation 'org.signal:libsignal-client:0.105.0'
+    testImplementation 'junit:junit:4.13.2'
 }
