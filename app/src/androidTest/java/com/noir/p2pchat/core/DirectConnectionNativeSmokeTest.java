@@ -134,8 +134,8 @@ public final class DirectConnectionNativeSmokeTest {
         ChannelObserver outgoingObserver = new ChannelObserver();
 
         try {
-            offerer = factory.createPeerConnection(rtcConfiguration(), offererObserver);
-            answerer = factory.createPeerConnection(rtcConfiguration(), answererObserver);
+            offerer = factory.createPeerConnection(rtcConfiguration(engine), offererObserver);
+            answerer = factory.createPeerConnection(rtcConfiguration(engine), answererObserver);
             assertNotNull("WebRTC failed to create the offerer", offerer);
             assertNotNull("WebRTC failed to create the answerer", answerer);
 
@@ -231,8 +231,9 @@ public final class DirectConnectionNativeSmokeTest {
                 + ", candidates=" + candidates + "}";
     }
 
-    private static PeerConnection.RTCConfiguration rtcConfiguration() {
-        PeerConnection.RTCConfiguration configuration = new PeerConnection.RTCConfiguration(Collections.emptyList());
+    private static PeerConnection.RTCConfiguration rtcConfiguration(P2pEngine engine) {
+        PeerConnection.RTCConfiguration configuration =
+                new PeerConnection.RTCConfiguration(engine.iceServersForSmokeTest());
         configuration.sdpSemantics = PeerConnection.SdpSemantics.UNIFIED_PLAN;
         return configuration;
     }

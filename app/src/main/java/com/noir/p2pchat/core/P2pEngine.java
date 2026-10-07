@@ -484,6 +484,11 @@ public final class P2pEngine {
         return dataFactory;
     }
 
+    /** Package-private smoke-test hook for exercising the production direct-chat ICE configuration. */
+    List<PeerConnection.IceServer> iceServersForSmokeTest() {
+        return iceServers();
+    }
+
     /** Audio/video codecs and EGL are loaded only when the user starts or answers a call. */
     private void initializeMediaWebRtc() throws IOException {
         if (factory != null) return;
