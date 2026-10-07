@@ -91,33 +91,48 @@ jobs:
       - name: Создать AVD для smoke-тестов
         run: echo no | avdmanager create avd --force --name ci-smoke --package "system-images;android-30;default;x86_64"
 
-      - name: Запустить тест Signal + WebRTC на Android-эмуляторе
-        uses: reactivecircus/android-emulator-runner@v2
-        with:
-          api-level: 30
-          target: default
-          arch: x86_64
-          avd-name: ci-smoke
-          force-avd-creation: false
-          pre-emulator-launch-script: |
-            echo "Android SDK=$ANDROID_HOME"
-            "$ANDROID_HOME/emulator/emulator" -version
-            "$ANDROID_HOME/emulator/emulator" -accel-check || true
-          emulator-options: -no-window -gpu swiftshader_indirect -no-snapshot -noaudio -no-boot-anim
-          emulator-boot-timeout: 900
-          disable-animations: true
-          script: |
-            set -o pipefail
-            ./gradlew --no-daemon --stacktrace connectedDebugAndroidTest -PandroidAbiFilters=x86_64 2>&1 | tee "$RUNNER_TEMP/direct-native-smoke.log"
+      - name: Запустить Android-эмулятор и тест Signal + WebRTC
+        run: |
+          set -euo pipefail
+          EMULATOR_LOG="$RUNNER_TEMP/android-emulator.log"
+          "$ANDROID_HOME/emulator/emulator" -port 5554 -avd ci-smoke \
+            -no-window -gpu swiftshader_indirect -no-snapshot -noaudio -no-boot-anim \
+            >"$EMULATOR_LOG" 2>&1 &
+          EMULATOR_PID=$!
+          BOOT_STATE=""
+          for attempt in $(seq 1 120); do
+            BOOT_STATE="$(adb -s emulator-5554 shell getprop sys.boot_completed 2>/dev/null | tr -d '\r' || true)"
+            if [ "$BOOT_STATE" = "1" ]; then break; fi
+            if ! kill -0 "$EMULATOR_PID" 2>/dev/null; then
+              tail -n 120 "$EMULATOR_LOG"
+              exit 1
+            fi
+            sleep 5
+          done
+          if [ "$BOOT_STATE" != "1" ]; then
+            echo "Android emulator did not finish booting within 10 minutes."
+            tail -n 120 "$EMULATOR_LOG"
+            exit 1
+          fi
+          adb -s emulator-5554 shell input keyevent 82
+          ANDROID_SERIAL=emulator-5554 ./gradlew --no-daemon --stacktrace connectedDebugAndroidTest \
+            -PandroidAbiFilters=x86_64 2>&1 | tee "$RUNNER_TEMP/direct-native-smoke.log"
 
       - name: Опубликовать детали ошибки smoke-теста
         if: failure()
         run: |
-          LOG="$RUNNER_TEMP/direct-native-smoke.log"
-          if [ -s "$LOG" ]; then
-            echo "## Ошибка Android native smoke test" >> "$GITHUB_STEP_SUMMARY"
-            tail -n 100 "$LOG" >> "$GITHUB_STEP_SUMMARY"
-            python3 - "$LOG" <<'PY'
+          DIAGNOSTICS="$RUNNER_TEMP/native-smoke-diagnostics.txt"
+          : > "$DIAGNOSTICS"
+          for LOG in "$RUNNER_TEMP/android-emulator.log" "$RUNNER_TEMP/direct-native-smoke.log"; do
+            if [ -s "$LOG" ]; then
+              echo "===== $LOG =====" >> "$DIAGNOSTICS"
+              tail -n 120 "$LOG" >> "$DIAGNOSTICS"
+            fi
+          done
+          if [ -s "$DIAGNOSTICS" ]; then
+            echo "## Android native smoke failure" >> "$GITHUB_STEP_SUMMARY"
+            cat "$DIAGNOSTICS" >> "$GITHUB_STEP_SUMMARY"
+            python3 - "$DIAGNOSTICS" <<'PY'
           import pathlib
           import sys
 
@@ -126,8 +141,8 @@ jobs:
           print(f'::error title=Android native smoke failure::{escaped}')
           PY
           else
-            echo "No Gradle output was produced; emulator-runner failed before invoking the test command." >> "$GITHUB_STEP_SUMMARY"
-            echo "::error title=Android emulator startup failure::No Gradle test process ran; emulator-runner failed before invoking the test command."
+            echo "No emulator or Gradle diagnostics were produced before failure." >> "$GITHUB_STEP_SUMMARY"
+            echo "::error title=Android smoke startup failure::No emulator or Gradle diagnostics were produced before failure."
           fi
 
   build-apk:
