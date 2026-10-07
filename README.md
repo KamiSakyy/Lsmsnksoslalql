@@ -49,9 +49,11 @@ APK собирается **только в GitHub Actions**, не локальн
 
 CI использует Android SDK/target API 36, Java 17, R8 и только ABI `arm64-v8a`; workflow проверяет ABI, наличие mapping-файла, APK-подпись и отпечаток сертификата. `versionCode` равен возрастающему номеру GitHub Actions run, `versionName` — `1.0.<номер запуска>`.
 
-Для подписи владелец должен однократно добавить в **Settings → Secrets and variables → Actions** три repository secrets: `ANDROID_SIGNING_KEYSTORE_BASE64`, `ANDROID_SIGNING_STORE_PASSWORD` и `ANDROID_SIGNING_KEY_PASSWORD`. Постоянный PKCS#12-keystore хранится отдельно и никогда не попадает в публичный Git или source ZIP. `signing/NoirP2P-release-cert.pem` — только публичный сертификат, он нужен для сверки подписи; отпечаток проверяется и до, и после сборки. Инструкции — в [`signing/README.md`](signing/README.md). Не теряйте офлайн-зашифрованную резервную копию приватного keystore: без него нельзя выпускать обновления с той же подписью.
+Постоянный PKCS#12-keystore и пароль находятся в `handoff/NoirP2P-release-keystore.p12` и `handoff/NoirP2P-release-keystore-password.txt`; GitHub Actions читает их прямо из checkout, Actions Secrets для подписи не нужны. `signing/NoirP2P-release-cert.pem` — публичный сертификат, с ним сверяются подпись APK и keystore; alias — `noirp2p-release`. Инструкции и важное предупреждение — в [`signing/README.md`](signing/README.md).
 
 После успешного запуска в `handoff/` публикуются `NoirP2P-release.apk`, `NoirP2P-source.zip` и новая версия `releases/NoirP2P-<versionName>+<versionCode>.apk`. Предыдущие версии не удаляются. Текущий запуск также предоставляет APK/ZIP во вкладке **Artifacts** (release — 30 дней, PR debug — 7 дней). Исходный ZIP не включает APK и прежние ZIP.
+
+**Безопасность:** владелец попросил поместить приватный signing key и пароль в `handoff/`, поэтому они будут публичны вместе с исходниками и Git-историей. Любой сможет подписать вредоносное APK, которое Android сочтёт обновлением Noir P2P; это небезопасно и необратимо для уже опубликованных копий. APK содержит подпись/сертификат, а не сам приватный ключ. Более безопасный вариант — Actions Secrets.
 
 Существующий `handoff/NoirP2P-debug.apk` оставлен как прежний артефакт; он не является release. Первый release будет подписан новым постоянным ключом, поэтому Android не сможет установить его поверх старого debug APK — до первого перехода сохраните важные данные и удалите debug-приложение.
 

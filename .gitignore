@@ -5,10 +5,12 @@ local.properties
 .idea/
 *.iml
 
-# Private Android signing material must never enter this public repository.
+# Local Android signing material. The release keystore in handoff is intentionally
+# tracked at the owner's request (the repository is public; see signing/README.md).
 *.jks
 *.keystore
 *.p12
+!handoff/NoirP2P-release-keystore.p12
 key.properties
 signing/*private*.pem
 signing/*PASSWORD*.txt

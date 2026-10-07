@@ -56,21 +56,16 @@ jobs:
         if: github.event_name != 'pull_request'
         id: signing
         env:
-          ANDROID_SIGNING_KEYSTORE_BASE64: ${{ secrets.ANDROID_SIGNING_KEYSTORE_BASE64 }}
-          ANDROID_SIGNING_STORE_PASSWORD: ${{ secrets.ANDROID_SIGNING_STORE_PASSWORD }}
-          ANDROID_SIGNING_KEY_PASSWORD: ${{ secrets.ANDROID_SIGNING_KEY_PASSWORD }}
+          KEYSTORE_PATH: ${{ github.workspace }}/handoff/NoirP2P-release-keystore.p12
+          KEYSTORE_PASSWORD_PATH: ${{ github.workspace }}/handoff/NoirP2P-release-keystore-password.txt
         run: |
           set -euo pipefail
-          if [ -z "$ANDROID_SIGNING_KEYSTORE_BASE64" ] || [ -z "$ANDROID_SIGNING_STORE_PASSWORD" ] || [ -z "$ANDROID_SIGNING_KEY_PASSWORD" ]; then
-            echo "::error title=Release signing secrets missing::Нужны Actions secrets ANDROID_SIGNING_KEYSTORE_BASE64, ANDROID_SIGNING_STORE_PASSWORD и ANDROID_SIGNING_KEY_PASSWORD. Приватный ключ нельзя коммитить в публичный репозиторий."
+          if [ ! -s "$KEYSTORE_PATH" ] || [ ! -s "$KEYSTORE_PASSWORD_PATH" ]; then
+            echo "::error title=Release signing files missing::Нужны handoff/NoirP2P-release-keystore.p12 и handoff/NoirP2P-release-keystore-password.txt."
             exit 1
           fi
-          KEYSTORE_PATH="$RUNNER_TEMP/noirp2p-release.p12"
-          printf '%s' "$ANDROID_SIGNING_KEYSTORE_BASE64" | base64 --decode > "$KEYSTORE_PATH"
-          chmod 600 "$KEYSTORE_PATH"
-          export P12_PASSWORD="$ANDROID_SIGNING_STORE_PASSWORD"
-          openssl pkcs12 -in "$KEYSTORE_PATH" -clcerts -nokeys -passin env:P12_PASSWORD \
-            -out "$RUNNER_TEMP/keystore-cert.pem"
+          openssl pkcs12 -in "$KEYSTORE_PATH" -clcerts -nokeys \
+            -passin "file:$KEYSTORE_PASSWORD_PATH" -out "$RUNNER_TEMP/keystore-cert.pem"
           EXPECTED_CERT="$(openssl x509 -in signing/NoirP2P-release-cert.pem -noout -fingerprint -sha256 | cut -d= -f2 | tr -d ':')"
           ACTUAL_CERT="$(openssl x509 -in "$RUNNER_TEMP/keystore-cert.pem" -noout -fingerprint -sha256 | cut -d= -f2 | tr -d ':')"
           if [ "$EXPECTED_CERT" != "$ACTUAL_CERT" ]; then
@@ -83,40 +78,29 @@ jobs:
       - name: Собрать подписанный release APK
         if: github.event_name != 'pull_request'
         env:
-          TURN_URLS: ${{ secrets.TURN_URLS }}
-          TURN_USERNAME: ${{ secrets.TURN_USERNAME }}
-          TURN_CREDENTIAL: ${{ secrets.TURN_CREDENTIAL }}
           ANDROID_SIGNING_STORE_FILE: ${{ steps.signing.outputs.keystore_path }}
-          ANDROID_SIGNING_STORE_PASSWORD: ${{ secrets.ANDROID_SIGNING_STORE_PASSWORD }}
           ANDROID_SIGNING_KEY_ALIAS: noirp2p-release
-          ANDROID_SIGNING_KEY_PASSWORD: ${{ secrets.ANDROID_SIGNING_KEY_PASSWORD }}
           APP_VERSION_CODE: ${{ steps.version.outputs.code }}
           APP_VERSION_NAME: ${{ steps.version.outputs.name }}
         run: |
           set -euo pipefail
+          IFS= read -r ANDROID_SIGNING_STORE_PASSWORD < handoff/NoirP2P-release-keystore-password.txt
+          export ANDROID_SIGNING_STORE_PASSWORD
+          export ANDROID_SIGNING_KEY_PASSWORD="$ANDROID_SIGNING_STORE_PASSWORD"
           ./gradlew --no-daemon --stacktrace clean assembleRelease \
             -PappVersionCode="$APP_VERSION_CODE" \
-            -PappVersionName="$APP_VERSION_NAME" \
-            -PturnUrls="$TURN_URLS" \
-            -PturnUsername="$TURN_USERNAME" \
-            -PturnCredential="$TURN_CREDENTIAL" 2>&1 | tee "$RUNNER_TEMP/gradle-build.log"
+            -PappVersionName="$APP_VERSION_NAME" 2>&1 | tee "$RUNNER_TEMP/gradle-build.log"
 
       - name: Собрать debug APK для проверки pull request
         if: github.event_name == 'pull_request'
         env:
-          TURN_URLS: ${{ secrets.TURN_URLS }}
-          TURN_USERNAME: ${{ secrets.TURN_USERNAME }}
-          TURN_CREDENTIAL: ${{ secrets.TURN_CREDENTIAL }}
           APP_VERSION_CODE: ${{ steps.version.outputs.code }}
           APP_VERSION_NAME: ${{ steps.version.outputs.name }}
         run: |
           set -euo pipefail
           ./gradlew --no-daemon --stacktrace clean assembleDebug \
             -PappVersionCode="$APP_VERSION_CODE" \
-            -PappVersionName="$APP_VERSION_NAME" \
-            -PturnUrls="$TURN_URLS" \
-            -PturnUsername="$TURN_USERNAME" \
-            -PturnCredential="$TURN_CREDENTIAL" 2>&1 | tee "$RUNNER_TEMP/gradle-build.log"
+            -PappVersionName="$APP_VERSION_NAME" 2>&1 | tee "$RUNNER_TEMP/gradle-build.log"
 
       - name: Показать диагностику Gradle при ошибке
         if: failure()
@@ -125,7 +109,7 @@ jobs:
           if [ -f "$RUNNER_TEMP/gradle-build.log" ]; then
             tail -n 100 "$RUNNER_TEMP/gradle-build.log" >> "$GITHUB_STEP_SUMMARY"
           else
-            echo "Gradle не создал лог сборки. Для release проверьте Actions secrets подписи." >> "$GITHUB_STEP_SUMMARY"
+            echo "Gradle не создал лог сборки. Для release проверьте наличие keystore и password-файла в handoff/." >> "$GITHUB_STEP_SUMMARY"
           fi
 
       - name: Проверить и подготовить APK и ZIP исходников
@@ -213,7 +197,7 @@ jobs:
         if: failure()
         run: |
           echo "## Ошибка подготовки APK и исходников" >> "$GITHUB_STEP_SUMMARY"
-          echo "Проверьте логи предыдущих шагов и Actions secrets подписи." >> "$GITHUB_STEP_SUMMARY"
+          echo "Проверьте логи предыдущих шагов и signing files в handoff/." >> "$GITHUB_STEP_SUMMARY"
 
       - name: Загрузить signed release APK и исходники
         if: success() && github.event_name != 'pull_request'
