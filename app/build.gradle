@@ -1,0 +1,84 @@
+plugins {
+    id 'com.android.application'
+}
+
+def signingProperties = new Properties()
+def signingPropertiesFile = rootProject.file('signing/keystore.properties')
+if (!signingPropertiesFile.isFile()) {
+    throw new GradleException('Missing persistent Tsuyu release keystore. Keep signing/tsuyu-release.p12 and signing/keystore.properties together.')
+}
+signingPropertiesFile.withInputStream { signingProperties.load(it) }
+def buildVersionCode = System.getenv('TSUYU_VERSION_CODE') ? Integer.parseInt(System.getenv('TSUYU_VERSION_CODE')) : 1
+
+android {
+    namespace 'com.tsuyu.messenger'
+    compileSdk 36
+
+    defaultConfig {
+        applicationId 'com.tsuyu.messenger'
+        minSdk 26
+        targetSdk 36
+        versionCode buildVersionCode
+        versionName "1.0.${buildVersionCode}"
+        testInstrumentationRunner 'androidx.test.runner.AndroidJUnitRunner'
+    }
+
+    buildFeatures {
+        buildConfig true
+    }
+
+    compileOptions {
+        sourceCompatibility JavaVersion.VERSION_17
+        targetCompatibility JavaVersion.VERSION_17
+    }
+
+    signingConfigs {
+        release {
+            storeFile rootProject.file(signingProperties.getProperty('storeFile'))
+            storePassword signingProperties.getProperty('storePassword')
+            keyAlias signingProperties.getProperty('keyAlias')
+            keyPassword signingProperties.getProperty('keyPassword')
+            storeType signingProperties.getProperty('storeType', 'PKCS12')
+        }
+    }
+
+    buildTypes {
+        debug {
+            applicationIdSuffix '.debug'
+            versionNameSuffix '-debug'
+        }
+        release {
+            signingConfig signingConfigs.release
+            minifyEnabled false
+            shrinkResources false
+            proguardFiles getDefaultProguardFile('proguard-android-optimize.txt'), 'proguard-rules.pro'
+        }
+    }
+
+    packaging {
+        resources {
+            excludes += ['/META-INF/AL2.0', '/META-INF/LGPL2.1']
+        }
+    }
+}
+
+dependencies {
+    implementation platform('com.google.firebase:firebase-bom:34.3.0')
+    implementation 'com.google.firebase:firebase-auth'
+    implementation 'com.google.firebase:firebase-database'
+    implementation 'com.google.firebase:firebase-messaging'
+
+    implementation 'androidx.appcompat:appcompat:1.7.0'
+    implementation 'androidx.activity:activity:1.10.1'
+    implementation 'androidx.core:core:1.15.0'
+    implementation 'androidx.recyclerview:recyclerview:1.4.0'
+    implementation 'com.google.android.material:material:1.12.0'
+
+    // Official Signal Protocol implementation (PQXDH + Double Ratchet).
+    implementation 'org.signal:libsignal-android:0.105.0'
+
+    testImplementation 'junit:junit:4.13.2'
+    androidTestImplementation 'androidx.test:core:1.6.1'
+    androidTestImplementation 'androidx.test.ext:junit:1.2.1'
+    androidTestImplementation 'androidx.test.espresso:espresso-core:3.6.1'
+}

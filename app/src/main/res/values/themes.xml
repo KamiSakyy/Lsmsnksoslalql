@@ -1,0 +1,15 @@
+<resources>
+    <style name="Theme.Tsuyu" parent="Theme.MaterialComponents.DayNight.NoActionBar">
+        <item name="colorPrimary">@color/tsuyu_blue</item>
+        <item name="colorPrimaryVariant">@color/tsuyu_blue</item>
+        <item name="colorOnPrimary">@color/tsuyu_white</item>
+        <item name="colorSecondary">@color/tsuyu_green</item>
+        <item name="android:colorAccent">@color/tsuyu_blue</item>
+        <item name="android:windowLightStatusBar">false</item>
+        <item name="android:statusBarColor">@color/tsuyu_black</item>
+        <item name="android:navigationBarColor">@color/tsuyu_black</item>
+        <item name="android:windowBackground">@color/tsuyu_black</item>
+        <item name="android:windowActionModeOverlay">true</item>
+        <item name="android:fontFamily">sans</item>
+    </style>
+</resources>

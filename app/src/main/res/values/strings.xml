@@ -1,0 +1,5 @@
+<resources>
+    <string name="app_name">Tsuyu</string>
+    <string name="channel_messages">Сообщения</string>
+    <string name="channel_messages_description">Уведомления о новых сообщениях Tsuyu</string>
+</resources>

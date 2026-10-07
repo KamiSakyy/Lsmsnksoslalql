@@ -1,0 +1,158 @@
+{
+  "rules": {
+    ".read": false,
+    ".write": false,
+    "usernames": {
+      ".read": "auth != null",
+      "$username": {
+        ".write": "auth != null && ((!data.exists() && newData.val() == auth.uid) || (data.val() == auth.uid && (!newData.exists() || newData.val() == auth.uid)))",
+        ".validate": "!newData.exists() || ($username.matches(/^[a-z0-9_]{3,20}$/) && newData.isString())"
+      }
+    },
+    "users": {
+      "$uid": {
+        "profile": {
+          ".read": "auth != null && auth.uid == $uid",
+          ".write": "auth != null && auth.uid == $uid",
+          ".validate": "newData.hasChildren(['username','displayName'])",
+          "username": {
+            ".read": "auth != null",
+            ".write": "auth != null && auth.uid == $uid"
+          },
+          "displayName": {
+            ".read": "auth != null && (auth.uid == $uid || !root.child('users').child($uid).child('publicSettings').child('privacy').child('displayName').exists() || root.child('users').child($uid).child('publicSettings').child('privacy').child('displayName').val() == 'Все' || (root.child('users').child($uid).child('publicSettings').child('privacy').child('displayName').val() == 'Только контакты' && root.child('users').child($uid).child('contacts').child(auth.uid).val() == true) || (root.child('users').child($uid).child('publicSettings').child('privacy').child('displayName').val() == 'Только @' && root.child('users').child($uid).child('publicSettings').child('allowList').child(auth.uid).val() == true))",
+            ".write": "auth != null && auth.uid == $uid"
+          },
+          "avatarBase64": {
+            ".read": "auth != null && (auth.uid == $uid || !root.child('users').child($uid).child('publicSettings').child('privacy').child('photo').exists() || root.child('users').child($uid).child('publicSettings').child('privacy').child('photo').val() == 'Все' || (root.child('users').child($uid).child('publicSettings').child('privacy').child('photo').val() == 'Только контакты' && root.child('users').child($uid).child('contacts').child(auth.uid).val() == true) || (root.child('users').child($uid).child('publicSettings').child('privacy').child('photo').val() == 'Только @' && root.child('users').child($uid).child('publicSettings').child('allowList').child(auth.uid).val() == true))",
+            ".write": "auth != null && auth.uid == $uid"
+          },
+          "about": {
+            ".read": "auth != null && (auth.uid == $uid || !root.child('users').child($uid).child('publicSettings').child('privacy').child('about').exists() || root.child('users').child($uid).child('publicSettings').child('privacy').child('about').val() == 'Все' || (root.child('users').child($uid).child('publicSettings').child('privacy').child('about').val() == 'Только контакты' && root.child('users').child($uid).child('contacts').child(auth.uid).val() == true) || (root.child('users').child($uid).child('publicSettings').child('privacy').child('about').val() == 'Только @' && root.child('users').child($uid).child('publicSettings').child('allowList').child(auth.uid).val() == true))",
+            ".write": "auth != null && auth.uid == $uid"
+          }
+        },
+        "publicSettings": {
+          "privacy": {
+            ".read": "auth != null",
+            "$field": {
+              ".write": "auth != null && auth.uid == $uid"
+            }
+          },
+          "allowList": {
+            ".read": "auth != null && auth.uid == $uid",
+            "$viewerUid": {
+              ".write": "auth != null && auth.uid == $uid"
+            }
+          },
+          "messages": {
+            ".read": "auth != null",
+            ".write": "auth != null && auth.uid == $uid"
+          }
+        },
+        "contacts": {
+          ".read": "auth != null && auth.uid == $uid",
+          "$contactUid": {
+            ".write": "auth != null && auth.uid == $uid && (!newData.exists() || newData.val() == true)"
+          }
+        },
+        "keys": {
+          ".read": "auth != null",
+          "$deviceId": {
+            ".write": "auth != null && auth.uid == $uid",
+            ".validate": "newData.hasChildren(['registrationId','identityKey','signedPreKeyId','signedPreKey','signedPreKeySignature','kyberPreKeyId','kyberPreKey','kyberPreKeySignature'])"
+          }
+        },
+        "presence": {
+          ".read": "auth != null && auth.uid == $uid",
+          ".write": "auth != null && auth.uid == $uid",
+          "online": {
+            ".read": "auth != null && (auth.uid == $uid || !root.child('users').child($uid).child('publicSettings').child('privacy').child('lastSeen').exists() || root.child('users').child($uid).child('publicSettings').child('privacy').child('lastSeen').val() == 'Все' || (root.child('users').child($uid).child('publicSettings').child('privacy').child('lastSeen').val() == 'Только контакты' && root.child('users').child($uid).child('contacts').child(auth.uid).val() == true) || (root.child('users').child($uid).child('publicSettings').child('privacy').child('lastSeen').val() == 'Только @' && root.child('users').child($uid).child('publicSettings').child('allowList').child(auth.uid).val() == true))"
+          },
+          "lastSeen": {
+            ".read": "auth != null && (auth.uid == $uid || !root.child('users').child($uid).child('publicSettings').child('privacy').child('lastSeen').exists() || root.child('users').child($uid).child('publicSettings').child('privacy').child('lastSeen').val() == 'Все' || (root.child('users').child($uid).child('publicSettings').child('privacy').child('lastSeen').val() == 'Только контакты' && root.child('users').child($uid).child('contacts').child(auth.uid).val() == true) || (root.child('users').child($uid).child('publicSettings').child('privacy').child('lastSeen').val() == 'Только @' && root.child('users').child($uid).child('publicSettings').child('allowList').child(auth.uid).val() == true))"
+          }
+        },
+        "fcmTokens": {
+          ".read": "auth != null && auth.uid == $uid",
+          "$token": {
+            ".write": "auth != null && auth.uid == $uid"
+          }
+        },
+        "private": {
+          ".read": "auth != null && auth.uid == $uid",
+          ".write": "auth != null && auth.uid == $uid"
+        }
+      }
+    },
+    "userChats": {
+      "$uid": {
+        ".read": "auth != null && auth.uid == $uid",
+        "$chatId": {
+          ".write": "auth != null && ((auth.uid == $uid && (!newData.exists() || newData.val() == true)) || (newData.val() == true && root.child('chats').child($chatId).child('members').child(auth.uid).val() == true))"
+        }
+      }
+    },
+    "chats": {
+      "$chatId": {
+        "members": {
+          ".read": "auth != null && data.child(auth.uid).val() == true",
+          "$memberUid": {
+            ".write": "auth != null && newData.val() == true && !data.exists() && ((auth.uid == $memberUid) || ($memberUid != auth.uid && (!root.child('users').child($memberUid).child('publicSettings').child('messages').exists() || root.child('users').child($memberUid).child('publicSettings').child('messages').val() == 'Все' || (root.child('users').child($memberUid).child('publicSettings').child('messages').val() == 'Только контакты' && root.child('users').child($memberUid).child('contacts').child(auth.uid).val() == true) || (root.child('users').child($memberUid).child('publicSettings').child('messages').val() == 'Только @' && root.child('users').child($memberUid).child('publicSettings').child('allowList').child(auth.uid).val() == true))))",
+            ".validate": "newData.val() == true"
+          }
+        },
+        "meta": {
+          ".read": "auth != null && root.child('chats').child($chatId).child('members').child(auth.uid).val() == true",
+          "createdAt": {
+            ".write": "auth != null && root.child('chats').child($chatId).child('members').child(auth.uid).val() == true && !data.exists()"
+          },
+          "lastAt": {
+            ".write": "auth != null && root.child('chats').child($chatId).child('members').child(auth.uid).val() == true"
+          },
+          "lastMessage": {
+            ".write": "auth != null && root.child('chats').child($chatId).child('members').child(auth.uid).val() == true && newData.child('senderUid').val() == auth.uid"
+          },
+          "lastMessageId": {
+            ".write": "auth != null && root.child('chats').child($chatId).child('members').child(auth.uid).val() == true"
+          },
+          "peerByUid": {
+            "$uid": {
+              ".read": "auth != null && root.child('chats').child($chatId).child('members').child(auth.uid).val() == true",
+              ".write": "auth != null && auth.uid == $uid && root.child('chats').child($chatId).child('members').child(auth.uid).val() == true && !data.exists() && newData.isString() && newData.val() != auth.uid && root.child('chats').child($chatId).child('members').child(newData.val()).val() == true"
+            }
+          }
+        },
+        "messages": {
+          ".read": "auth != null && root.child('chats').child($chatId).child('members').child(auth.uid).val() == true",
+          "$messageId": {
+            ".read": "auth != null && root.child('chats').child($chatId).child('members').child(auth.uid).val() == true",
+            ".write": "auth != null && root.child('chats').child($chatId).child('members').child(auth.uid).val() == true && (!newData.exists() || (newData.child('senderUid').val() == auth.uid && root.child('chats').child($chatId).child('meta').child('peerByUid').child(auth.uid).exists() && (!root.child('users').child(root.child('chats').child($chatId).child('meta').child('peerByUid').child(auth.uid).val()).child('publicSettings').child('messages').exists() || root.child('users').child(root.child('chats').child($chatId).child('meta').child('peerByUid').child(auth.uid).val()).child('publicSettings').child('messages').val() == 'Все' || (root.child('users').child(root.child('chats').child($chatId).child('meta').child('peerByUid').child(auth.uid).val()).child('publicSettings').child('messages').val() == 'Только контакты' && root.child('users').child(root.child('chats').child($chatId).child('meta').child('peerByUid').child(auth.uid).val()).child('contacts').child(auth.uid).val() == true) || (root.child('users').child(root.child('chats').child($chatId).child('meta').child('peerByUid').child(auth.uid).val()).child('publicSettings').child('messages').val() == 'Только @' && root.child('users').child(root.child('chats').child($chatId).child('meta').child('peerByUid').child(auth.uid).val()).child('publicSettings').child('allowList').child(auth.uid).val() == true)))))",
+            ".validate": "!newData.exists() || (newData.hasChildren(['senderUid','cipher','signalType','sentAt']) && newData.child('cipher').isString() && newData.child('cipher').val().length < 12000000)"
+          }
+        },
+        "reactions": {
+          ".read": "auth != null && root.child('chats').child($chatId).child('members').child(auth.uid).val() == true",
+          "$messageId": {
+            "$uid": {
+              ".read": "auth != null && root.child('chats').child($chatId).child('members').child(auth.uid).val() == true",
+              ".write": "auth != null && auth.uid == $uid && root.child('chats').child($chatId).child('members').child(auth.uid).val() == true && (!newData.exists() || newData.val() == 'heart')"
+            }
+          }
+        },
+        "typing": {
+          "$uid": {
+            ".read": "auth != null && root.child('chats').child($chatId).child('members').child(auth.uid).val() == true",
+            ".write": "auth != null && auth.uid == $uid && root.child('chats').child($chatId).child('members').child(auth.uid).val() == true"
+          }
+        },
+        "receipts": {
+          "$uid": {
+            ".read": "auth != null && root.child('chats').child($chatId).child('members').child(auth.uid).val() == true",
+            ".write": "auth != null && auth.uid == $uid && root.child('chats').child($chatId).child('members').child(auth.uid).val() == true"
+          }
+        }
+      }
+    }
+  }
+}

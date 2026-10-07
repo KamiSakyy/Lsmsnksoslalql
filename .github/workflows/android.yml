@@ -1,0 +1,87 @@
+name: Android APK
+
+on:
+  push:
+    branches:
+      - arena/701f0ba0-lsmsnksoslalql
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+env:
+  JAVA_VERSION: '21'
+  ANDROID_API: '36'
+
+jobs:
+  build:
+    name: Build Tsuyu (Android 8–16)
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout source
+        uses: actions/checkout@v4
+
+      - name: Set up Java 21
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: ${{ env.JAVA_VERSION }}
+
+      - name: Set up Gradle
+        uses: gradle/actions/setup-gradle@v4
+        with:
+          gradle-version: '8.13'
+
+      - name: Install Android SDK 36
+        uses: android-actions/setup-android@v3
+
+      - name: Install SDK packages
+        run: sdkmanager "platform-tools" "platforms;android-${ANDROID_API}" "build-tools;36.0.0"
+
+      - name: Set monotonic APK version code
+        run: echo "TSUYU_VERSION_CODE=$((10000 + GITHUB_RUN_NUMBER))" >> "$GITHUB_ENV"
+
+      - name: Verify credentials are not bundled in the Android app
+        run: |
+          if find app -type f \( -iname '*service-account*.json' -o -iname '*firebase-adminsdk*.json' \) | grep -q .; then
+            echo 'Admin SDK credentials must not be packaged in an Android client.' >&2
+            exit 1
+          fi
+
+      - name: Build installable APKs
+        run: gradle --no-daemon --stacktrace :app:assembleDebug :app:assembleRelease
+
+      - name: Run Signal ratchet round-trip on Android 16 emulator
+        uses: reactivecircus/android-emulator-runner@v2
+        with:
+          api-level: 36
+          target: google_apis
+          arch: x86_64
+          profile: pixel_6
+          script: gradle --no-daemon --stacktrace :app:connectedDebugAndroidTest
+
+      - name: Validate RTDB rules with the Firebase emulator
+        run: npx --yes firebase-tools@latest emulators:exec --only database --project demo-tsuyu "echo 'Realtime Database rules loaded'"
+
+      - name: Pack versioned Android source handoff
+        run: |
+          mkdir -p handoff
+          zip -r "handoff/tsuyu-android-source-${GITHUB_RUN_NUMBER}.zip" \
+            .github/workflows/android.yml \
+            app/src app/build.gradle app/proguard-rules.pro \
+            ANDROID_README.md .gitignore build.gradle gradle.properties settings.gradle \
+            database.rules.json firebase.json signing/keystore.properties signing/tsuyu-release.p12
+
+      - name: Upload signed release APK
+        uses: actions/upload-artifact@v4
+        with:
+          name: Tsuyu-app-release-${{ github.run_number }}
+          if-no-files-found: error
+          path: app/build/outputs/apk/release/app-release.apk
+
+      - name: Upload source handoff
+        uses: actions/upload-artifact@v4
+        with:
+          name: Tsuyu-source-${{ github.run_number }}
+          if-no-files-found: error
+          path: handoff/tsuyu-android-source-${{ github.run_number }}.zip

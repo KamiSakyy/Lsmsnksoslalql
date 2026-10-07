@@ -1,0 +1,12 @@
+<resources>
+    <color name="tsuyu_black">#000000</color>
+    <color name="tsuyu_header">#0D0D0D</color>
+    <color name="tsuyu_surface">#141416</color>
+    <color name="tsuyu_input">#1C1C1E</color>
+    <color name="tsuyu_border">#2C2C2E</color>
+    <color name="tsuyu_white">#FFFFFF</color>
+    <color name="tsuyu_secondary">#8E8E93</color>
+    <color name="tsuyu_blue">#0A84FF</color>
+    <color name="tsuyu_green">#34C759</color>
+    <color name="tsuyu_red">#FF3B30</color>
+</resources>
