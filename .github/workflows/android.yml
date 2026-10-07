@@ -129,6 +129,34 @@ jobs:
               tail -n 120 "$LOG" >> "$DIAGNOSTICS"
             fi
           done
+          RESULTS_DIR="app/build/outputs/androidTest-results/connected/debug"
+          if [ -d "$RESULTS_DIR" ]; then
+            echo "===== Android instrumentation test result XML =====" >> "$DIAGNOSTICS"
+            python3 - "$RESULTS_DIR" >> "$DIAGNOSTICS" <<'PY'
+          import pathlib
+          import sys
+          import xml.etree.ElementTree as ET
+
+          root = pathlib.Path(sys.argv[1])
+          files = sorted(root.glob('TEST-*.xml'))
+          if not files:
+              print(f'No TEST-*.xml result files found under {root}')
+          for path in files:
+              print(f'--- {path} ---')
+              try:
+                  suite = ET.parse(path).getroot()
+              except ET.ParseError as error:
+                  print(f'Could not parse test result XML: {error}')
+                  continue
+              for case in suite.iter('testcase'):
+                  print(f"TEST {case.get('classname', '')}.{case.get('name', '')} ({case.get('time', '?')}s)")
+                  for result in list(case):
+                      if result.tag in ('failure', 'error'):
+                          print(f"{result.tag.upper()}: {result.get('message', '')}")
+                          if result.text:
+                              print(result.text.strip())
+          PY
+          fi
           if [ -s "$DIAGNOSTICS" ]; then
             echo "## Android native smoke failure" >> "$GITHUB_STEP_SUMMARY"
             cat "$DIAGNOSTICS" >> "$GITHUB_STEP_SUMMARY"
