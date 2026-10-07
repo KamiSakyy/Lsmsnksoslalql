@@ -31,7 +31,9 @@ import java.io.IOException;
 import java.io.InputStream;
 import java.nio.ByteBuffer;
 import java.nio.charset.StandardCharsets;
+import java.security.GeneralSecurityException;
 import java.util.ArrayList;
+import java.util.Base64;
 import java.util.Collections;
 import java.util.Iterator;
 import java.util.List;
@@ -47,6 +49,9 @@ import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.concurrent.atomic.AtomicInteger;
 
+import javax.crypto.Mac;
+import javax.crypto.spec.SecretKeySpec;
+
 /**
  * P2P messaging engine. Firebase Realtime Database is used only for authenticated WebRTC signaling;
  * message text and media bytes travel through encrypted WebRTC DataChannels.
@@ -57,6 +62,27 @@ public final class P2pEngine {
     private static final int FILE_HEADER_BYTES = 41;
     private static final int FILE_CHUNK_BYTES = 15_000;
     private static final long MAX_BUFFERED_BYTES = 512 * 1024;
+    private static final long PUBLIC_TURN_CREDENTIAL_TTL_SECONDS = 7L * 24 * 60 * 60;
+
+    // Open Relay publishes this shared static-auth secret for its public TURN service. It is not
+    // an app-private key and is extractable from any APK; use a private credential broker for production.
+    // The old openrelayproject/openrelayproject public pair is retired, so derive expiring REST credentials.
+    private static final String OPEN_RELAY_AUTH_SECRET = "openrelayprojectsecret";
+    private static final String[] PUBLIC_STUN_URLS = {
+            "stun:stun.l.google.com:19302",
+            "stun:stun1.l.google.com:19302",
+            "stun:stun2.l.google.com:19302",
+            "stun:stun3.l.google.com:19302",
+            "stun:stun4.l.google.com:19302",
+            "stun:stun.cloudflare.com:3478"
+    };
+    private static final String[] OPEN_RELAY_TURN_URLS = {
+            "turn:staticauth.openrelay.metered.ca:80?transport=udp",
+            "turn:staticauth.openrelay.metered.ca:80?transport=tcp",
+            "turn:staticauth.openrelay.metered.ca:443?transport=udp",
+            "turn:staticauth.openrelay.metered.ca:443?transport=tcp",
+            "turns:staticauth.openrelay.metered.ca:443?transport=tcp"
+    };
 
     private final Context appContext;
     private final FirebaseRestClient firebase;
@@ -510,23 +536,54 @@ public final class P2pEngine {
 
     private List<PeerConnection.IceServer> iceServers() {
         ArrayList<PeerConnection.IceServer> result = new ArrayList<>();
-        result.add(PeerConnection.IceServer.builder("stun:stun.l.google.com:19302").createIceServer());
-        result.add(PeerConnection.IceServer.builder("stun:stun1.l.google.com:19302").createIceServer());
+        for (String url : PUBLIC_STUN_URLS) {
+            result.add(PeerConnection.IceServer.builder(url).createIceServer());
+        }
+
+        // Prefer project-owned credentials when configured, then retain the public shared fallback.
+        addConfiguredTurnServers(result);
+        addOpenRelayTurnServers(result);
+        return result;
+    }
+
+    private void addConfiguredTurnServers(List<PeerConnection.IceServer> result) {
         String urls = BuildConfig.TURN_URLS == null ? "" : BuildConfig.TURN_URLS.trim();
         String username = BuildConfig.TURN_USERNAME == null ? "" : BuildConfig.TURN_USERNAME;
         String credential = BuildConfig.TURN_CREDENTIAL == null ? "" : BuildConfig.TURN_CREDENTIAL;
-        if (!urls.isEmpty() && !username.isEmpty() && !credential.isEmpty()) {
-            for (String raw : urls.split(",")) {
-                String url = raw.trim();
-                if (!url.isEmpty()) {
-                    result.add(PeerConnection.IceServer.builder(url)
-                            .setUsername(username)
-                            .setPassword(credential)
-                            .createIceServer());
-                }
+        if (urls.isEmpty() || username.isEmpty() || credential.isEmpty()) return;
+        for (String raw : urls.split(",")) {
+            String url = raw.trim();
+            if (!url.isEmpty()) {
+                result.add(PeerConnection.IceServer.builder(url)
+                        .setUsername(username)
+                        .setPassword(credential)
+                        .createIceServer());
             }
         }
-        return result;
+    }
+
+    private void addOpenRelayTurnServers(List<PeerConnection.IceServer> result) {
+        long expiresAt = System.currentTimeMillis() / 1000L + PUBLIC_TURN_CREDENTIAL_TTL_SECONDS;
+        String userId = uid == null || uid.isEmpty() ? "noirp2p" : uid;
+        String username = expiresAt + ":" + userId;
+        try {
+            String credential = createTurnRestCredential(username, OPEN_RELAY_AUTH_SECRET);
+            for (String url : OPEN_RELAY_TURN_URLS) {
+                result.add(PeerConnection.IceServer.builder(url)
+                        .setUsername(username)
+                        .setPassword(credential)
+                        .createIceServer());
+            }
+        } catch (GeneralSecurityException e) {
+            Log.e(TAG, "Could not generate public TURN credentials", e);
+        }
+    }
+
+    private static String createTurnRestCredential(String username, String sharedSecret)
+            throws GeneralSecurityException {
+        Mac mac = Mac.getInstance("HmacSHA1");
+        mac.init(new SecretKeySpec(sharedSecret.getBytes(StandardCharsets.UTF_8), "HmacSHA1"));
+        return Base64.getEncoder().encodeToString(mac.doFinal(username.getBytes(StandardCharsets.UTF_8)));
     }
 
     private void publishLocalCandidate(PeerSession session, IceCandidate candidate) {

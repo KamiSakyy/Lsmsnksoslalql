@@ -29,6 +29,24 @@ android {
         buildConfigField 'String', 'TURN_URLS', asBuildConfigString(turnUrls)
         buildConfigField 'String', 'TURN_USERNAME', asBuildConfigString(turnUsername)
         buildConfigField 'String', 'TURN_CREDENTIAL', asBuildConfigString(turnCredential)
+
+        // The WebRTC AAR contains native libraries for four ABIs; ship only the requested 64-bit ARM ABI.
+        ndk {
+            abiFilters 'arm64-v8a'
+        }
+    }
+
+    buildTypes {
+        debug {
+            minifyEnabled true
+            shrinkResources true
+            proguardFiles getDefaultProguardFile('proguard-android-optimize.txt'), 'proguard-rules.pro'
+        }
+        release {
+            minifyEnabled true
+            shrinkResources true
+            proguardFiles getDefaultProguardFile('proguard-android-optimize.txt'), 'proguard-rules.pro'
+        }
     }
 
     buildFeatures {
