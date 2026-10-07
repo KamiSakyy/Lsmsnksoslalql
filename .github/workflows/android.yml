@@ -88,12 +88,21 @@ jobs:
           sudo udevadm control --reload-rules
           sudo udevadm trigger --name-match=kvm
 
+      - name: Создать AVD для smoke-тестов
+        run: echo no | avdmanager create avd --force --name ci-smoke --package "system-images;android-30;default;x86_64"
+
       - name: Запустить тест Signal + WebRTC на Android-эмуляторе
         uses: reactivecircus/android-emulator-runner@v2
         with:
           api-level: 30
           target: default
           arch: x86_64
+          avd-name: ci-smoke
+          force-avd-creation: false
+          pre-emulator-launch-script: |
+            echo "Android SDK=$ANDROID_HOME"
+            emulator -version
+            emulator -accel-check || true
           emulator-options: -no-window -gpu swiftshader_indirect -no-snapshot -noaudio -no-boot-anim
           emulator-boot-timeout: 900
           disable-animations: true
