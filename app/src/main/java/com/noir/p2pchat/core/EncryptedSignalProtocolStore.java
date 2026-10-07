@@ -249,7 +249,7 @@ public final class EncryptedSignalProtocolStore implements SignalProtocolStore {
                 if (id == current) continue;
                 KyberPreKeyRecord record = loadKyberPreKey(id);
                 boolean expired = record.getTimestamp() < cutoff;
-                if (expired) removeKyberPreKey(id);
+                if (expired) removeRecord(KYBER_PREFIX + id);
             } catch (Exception ignored) { }
         }
     }
