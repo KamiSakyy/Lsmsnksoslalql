@@ -54,7 +54,9 @@ jobs:
         run: ./gradlew --no-daemon --stacktrace testDebugUnitTest
 
   build-apk:
-    if: github.event_name == 'workflow_dispatch' && inputs.build_apk == true
+    if: >-
+      (github.event_name == 'workflow_dispatch' && inputs.build_apk == true) ||
+      (github.event_name == 'push' && contains(github.event.head_commit.message, '[build-apk]'))
     name: Android 36 arm64 · R8 · release signing
     runs-on: ubuntu-latest
     timeout-minutes: 45
@@ -240,7 +242,10 @@ jobs:
   publish-handoff:
     name: Опубликовать подписанный release в handoff/
     needs: build-apk
-    if: github.event_name == 'workflow_dispatch' && inputs.build_apk == true && github.ref == 'refs/heads/arena/8909ba29-lsmsnksoslalql'
+    if: >-
+      github.ref == 'refs/heads/arena/8909ba29-lsmsnksoslalql' &&
+      ((github.event_name == 'workflow_dispatch' && inputs.build_apk == true) ||
+       (github.event_name == 'push' && contains(github.event.head_commit.message, '[build-apk]')))
     runs-on: ubuntu-latest
     timeout-minutes: 10
     permissions:
