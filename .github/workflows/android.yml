@@ -50,8 +50,8 @@ jobs:
       - name: Настроить Gradle и кэш
         uses: gradle/actions/setup-gradle@v6
 
-      - name: Компилировать исходники и выполнить JVM unit tests (без сборки APK)
-        run: ./gradlew --no-daemon --stacktrace testDebugUnitTest
+      - name: Компилировать исходники и JVM + instrumentation tests (без сборки APK)
+        run: ./gradlew --no-daemon --stacktrace testDebugUnitTest :app:compileDebugAndroidTestJavaWithJavac -PandroidAbiFilters=x86_64
 
   native-smoke:
     if: github.event_name == 'push' && contains(github.event.head_commit.message, '[native-smoke]')
@@ -82,10 +82,12 @@ jobs:
       - name: Запустить тест Signal + WebRTC на Android-эмуляторе
         uses: reactivecircus/android-emulator-runner@v2
         with:
-          api-level: 35
-          target: google_apis
+          api-level: 30
+          target: default
           arch: x86_64
-          profile: pixel_6
+          profile: pixel_2
+          emulator-options: -no-window -no-audio -no-boot-anim -no-snapshot -gpu swiftshader_indirect
+          emulator-boot-timeout: 900
           disable-animations: true
           script: ./gradlew --no-daemon --stacktrace connectedDebugAndroidTest -PandroidAbiFilters=x86_64
 
