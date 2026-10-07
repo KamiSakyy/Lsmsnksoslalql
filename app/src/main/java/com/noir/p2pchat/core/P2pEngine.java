@@ -152,6 +152,8 @@ public final class P2pEngine {
     private volatile PeerConnectionFactory factory;
     private volatile EglBase eglBase;
     private volatile EncryptedSignalProtocolStore signalStore;
+    private volatile boolean signalProfilePublished;
+    private volatile long signalProfilePublishedAt;
     private volatile String uid;
     private volatile String status = "Ожидание подключения к Firebase";
     private volatile String activeChatPeer;
@@ -394,9 +396,8 @@ public final class P2pEngine {
                 synchronized (pendingTextLock) {
                     uid = authenticatedUid;
                 }
-                setStatus("Firebase авторизован · готовим Signal-ключи…");
-                signalStore = new EncryptedSignalProtocolStore(appContext);
-                publishProfile();
+                setStatus("Firebase авторизован · запускаем приложение…");
+                publishBasicProfile();
                 if (!started.get()) return;
                 notifyIdentity(uid);
                 setStatus("Сигналинг Firebase активен");
@@ -471,14 +472,36 @@ public final class P2pEngine {
         }
     }
 
-    private void publishProfile() throws IOException, JSONException {
+    private void publishBasicProfile() throws IOException, JSONException {
         JSONObject profile = new JSONObject();
         profile.put("app", "NoirP2P");
         profile.put("protocol", 1);
         profile.put("updatedAt", System.currentTimeMillis());
-        profile.put("signalVersion", 1);
-        profile.put("signal", signalStore.publicBundle());
-        firebase.put("profiles/" + uid, profile);
+        // Preserve any existing Signal bundle; native key generation is deferred until P2P is used.
+        firebase.patch("profiles/" + uid, profile);
+    }
+
+    private synchronized EncryptedSignalProtocolStore ensureSignalReady() throws IOException, JSONException {
+        if (uid == null) throw new IOException("Firebase identity is not initialized");
+        if (signalStore == null) signalStore = new EncryptedSignalProtocolStore(appContext);
+        long now = System.currentTimeMillis();
+        long publishedAt = signalProfilePublishedAt;
+        long keyRefreshWindow = TimeUnit.DAYS.toMillis(6);
+        if (signalProfilePublished && now >= publishedAt && now - publishedAt < keyRefreshWindow) return signalStore;
+        try {
+            JSONObject profile = new JSONObject();
+            profile.put("app", "NoirP2P");
+            profile.put("protocol", 1);
+            profile.put("updatedAt", now);
+            profile.put("signalVersion", 1);
+            profile.put("signal", signalStore.publicBundle());
+            firebase.patch("profiles/" + uid, profile);
+            signalProfilePublishedAt = now;
+            signalProfilePublished = true;
+            return signalStore;
+        } catch (LinkageError e) {
+            throw new IOException("Не загрузился нативный Signal-компонент: " + safeError(e), e);
+        }
     }
 
     private PreKeyBundle parsePreKeyBundle(JSONObject json) throws Exception {
@@ -511,8 +534,8 @@ public final class P2pEngine {
 
     private void ensureSignalSession(String peerUid) throws Exception {
         String localUid = uid;
-        EncryptedSignalProtocolStore store = signalStore;
-        if (localUid == null || store == null) throw new IOException("Signal identity is not initialized");
+        EncryptedSignalProtocolStore store = ensureSignalReady();
+        if (localUid == null) throw new IOException("Signal identity is not initialized");
         Object lock = signalLocks.computeIfAbsent(peerUid, ignored -> new Object());
         synchronized (lock) {
             SignalProtocolAddress localAddress = new SignalProtocolAddress(localUid, store.getLocalDeviceId());
@@ -530,8 +553,7 @@ public final class P2pEngine {
         if (!session.signalHandshakeStarted.compareAndSet(false, true)) return;
         ioExecutor.execute(() -> {
             try {
-                EncryptedSignalProtocolStore store = signalStore;
-                if (store == null) throw new IOException("Signal identity is not initialized");
+                EncryptedSignalProtocolStore store = ensureSignalReady();
                 if (store.hasSession(session.peerUid)) {
                     sendSignalInit(session);
                 } else if (uid.compareTo(session.peerUid) < 0) {
@@ -757,6 +779,7 @@ public final class P2pEngine {
 
     private void answerIncomingMediaCall(MediaCallSession call) {
         try {
+            ensureSignalReady();
             JSONObject offerJson = new JSONObject(new String(decryptCallSignal(call.peerUid, call.encryptedOffer),
                     StandardCharsets.UTF_8));
             SessionDescription offer = sessionDescriptionFromJson(offerJson);
@@ -1236,16 +1259,18 @@ public final class P2pEngine {
     public void requestConnection(String peerUid) {
         if (!isValidUid(peerUid) || peerUid.equals(uid)) return;
         if (!started.get()) start();
-        // start() resumes queued contacts after Firebase authentication succeeds.
-        if (uid == null) return;
-        PeerSession current = sessionsByPeer.get(peerUid);
-        if (current != null && !current.closed.get()) {
-            if (current.isOpen()) dispatchPending(peerUid);
-            return;
-        }
-        // Deterministic offerer avoids simultaneous-offer glare: the lexicographically smaller UID calls.
-        if (uid.compareTo(peerUid) < 0) beginOutgoing(peerUid);
-        else notifyPeerState(peerUid, "Ожидаем приглашение от собеседника");
+        // Native Signal/WebRTC setup and Firebase work must never run on the UI thread.
+        ioExecutor.execute(() -> {
+            if (!started.get() || uid == null) return;
+            PeerSession current = sessionsByPeer.get(peerUid);
+            if (current != null && !current.closed.get()) {
+                if (current.isOpen()) dispatchPending(peerUid);
+                return;
+            }
+            // Deterministic offerer avoids simultaneous-offer glare: the lexicographically smaller UID calls.
+            if (uid.compareTo(peerUid) < 0) beginOutgoing(peerUid);
+            else notifyPeerState(peerUid, "Ожидаем приглашение от собеседника");
+        });
     }
 
     private synchronized void beginOutgoing(String peerUid) {
@@ -1260,6 +1285,7 @@ public final class P2pEngine {
         sessionsById.put(sessionId, session);
         notifyPeerState(peerUid, "Создаём P2P-канал…");
         try {
+            ensureSignalReady();
             createPeerConnection(session);
             session.dataChannel = session.peerConnection.createDataChannel("noir-chat-v1", orderedChannel());
             watchDataChannel(session, session.dataChannel);
@@ -1326,6 +1352,7 @@ public final class P2pEngine {
         pendingInvites.remove(peerUid);
         notifyPeerState(peerUid, "Принимаем P2P-подключение…");
         try {
+            ensureSignalReady();
             createPeerConnection(session);
             watchSignaling(session);
             JSONObject offerJson = call.optJSONObject("offer");
