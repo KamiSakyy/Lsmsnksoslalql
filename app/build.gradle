@@ -79,6 +79,7 @@ android {
     compileOptions {
         sourceCompatibility JavaVersion.VERSION_17
         targetCompatibility JavaVersion.VERSION_17
+        coreLibraryDesugaringEnabled true
     }
 
     packaging {
@@ -99,6 +100,7 @@ android {
 }
 
 dependencies {
+    coreLibraryDesugaring 'com.android.tools:desugar_jdk_libs:2.1.5'
     implementation 'androidx.activity:activity:1.12.4'
     implementation 'androidx.core:core:1.17.0'
     implementation 'io.github.webrtc-sdk:android:150.7871.01'
