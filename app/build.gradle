@@ -11,6 +11,11 @@ def asBuildConfigString = { String value ->
     '"' + value.replace('\\', '\\\\').replace('"', '\\"') + '"'
 }
 
+def requestedAndroidAbis = providers.gradleProperty('androidAbiFilters')
+        .orElse('arm64-v8a')
+        .get()
+        .split(',')
+        .collect { it.trim() }
 def turnUrls = buildValue('turnUrls', 'TURN_URLS')
 def turnUsername = buildValue('turnUsername', 'TURN_USERNAME')
 def turnCredential = buildValue('turnCredential', 'TURN_CREDENTIAL')
@@ -35,6 +40,7 @@ android {
         targetSdk 36
         versionCode appVersionCode
         versionName appVersionName
+        testInstrumentationRunner 'androidx.test.runner.AndroidJUnitRunner'
 
         buildConfigField 'String', 'TURN_URLS', asBuildConfigString(turnUrls)
         buildConfigField 'String', 'TURN_USERNAME', asBuildConfigString(turnUsername)
@@ -42,7 +48,7 @@ android {
 
         // The WebRTC AAR contains native libraries for four ABIs; ship only the requested 64-bit ARM ABI.
         ndk {
-            abiFilters 'arm64-v8a'
+            abiFilters(*requestedAndroidAbis)
         }
     }
 
@@ -107,4 +113,7 @@ dependencies {
     implementation 'org.signal:libsignal-android:0.105.0'
     implementation 'org.signal:libsignal-client:0.105.0'
     testImplementation 'junit:junit:4.13.2'
+    androidTestImplementation 'androidx.test:runner:1.6.2'
+    androidTestImplementation 'androidx.test:rules:1.6.1'
+    androidTestImplementation 'androidx.test.ext:junit:1.2.1'
 }

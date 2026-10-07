@@ -478,6 +478,12 @@ public final class P2pEngine {
         }
     }
 
+    /** Package-private smoke-test hook for exercising the actual direct-chat factory on Android. */
+    PeerConnectionFactory dataFactoryForSmokeTest() throws IOException {
+        initializeDataWebRtc();
+        return dataFactory;
+    }
+
     /** Audio/video codecs and EGL are loaded only when the user starts or answers a call. */
     private void initializeMediaWebRtc() throws IOException {
         if (factory != null) return;
