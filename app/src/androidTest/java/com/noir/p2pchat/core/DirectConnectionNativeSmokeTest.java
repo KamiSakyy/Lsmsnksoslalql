@@ -30,9 +30,12 @@ import org.webrtc.SdpObserver;
 import org.webrtc.SessionDescription;
 
 import java.lang.reflect.Field;
+import java.net.InetAddress;
+import java.net.NetworkInterface;
 import java.nio.ByteBuffer;
 import java.nio.charset.StandardCharsets;
 import java.util.Collections;
+import java.util.Enumeration;
 import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.concurrent.atomic.AtomicInteger;
@@ -161,7 +164,8 @@ public final class DirectConnectionNativeSmokeTest {
 
             assertTrue("Offerer did not receive an open DataChannel; offerer "
                             + offererObserver.diagnostics() + " " + describeLocalSdp(offerer)
-                            + "; answerer " + answererObserver.diagnostics() + " " + describeLocalSdp(answerer),
+                            + "; answerer " + answererObserver.diagnostics() + " " + describeLocalSdp(answerer)
+                            + "; interfaces " + describeNetworkInterfaces(),
                     outgoingObserver.open.await(20, TimeUnit.SECONDS));
             assertTrue("Answerer did not receive the negotiated DataChannel",
                     answererObserver.dataChannelCreated.await(15, TimeUnit.SECONDS));
@@ -218,6 +222,26 @@ public final class DirectConnectionNativeSmokeTest {
             engine.stop();
             context.stopService(new Intent(context, ChatConnectionService.class));
         }
+    }
+
+    private static String describeNetworkInterfaces() {
+        StringBuilder details = new StringBuilder();
+        try {
+            Enumeration<NetworkInterface> interfaces = NetworkInterface.getNetworkInterfaces();
+            if (interfaces == null) return "none";
+            while (interfaces.hasMoreElements()) {
+                NetworkInterface networkInterface = interfaces.nextElement();
+                if (details.length() > 0) details.append(';');
+                details.append(networkInterface.getName()).append("{up=").append(networkInterface.isUp())
+                        .append(",loopback=").append(networkInterface.isLoopback()).append(",addresses=");
+                Enumeration<InetAddress> addresses = networkInterface.getInetAddresses();
+                while (addresses.hasMoreElements()) details.append(addresses.nextElement().getHostAddress()).append(',');
+                details.append('}');
+            }
+        } catch (Exception error) {
+            return error.getClass().getSimpleName() + ":" + error.getMessage();
+        }
+        return details.length() == 0 ? "none" : details.toString();
     }
 
     private static String describeLocalSdp(PeerConnection peer) {
