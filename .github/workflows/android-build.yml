@@ -39,7 +39,14 @@ jobs:
             SDKMANAGER="$(find "$ANDROID_HOME/cmdline-tools" -type f -name sdkmanager 2>/dev/null | head -n 1)"
           fi
           test -x "$SDKMANAGER" || { echo "sdkmanager was not found under $ANDROID_HOME/cmdline-tools."; exit 1; }
-          yes | "$SDKMANAGER" --licenses >/dev/null
+          set +o pipefail
+          if yes | "$SDKMANAGER" --licenses >/dev/null; then
+            license_status=0
+          else
+            license_status=$?
+          fi
+          set -o pipefail
+          test "$license_status" -eq 0 || { echo "Android SDK license acceptance failed (exit $license_status)."; exit "$license_status"; }
           "$SDKMANAGER" 'platform-tools' 'platforms;android-35' 'build-tools;35.0.0'
 
       - name: Set up Gradle
