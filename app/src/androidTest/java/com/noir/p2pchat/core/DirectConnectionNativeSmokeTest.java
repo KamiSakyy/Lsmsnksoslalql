@@ -127,9 +127,9 @@ public final class DirectConnectionNativeSmokeTest {
     @Test
     public void twoDirectPeersOpenDataChannelAndExchangeBytesOnAndroid() throws Exception {
         Context context = InstrumentationRegistry.getInstrumentation().getTargetContext().getApplicationContext();
-        Logging.enableLogToDebugOutput(Logging.Severity.LS_INFO);
         P2pEngine engine = new P2pEngine(context, new FirebaseRestClient(context), new MessageStore(context));
         PeerConnectionFactory factory = engine.dataFactoryForSmokeTest();
+        Logging.enableLogToDebugOutput(Logging.Severity.LS_INFO);
         PeerObserver offererObserver = new PeerObserver();
         PeerObserver answererObserver = new PeerObserver();
         PeerConnection offerer = null;
