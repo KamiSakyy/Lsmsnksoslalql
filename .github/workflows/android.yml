@@ -129,6 +129,12 @@ jobs:
               tail -n 120 "$LOG" >> "$DIAGNOSTICS"
             fi
           done
+          if command -v adb >/dev/null 2>&1; then
+            echo "===== Filtered Android logcat (WebRTC/ICE) =====" >> "$DIAGNOSTICS"
+            adb -s emulator-5554 logcat -d -v time 2>/dev/null \
+              | grep -Ei 'webrtc|libjingle|network.?monitor|stun|ice.?candidate|peerconnection' \
+              | tail -n 160 >> "$DIAGNOSTICS" || true
+          fi
           python3 - app/build <<'PY' | tee -a "$DIAGNOSTICS"
           import html
           import pathlib
