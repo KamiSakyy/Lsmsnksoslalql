@@ -41,6 +41,7 @@ import java.io.FileInputStream;
 import java.io.FileOutputStream;
 import java.io.IOException;
 import java.io.InputStream;
+import java.io.RandomAccessFile;
 import java.nio.ByteBuffer;
 import java.nio.charset.StandardCharsets;
 import java.security.GeneralSecurityException;
@@ -58,6 +59,7 @@ import java.util.concurrent.CopyOnWriteArraySet;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 import java.util.concurrent.ScheduledExecutorService;
+import java.util.concurrent.Semaphore;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.concurrent.atomic.AtomicInteger;
@@ -74,6 +76,8 @@ public final class P2pEngine {
     private static final int MAX_FILE_BYTES = FileTransferProtocol.MAX_FILE_BYTES;
     private static final int FILE_CHUNK_BYTES = FileTransferProtocol.CHUNK_BYTES;
     private static final long MAX_BUFFERED_BYTES = 512 * 1024;
+    private static final long TRANSFER_ACK_TIMEOUT_MS = TimeUnit.SECONDS.toMillis(30);
+    private static final int MAX_PARALLEL_FILE_TRANSFERS_PER_PEER = 2;
     private static final long PUBLIC_TURN_CREDENTIAL_TTL_SECONDS = 7L * 24 * 60 * 60;
 
     // Open Relay publishes this shared static-auth secret for its public TURN service. It is not
@@ -100,6 +104,7 @@ public final class P2pEngine {
     private final FirebaseRestClient firebase;
     private final MessageStore messages;
     private final ExecutorService ioExecutor = Executors.newFixedThreadPool(4);
+    private final ExecutorService transferExecutor = Executors.newFixedThreadPool(4);
     private final ExecutorService protocolExecutor = Executors.newSingleThreadExecutor();
     private final ScheduledExecutorService scheduler = Executors.newSingleThreadScheduledExecutor();
     private final Handler mainHandler = new Handler(Looper.getMainLooper());
@@ -108,6 +113,9 @@ public final class P2pEngine {
     private final Map<String, PeerSession> sessionsById = new ConcurrentHashMap<>();
     private final Map<String, Object> signalLocks = new ConcurrentHashMap<>();
     private final Set<String> signalReadyPeers = ConcurrentHashMap.newKeySet();
+    private final Set<String> activeFileTransfers = ConcurrentHashMap.newKeySet();
+    private final Map<String, TransferWaiter> transferWaiters = new ConcurrentHashMap<>();
+    private final Set<String> pendingInboundTransferResumes = ConcurrentHashMap.newKeySet();
     private final Map<String, Set<String>> pendingInvites = new ConcurrentHashMap<>();
     private final Object pendingTextLock = new Object();
     private final ConcurrentLinkedQueue<QueuedText> pendingTexts = new ConcurrentLinkedQueue<>();
@@ -1002,6 +1010,87 @@ public final class P2pEngine {
         return "file";
     }
 
+    public void pauseTransfer(String messageId) {
+        Message message = messages.getMessage(messageId);
+        if (message == null || message.transferSize <= 0L) return;
+        messages.updateStatus(messageId, "paused");
+        if (message.outgoing) {
+            TransferWaiter waiter = transferWaiters.get(messageId);
+            if (waiter != null) waiter.pause();
+        } else {
+            PeerSession session = sessionsByPeer.get(message.peerUid);
+            if (session != null) pauseIncomingFile(session, messageId);
+        }
+        PeerSession session = sessionsByPeer.get(message.peerUid);
+        if (session != null && session.isOpen()) {
+            ioExecutor.execute(() -> sendJsonWaiting(session,
+                    transferControl("file_pause", messageId, message.transferOffset, false)));
+        }
+        notifyMessages(message.peerUid);
+    }
+
+    public void resumeTransfer(String peerUid, String messageId) {
+        if (!isValidUid(peerUid)) return;
+        Message message = messages.getMessage(messageId);
+        if (message == null || !peerUid.equals(message.peerUid) || message.transferSize <= 0L) return;
+        if (message.outgoing) {
+            File file = message.filePath == null ? null : new File(message.filePath);
+            if (file == null || !file.isFile() || file.length() != message.transferSize) {
+                messages.updateStatus(messageId, "failed");
+                notifyMessages(peerUid);
+                setStatus("Исходный файл больше недоступен · выберите его заново");
+                return;
+            }
+            messages.updateStatus(messageId, "pending");
+            notifyMessages(peerUid);
+            requestConnection(peerUid);
+            dispatchPending(peerUid);
+            return;
+        }
+        pendingInboundTransferResumes.add(messageId);
+        messages.updateStatus(messageId, "paused");
+        notifyMessages(peerUid);
+        if (signalReadyPeers.contains(peerUid)) {
+            dispatchPendingTransferResumeRequests(peerUid);
+        } else {
+            requestConnection(peerUid);
+        }
+    }
+
+    private void pauseIncomingFile(PeerSession session, String messageId) {
+        IncomingFile transfer = session.incomingFiles.remove(messageId);
+        if (transfer == null) return;
+        transfer.syncAndClose();
+        messages.updateTransferOffset(messageId, transfer.receivedBytes);
+        messages.updateStatus(messageId, "paused");
+    }
+
+    private void dispatchPendingTransferResumeRequests(String peerUid) {
+        PeerSession session = sessionsByPeer.get(peerUid);
+        if (session == null || !session.isOpen() || !signalReadyPeers.contains(peerUid)) return;
+        for (String id : new ArrayList<>(pendingInboundTransferResumes)) {
+            Message message = messages.getMessage(id);
+            if (message == null || message.outgoing || !peerUid.equals(message.peerUid)) continue;
+            JSONObject request = transferControl("file_resume_request", id, message.transferOffset, false);
+            ioExecutor.execute(() -> {
+                if (sessionsByPeer.get(peerUid) == session && sendJsonWaiting(session, request)) {
+                    pendingInboundTransferResumes.remove(id);
+                }
+            });
+        }
+    }
+
+    private static JSONObject transferControl(String type, String id, long offset, boolean complete) {
+        JSONObject json = new JSONObject();
+        try {
+            json.put("type", type);
+            json.put("id", id);
+            json.put("offset", offset);
+            if (complete) json.put("complete", true);
+        } catch (JSONException ignored) { }
+        return json;
+    }
+
     private void dispatchPending(String peerUid) {
         PeerSession session = sessionsByPeer.get(peerUid);
         if (session == null || !session.isOpen() || !signalReadyPeers.contains(peerUid)
@@ -1010,28 +1099,73 @@ public final class P2pEngine {
             try {
                 for (Message message : messages.getPending(peerUid, 100)) {
                     if (!started.get() || sessionsByPeer.get(peerUid) != session || !session.isOpen()) break;
-                    boolean sent;
-                    if ("text".equals(message.kind)) sent = sendTextFrame(session, message);
-                    else sent = sendFileFrames(session, message);
-                    if (!sent) break;
-                    messages.markSent(message.id);
-                    notifyMessages(peerUid);
+                    if ("text".equals(message.kind)) {
+                        if (!sendTextFrame(session, message)) break;
+                        messages.markSent(message.id);
+                        notifyMessages(peerUid);
+                    } else if (activeFileTransfers.add(message.id)) {
+                        transferExecutor.execute(() -> runFileTransfer(session, message));
+                    }
                 }
             } catch (RuntimeException e) {
                 Log.e(TAG, "Could not read/decrypt a queued local message; refusing to send substitute text", e);
                 setStatus("Локальное содержимое недоступно · сообщение не отправлено");
             } finally {
                 session.dispatching.set(false);
-                try {
-                    if (session.isOpen() && signalReadyPeers.contains(peerUid)
-                            && !messages.getPending(peerUid, 1).isEmpty()) {
-                        scheduler.schedule(() -> dispatchPending(peerUid), 500, TimeUnit.MILLISECONDS);
-                    }
-                } catch (RuntimeException e) {
-                    Log.e(TAG, "Could not inspect the pending message queue", e);
-                }
+                schedulePendingDispatchIfNeeded(session);
             }
         });
+    }
+
+    private void runFileTransfer(PeerSession session, Message message) {
+        boolean acquired = false;
+        try {
+            session.transferPermits.acquire();
+            acquired = true;
+            if (!started.get() || sessionsByPeer.get(message.peerUid) != session || !session.isOpen()
+                    || !isMessagePending(message.peerUid, message.id)) return;
+            if (sendFileFrames(session, message)) {
+                messages.markSent(message.id);
+                notifyMessages(message.peerUid);
+            } else if (session.isOpen() && isMessagePending(message.peerUid, message.id)) {
+                session.transferRetryAfterMs = System.currentTimeMillis() + 2_000L;
+            }
+        } catch (InterruptedException e) {
+            Thread.currentThread().interrupt();
+        } catch (RuntimeException e) {
+            Log.e(TAG, "Could not send queued file", e);
+            setStatus("Не удалось продолжить передачу файла");
+        } finally {
+            if (acquired) session.transferPermits.release();
+            activeFileTransfers.remove(message.id);
+            notifyMessages(message.peerUid);
+            schedulePendingDispatchIfNeeded(session);
+        }
+    }
+
+    private boolean isMessagePending(String peerUid, String messageId) {
+        for (Message pending : messages.getPending(peerUid, 100)) {
+            if (messageId.equals(pending.id)) return true;
+        }
+        return false;
+    }
+
+    private void schedulePendingDispatchIfNeeded(PeerSession session) {
+        try {
+            if (!session.isOpen() || !signalReadyPeers.contains(session.peerUid)) return;
+            boolean dispatchable = false;
+            for (Message message : messages.getPending(session.peerUid, 100)) {
+                if ("text".equals(message.kind) || !activeFileTransfers.contains(message.id)) {
+                    dispatchable = true;
+                    break;
+                }
+            }
+            if (!dispatchable) return;
+            long delay = Math.max(500L, session.transferRetryAfterMs - System.currentTimeMillis());
+            scheduler.schedule(() -> dispatchPending(session.peerUid), delay, TimeUnit.MILLISECONDS);
+        } catch (RuntimeException e) {
+            Log.e(TAG, "Could not inspect the pending message queue", e);
+        }
     }
 
     private boolean sendTextFrame(PeerSession session, Message message) {
@@ -1049,41 +1183,74 @@ public final class P2pEngine {
 
     private boolean sendFileFrames(PeerSession session, Message message) {
         File file = message.filePath == null ? null : new File(message.filePath);
-        if (file == null || !file.isFile() || file.length() > MAX_FILE_BYTES) {
+        if (file == null || !file.isFile() || file.length() <= 0L || file.length() > MAX_FILE_BYTES) {
             messages.updateStatus(message.id, "failed");
             notifyMessages(message.peerUid);
             return false;
         }
-        JSONObject start = new JSONObject();
+        long fileSize = file.length();
+        long requestedOffset;
         try {
+            requestedOffset = FileTransferProtocol.normalizeResumeOffset(message.transferOffset, fileSize);
+        } catch (IllegalArgumentException e) {
+            messages.updateStatus(message.id, "failed");
+            return false;
+        }
+        TransferWaiter waiter = new TransferWaiter();
+        if (transferWaiters.putIfAbsent(message.id, waiter) != null) return false;
+        try {
+            JSONObject start = new JSONObject();
             start.put("type", "file_start");
             start.put("id", message.id);
             start.put("name", message.body);
             start.put("mime", message.mime == null ? "application/octet-stream" : message.mime);
             start.put("kind", message.kind);
-            start.put("size", file.length());
-        } catch (JSONException e) { return false; }
-        if (!sendJsonWaiting(session, start)) return false;
-        try (FileInputStream input = new FileInputStream(file)) {
-            byte[] payload = new byte[FILE_CHUNK_BYTES];
-            int index = 0;
-            int read;
-            while ((read = input.read(payload)) != -1) {
-                if (!session.isOpen() || !started.get()) return false;
-                byte[] frame = FileTransferProtocol.encodeChunk(message.id, index++, payload, 0, read);
-                if (!sendBinaryWaiting(session, frame)) return false;
+            start.put("size", fileSize);
+            start.put("offset", requestedOffset);
+            if (!sendJsonWaiting(session, start) || !waiter.awaitResume(session, TRANSFER_ACK_TIMEOUT_MS)) return false;
+
+            long offset = waiter.resumeOffset;
+            if (!FileTransferProtocol.isValidResumeOffset(offset, fileSize)) {
+                Log.w(TAG, "Peer provided an invalid file resume offset");
+                return false;
             }
-        } catch (IOException e) {
-            Log.w(TAG, "Attachment transfer read failed", e);
-            messages.updateStatus(message.id, "failed");
+            messages.updateTransferOffset(message.id, offset);
+            notifyMessages(message.peerUid);
+            try (FileInputStream input = new FileInputStream(file)) {
+                input.getChannel().position(offset);
+                byte[] payload = new byte[FILE_CHUNK_BYTES];
+                long sentOffset = offset;
+                int index = (int) (offset / FILE_CHUNK_BYTES);
+                int chunksSinceAck = 0;
+                while (sentOffset < fileSize) {
+                    if (!session.isOpen() || !started.get() || waiter.isPaused()) return false;
+                    int requestedBytes = (int) Math.min(payload.length, fileSize - sentOffset);
+                    int read = input.read(payload, 0, requestedBytes);
+                    if (read < 0) throw new IOException("Исходный файл неожиданно закончился");
+                    if (read == 0) continue;
+                    byte[] frame = FileTransferProtocol.encodeChunk(message.id, index++, payload, 0, read);
+                    if (!sendBinaryWaiting(session, frame)) return false;
+                    sentOffset += read;
+                    chunksSinceAck++;
+                    if (chunksSinceAck >= FileTransferProtocol.ACK_WINDOW_CHUNKS || sentOffset == fileSize) {
+                        if (!waiter.awaitAcknowledgement(session, sentOffset, TRANSFER_ACK_TIMEOUT_MS)) return false;
+                        chunksSinceAck = 0;
+                    }
+                }
+            }
+            if (waiter.isPaused() || !session.isOpen()) return false;
+            JSONObject end = new JSONObject().put("type", "file_end").put("id", message.id);
+            if (!sendJsonWaiting(session, end)) return false;
+            return waiter.awaitComplete(session, fileSize, TRANSFER_ACK_TIMEOUT_MS);
+        } catch (IOException | JSONException e) {
+            Log.w(TAG, "Attachment transfer failed; keeping the last acknowledged offset", e);
             return false;
+        } catch (InterruptedException e) {
+            Thread.currentThread().interrupt();
+            return false;
+        } finally {
+            transferWaiters.remove(message.id, waiter);
         }
-        JSONObject end = new JSONObject();
-        try {
-            end.put("type", "file_end");
-            end.put("id", message.id);
-        } catch (JSONException e) { return false; }
-        return sendJsonWaiting(session, end);
     }
 
     private boolean sendJsonWaiting(PeerSession session, JSONObject json) {
@@ -1209,6 +1376,7 @@ public final class P2pEngine {
                         : "Signal E2E активно · сравните отпечаток ключа";
                 notifyPeerState(session.peerUid, verification);
                 setStatus("Соединение защищено Signal Protocol");
+                dispatchPendingTransferResumeRequests(session.peerUid);
                 dispatchPending(session.peerUid);
             } else if ("text".equals(type)) {
                 String id = json.optString("id", "");
@@ -1227,14 +1395,66 @@ public final class P2pEngine {
                 beginIncomingFile(session, json);
             } else if ("file_end".equals(type)) {
                 finishIncomingFile(session, json.optString("id", ""));
-            } else if ("file_ack".equals(type) || "text_ack".equals(type)) {
+            } else if ("file_resume".equals(type)) {
                 String id = json.optString("id", "");
-                messages.updateStatus(id, "delivered");
-                notifyMessages(session.peerUid);
+                TransferWaiter waiter = transferWaiters.get(id);
+                if (FileTransferProtocol.isValidMessageId(id) && waiter != null) {
+                    waiter.acceptResume(json.optLong("offset", -1L));
+                }
+            } else if ("file_ack".equals(type)) {
+                handleFileAck(session, json);
+            } else if ("text_ack".equals(type)) {
+                String id = json.optString("id", "");
+                Message message = messages.getMessage(id);
+                if (FileTransferProtocol.isValidMessageId(id) && message != null && message.outgoing
+                        && session.peerUid.equals(message.peerUid)) {
+                    messages.updateStatus(id, "delivered");
+                    notifyMessages(session.peerUid);
+                }
+            } else if ("file_pause".equals(type)) {
+                handleRemoteTransferPause(session, json.optString("id", ""));
+            } else if ("file_resume_request".equals(type)) {
+                String id = json.optString("id", "");
+                Message message = messages.getMessage(id);
+                if (FileTransferProtocol.isValidMessageId(id) && message != null && message.outgoing
+                        && session.peerUid.equals(message.peerUid)) resumeTransfer(session.peerUid, id);
             }
         } catch (JSONException e) {
             Log.w(TAG, "Ignored invalid decrypted Signal application message", e);
         }
+    }
+
+    private void handleFileAck(PeerSession session, JSONObject json) {
+        String id = json.optString("id", "");
+        if (!FileTransferProtocol.isValidMessageId(id)) return;
+        Message message = messages.getMessage(id);
+        if (message == null || !message.outgoing || !session.peerUid.equals(message.peerUid)) return;
+        long offset = json.optLong("offset", -1L);
+        boolean complete = json.optBoolean("complete", false);
+        TransferWaiter waiter = transferWaiters.get(id);
+        if (FileTransferProtocol.isValidResumeOffset(offset, message.transferSize)) {
+            messages.updateTransferOffset(id, offset);
+            if (waiter != null) waiter.acceptAcknowledgement(offset, complete);
+        }
+        if (complete || offset < 0L) {
+            messages.updateTransferOffset(id, message.transferSize);
+            messages.updateStatus(id, "delivered");
+        }
+        notifyMessages(session.peerUid);
+    }
+
+    private void handleRemoteTransferPause(PeerSession session, String id) {
+        if (!FileTransferProtocol.isValidMessageId(id)) return;
+        Message message = messages.getMessage(id);
+        if (message == null || !session.peerUid.equals(message.peerUid)) return;
+        if (message.outgoing) {
+            TransferWaiter waiter = transferWaiters.get(id);
+            if (waiter != null) waiter.pause();
+        } else {
+            pauseIncomingFile(session, id);
+        }
+        messages.updateStatus(id, "paused");
+        notifyMessages(session.peerUid);
     }
 
     private void beginIncomingFile(PeerSession session, JSONObject json) {
@@ -1243,40 +1463,65 @@ public final class P2pEngine {
         String mime = json.optString("mime", "application/octet-stream");
         String kind = json.optString("kind", kindFromMime(mime));
         long size = json.optLong("size", -1L);
-        if (!id.matches("[A-Za-z0-9_-]{1,80}") || size < 0 || size > MAX_FILE_BYTES) return;
+        long requestedOffset = json.optLong("offset", 0L);
+        if (!FileTransferProtocol.isValidMessageId(id) || size <= 0L || size > MAX_FILE_BYTES) return;
+        if (name.length() > 120) name = name.substring(0, 120);
+        name = new File(name).getName().replaceAll("[\\r\\n]", "_");
+        if (mime.length() > 200) mime = "application/octet-stream";
+        if (!kind.matches("image|video|video_note|audio|voice|file")) kind = kindFromMime(mime);
         try {
+            Message existing = messages.getMessage(id);
+            if (existing != null && (existing.outgoing || !session.peerUid.equals(existing.peerUid)
+                    || existing.transferSize != size)) return;
+            if (existing != null && "received".equals(existing.status)
+                    && existing.filePath != null && new File(existing.filePath).isFile()
+                    && new File(existing.filePath).length() == size) {
+                sendJson(session, transferControl("file_resume", id, size, false));
+                return;
+            }
             File directory = new File(appContext.getFilesDir(), "media");
             if (!directory.exists() && !directory.mkdirs()) throw new IOException("Не удалось создать каталог медиа");
             File partial = new File(directory, "incoming_" + id + ".part");
-            IncomingFile old = session.incomingFile;
-            if (old != null) {
-                old.closeQuietly();
-                //noinspection ResultOfMethodCallIgnored
-                old.partial.delete();
-                messages.updateStatus(old.id, "failed");
+            IncomingFile old = session.incomingFiles.remove(id);
+            if (old != null) old.syncAndClose();
+            RandomAccessFile output = new RandomAccessFile(partial, "rw");
+            long safeOffset = FileTransferProtocol.normalizeResumeOffset(
+                    Math.min(requestedOffset, output.length()), size);
+            output.setLength(safeOffset);
+            output.seek(safeOffset);
+            IncomingFile incoming = new IncomingFile(id, partial, name, mime, kind, size, output, safeOffset);
+            session.incomingFiles.put(id, incoming);
+            if (existing == null) {
+                messages.insertMessage(new Message(id, session.peerUid, session.peerUid, kind, name,
+                        mime, partial.getAbsolutePath(), System.currentTimeMillis(), false, "receiving", size,
+                        safeOffset));
             }
-            FileOutputStream output = new FileOutputStream(partial, false);
-            IncomingFile incoming = new IncomingFile(id, partial, name, mime, kind, size, output);
-            session.incomingFile = incoming;
-            messages.insertMessage(new Message(id, session.peerUid, session.peerUid, kind, name,
-                    mime, partial.getAbsolutePath(), System.currentTimeMillis(), false, "receiving", size));
             messages.updateFilePath(id, partial, "receiving");
+            messages.updateTransferOffset(id, safeOffset);
+            sendJson(session, transferControl("file_resume", id, safeOffset, false));
             notifyMessages(session.peerUid);
         } catch (Exception e) {
-            Log.w(TAG, "Could not receive attachment", e);
+            Log.w(TAG, "Could not prepare resumable incoming attachment", e);
+            sendJson(session, transferControl("file_resume", id, 0L, false));
         }
     }
 
     private void receiveFileChunk(PeerSession session, byte[] frame) {
         FileTransferProtocol.Chunk chunk = FileTransferProtocol.decodeChunk(frame);
         if (chunk == null) return;
-        IncomingFile file = session.incomingFile;
-        if (file == null || !file.id.equals(chunk.id) || chunk.index != file.nextChunk) return;
+        IncomingFile file = session.incomingFiles.get(chunk.id);
+        if (file == null) return;
+        if (chunk.index < file.nextChunk) return;
+        if (chunk.index != file.nextChunk) {
+            sendJson(session, transferControl("file_ack", file.id, file.receivedBytes, false));
+            return;
+        }
         int payloadLength = chunk.payload.length;
         if (file.receivedBytes + payloadLength > file.expectedSize || file.receivedBytes + payloadLength > MAX_FILE_BYTES
                 || (file.receivedBytes + payloadLength < file.expectedSize && payloadLength != FILE_CHUNK_BYTES)) {
-            file.closeQuietly();
-            session.incomingFile = null;
+            session.incomingFiles.remove(file.id, file);
+            file.syncAndClose();
+            messages.updateTransferOffset(file.id, file.receivedBytes);
             messages.updateStatus(file.id, "failed");
             notifyMessages(session.peerUid);
             return;
@@ -1285,25 +1530,39 @@ public final class P2pEngine {
             file.output.write(chunk.payload);
             file.receivedBytes += payloadLength;
             file.nextChunk++;
+            if (file.nextChunk % FileTransferProtocol.ACK_WINDOW_CHUNKS == 0
+                    || file.receivedBytes == file.expectedSize) {
+                file.sync();
+                messages.updateTransferOffset(file.id, file.receivedBytes);
+                sendJsonWaiting(session, transferControl("file_ack", file.id, file.receivedBytes, false));
+                notifyMessages(session.peerUid);
+            }
         } catch (IOException e) {
-            file.closeQuietly();
-            session.incomingFile = null;
-            messages.updateStatus(file.id, "failed");
+            session.incomingFiles.remove(file.id, file);
+            file.syncAndClose();
+            messages.updateTransferOffset(file.id, file.receivedBytes);
+            messages.updateStatus(file.id, "paused");
             notifyMessages(session.peerUid);
         }
     }
 
     private void finishIncomingFile(PeerSession session, String id) {
-        IncomingFile incoming = session.incomingFile;
-        if (incoming == null || !incoming.id.equals(id)) return;
-        session.incomingFile = null;
+        if (!FileTransferProtocol.isValidMessageId(id)) return;
+        IncomingFile incoming = session.incomingFiles.remove(id);
+        if (incoming == null) {
+            Message existing = messages.getMessage(id);
+            if (existing != null && !existing.outgoing && session.peerUid.equals(existing.peerUid)
+                    && "received".equals(existing.status)) {
+                sendJson(session, transferControl("file_ack", id, existing.transferSize, true));
+            }
+            return;
+        }
         try {
-            incoming.output.flush();
-            incoming.output.close();
+            incoming.syncAndClose();
             if (incoming.receivedBytes != incoming.expectedSize) {
-                messages.updateStatus(id, "failed");
-                //noinspection ResultOfMethodCallIgnored
-                incoming.partial.delete();
+                messages.updateTransferOffset(id, incoming.receivedBytes);
+                messages.updateStatus(id, "paused");
+                sendJson(session, transferControl("file_ack", id, incoming.receivedBytes, false));
             } else {
                 String extension = extensionForMime(incoming.mime);
                 File target = new File(incoming.partial.getParentFile(), "received_" + id + extension);
@@ -1311,15 +1570,16 @@ public final class P2pEngine {
                     target.delete();
                 if (!incoming.partial.renameTo(target)) throw new IOException("Не удалось завершить файл");
                 messages.updateFilePath(id, target, "received");
-                JSONObject ack = new JSONObject().put("type", "file_ack").put("id", id);
-                sendJson(session, ack);
+                messages.updateTransferOffset(id, incoming.expectedSize);
+                sendJson(session, transferControl("file_ack", id, incoming.expectedSize, true));
                 if (appContext instanceof AppKernel && !((AppKernel) appContext).shouldSuppressNotification(session.peerUid)) {
                     MessageNotifications.showMessage(appContext, session.peerUid, "Получен файл: " + incoming.name);
                 }
             }
         } catch (Exception e) {
             Log.w(TAG, "Could not finish received attachment", e);
-            messages.updateStatus(id, "failed");
+            messages.updateTransferOffset(id, incoming.receivedBytes);
+            messages.updateStatus(id, "paused");
         }
         notifyMessages(session.peerUid);
     }
@@ -1428,12 +1688,13 @@ public final class P2pEngine {
         final String mime;
         final String kind;
         final long expectedSize;
-        final FileOutputStream output;
-        int nextChunk;
-        long receivedBytes;
+        final RandomAccessFile output;
+        volatile int nextChunk;
+        volatile long receivedBytes;
+        private boolean closed;
 
         IncomingFile(String id, File partial, String name, String mime, String kind, long expectedSize,
-                     FileOutputStream output) {
+                     RandomAccessFile output, long resumeOffset) {
             this.id = id;
             this.partial = partial;
             this.name = new File(name).getName();
@@ -1441,10 +1702,89 @@ public final class P2pEngine {
             this.kind = kind;
             this.expectedSize = expectedSize;
             this.output = output;
+            this.receivedBytes = resumeOffset;
+            this.nextChunk = (int) (resumeOffset / FILE_CHUNK_BYTES);
         }
 
-        void closeQuietly() {
+        synchronized void writeChunk(byte[] bytes) throws IOException {
+            if (closed) throw new IOException("Transfer file is closed");
+            output.write(bytes);
+            receivedBytes += bytes.length;
+            nextChunk++;
+        }
+
+        synchronized void sync() throws IOException {
+            if (closed) throw new IOException("Transfer file is closed");
+            output.getFD().sync();
+        }
+
+        synchronized void syncAndClose() {
+            if (closed) return;
+            try { output.getFD().sync(); } catch (IOException ignored) { }
             try { output.close(); } catch (IOException ignored) { }
+            closed = true;
+        }
+    }
+
+    private static final class TransferWaiter {
+        private long resumeOffset = -1L;
+        private long acknowledgedOffset = -1L;
+        private boolean resumeReceived;
+        private boolean complete;
+        private boolean paused;
+
+        synchronized void acceptResume(long offset) {
+            if (offset < 0L) return;
+            resumeOffset = offset;
+            resumeReceived = true;
+            notifyAll();
+        }
+
+        synchronized void acceptAcknowledgement(long offset, boolean isComplete) {
+            if (offset >= 0L) acknowledgedOffset = Math.max(acknowledgedOffset, offset);
+            complete |= isComplete;
+            notifyAll();
+        }
+
+        synchronized void pause() {
+            paused = true;
+            notifyAll();
+        }
+
+        synchronized boolean isPaused() {
+            return paused;
+        }
+
+        synchronized boolean awaitResume(PeerSession session, long timeoutMs) throws InterruptedException {
+            long deadline = System.currentTimeMillis() + timeoutMs;
+            while (!resumeReceived && !paused && session.isOpen()) {
+                long remaining = deadline - System.currentTimeMillis();
+                if (remaining <= 0L) return false;
+                wait(Math.min(remaining, 250L));
+            }
+            return resumeReceived && !paused && session.isOpen();
+        }
+
+        synchronized boolean awaitAcknowledgement(PeerSession session, long targetOffset, long timeoutMs)
+                throws InterruptedException {
+            long deadline = System.currentTimeMillis() + timeoutMs;
+            while (acknowledgedOffset < targetOffset && !paused && session.isOpen()) {
+                long remaining = deadline - System.currentTimeMillis();
+                if (remaining <= 0L) return false;
+                wait(Math.min(remaining, 250L));
+            }
+            return acknowledgedOffset >= targetOffset && !paused && session.isOpen();
+        }
+
+        synchronized boolean awaitComplete(PeerSession session, long fileSize, long timeoutMs)
+                throws InterruptedException {
+            long deadline = System.currentTimeMillis() + timeoutMs;
+            while ((!complete || acknowledgedOffset < fileSize) && !paused && session.isOpen()) {
+                long remaining = deadline - System.currentTimeMillis();
+                if (remaining <= 0L) return false;
+                wait(Math.min(remaining, 250L));
+            }
+            return complete && acknowledgedOffset >= fileSize && !paused && session.isOpen();
         }
     }
 
@@ -1467,7 +1807,9 @@ public final class P2pEngine {
         volatile PeerConnection peerConnection;
         volatile DataChannel dataChannel;
         volatile FirebaseRestClient.StreamHandle callStream;
-        volatile IncomingFile incomingFile;
+        final Map<String, IncomingFile> incomingFiles = new ConcurrentHashMap<>();
+        final Semaphore transferPermits = new Semaphore(MAX_PARALLEL_FILE_TRANSFERS_PER_PEER);
+        volatile long transferRetryAfterMs;
 
         PeerSession(String id, String peerUid, boolean offerer) {
             this.id = id;
@@ -1493,13 +1835,11 @@ public final class P2pEngine {
             FirebaseRestClient.StreamHandle stream = callStream;
             callStream = null;
             if (stream != null) stream.close();
-            IncomingFile file = incomingFile;
-            incomingFile = null;
-            if (file != null) {
-                file.closeQuietly();
-                //noinspection ResultOfMethodCallIgnored
-                file.partial.delete();
-                messages.updateStatus(file.id, "failed");
+            for (IncomingFile file : new ArrayList<>(incomingFiles.values())) {
+                if (!incomingFiles.remove(file.id, file)) continue;
+                file.syncAndClose();
+                messages.updateTransferOffset(file.id, file.receivedBytes);
+                messages.updateStatus(file.id, "paused");
                 notifyMessages(peerUid);
             }
             DataChannel channel = dataChannel;

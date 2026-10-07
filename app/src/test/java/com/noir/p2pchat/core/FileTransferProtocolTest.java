@@ -41,5 +41,10 @@ public final class FileTransferProtocolTest {
                 FileTransferProtocol.normalizeResumeOffset(FileTransferProtocol.CHUNK_BYTES * 2L + 99L, size));
         assertEquals(size, FileTransferProtocol.normalizeResumeOffset(size + 1_000L, size));
         assertEquals(0L, FileTransferProtocol.normalizeResumeOffset(-10L, size));
+        assertTrue(FileTransferProtocol.isValidResumeOffset(0L, size));
+        assertTrue(FileTransferProtocol.isValidResumeOffset(FileTransferProtocol.CHUNK_BYTES * 2L, size));
+        assertTrue(FileTransferProtocol.isValidResumeOffset(size, size));
+        assertTrue(!FileTransferProtocol.isValidResumeOffset(FileTransferProtocol.CHUNK_BYTES + 1L, size));
+        assertTrue(!FileTransferProtocol.isValidResumeOffset(size + 1L, size));
     }
 }

@@ -7,6 +7,7 @@ import java.nio.charset.StandardCharsets;
 public final class FileTransferProtocol {
     public static final int MAX_FILE_BYTES = 50 * 1024 * 1024;
     public static final int CHUNK_BYTES = 15_000;
+    public static final int ACK_WINDOW_CHUNKS = 4;
     public static final int HEADER_BYTES = 41;
     private static final int ID_BYTES = 36;
 
@@ -46,6 +47,11 @@ public final class FileTransferProtocol {
         byte[] payload = new byte[payloadLength];
         System.arraycopy(frame, HEADER_BYTES, payload, 0, payloadLength);
         return new Chunk(id, index, payload);
+    }
+
+    public static boolean isValidResumeOffset(long offset, long fileSize) {
+        return fileSize > 0L && fileSize <= MAX_FILE_BYTES && offset >= 0L && offset <= fileSize
+                && (offset == fileSize || offset % CHUNK_BYTES == 0L);
     }
 
     /** Aligns a peer-provided resume offset to a complete chunk and clamps it to the file size. */

@@ -498,10 +498,31 @@ public final class ChatActivity extends ComponentActivity implements P2pEngine.L
         parent.addView(card, new LinearLayout.LayoutParams(-1, -2));
         card.setOnClickListener(v -> openAttachment(message));
         parent.setOnClickListener(v -> openAttachment(message));
+        addTransferControl(parent, message);
+    }
+
+    private void addTransferControl(LinearLayout parent, MessageStore.Message message) {
+        boolean active = "pending".equals(message.status) || "receiving".equals(message.status);
+        boolean resumable = "paused".equals(message.status) || "failed".equals(message.status);
+        if (message.transferSize <= 0L || (!active && !resumable)) return;
+        TextView control = Ui.text(this, (resumable ? "▶ Продолжить" : "Ⅱ Пауза передачи"), 11, Ui.ACCENT);
+        control.setGravity(Gravity.CENTER);
+        control.setPadding(Ui.dp(this, 10), Ui.dp(this, 6), Ui.dp(this, 10), Ui.dp(this, 6));
+        control.setBackground(Ui.rounded(Color.rgb(42, 36, 59), Ui.dp(this, 12), Ui.STROKE));
+        control.setClickable(true);
+        control.setFocusable(true);
+        LinearLayout.LayoutParams params = new LinearLayout.LayoutParams(-2, -2);
+        params.topMargin = Ui.dp(this, 6);
+        parent.addView(control, params);
+        control.setOnClickListener(v -> {
+            if (resumable) engine.resumeTransfer(peerUid, message.id);
+            else engine.pauseTransfer(message.id);
+            renderMessages(false);
+        });
     }
 
     private void addInlineImagePreview(LinearLayout parent, MessageStore.Message message) {
-        if (message.filePath == null || "receiving".equals(message.status)) return;
+        if (message.filePath == null || (!message.outgoing && !"received".equals(message.status))) return;
         File file = new File(message.filePath);
         if (!file.isFile() || file.length() <= 0L) return;
 
@@ -564,13 +585,17 @@ public final class ChatActivity extends ComponentActivity implements P2pEngine.L
     }
 
     private String attachmentSubtitle(MessageStore.Message message) {
-        if ("receiving".equals(message.status)) return "Получение файла…";
-        if ("failed".equals(message.status)) return "Передача не завершена";
-        String size = formatBytes(message.transferSize);
-        if (message.outgoing && "pending".equals(message.status)) return "В очереди · " + size;
-        if (message.outgoing && "sent".equals(message.status)) return "Отправлено · " + size;
-        if (message.outgoing && "delivered".equals(message.status)) return "Доставлено · " + size;
-        return size;
+        String progress = formatBytes(Math.min(message.transferOffset, message.transferSize))
+                + " / " + formatBytes(message.transferSize);
+        if ("receiving".equals(message.status)) return "Получение · " + progress;
+        if ("paused".equals(message.status)) return "Пауза · " + progress;
+        if ("failed".equals(message.status)) return "Прервано · " + progress + " · можно продолжить";
+        if (message.outgoing && "pending".equals(message.status)) {
+            return (message.transferOffset > 0 ? "Отправка · " + progress : "В очереди") + " · " + formatBytes(message.transferSize);
+        }
+        if (message.outgoing && "sent".equals(message.status)) return "Отправлено · " + formatBytes(message.transferSize);
+        if (message.outgoing && "delivered".equals(message.status)) return "Доставлено · " + formatBytes(message.transferSize);
+        return formatBytes(message.transferSize);
     }
 
     private static String attachmentGlyph(String kind) {
@@ -586,6 +611,8 @@ public final class ChatActivity extends ComponentActivity implements P2pEngine.L
 
     private static String messageStatus(String status) {
         if ("pending".equals(status)) return "в очереди";
+        if ("paused".equals(status)) return "пауза";
+        if ("receiving".equals(status)) return "получение";
         if ("sent".equals(status)) return "отправлено";
         if ("delivered".equals(status)) return "доставлено";
         if ("failed".equals(status)) return "ошибка";
@@ -593,8 +620,9 @@ public final class ChatActivity extends ComponentActivity implements P2pEngine.L
     }
 
     private void openAttachment(MessageStore.Message message) {
-        if ("receiving".equals(message.status)) {
-            Toast.makeText(this, "Файл ещё загружается", Toast.LENGTH_SHORT).show();
+        if ("receiving".equals(message.status) || "paused".equals(message.status)
+                || (!message.outgoing && !"received".equals(message.status))) {
+            Toast.makeText(this, "Файл ещё не получен полностью", Toast.LENGTH_SHORT).show();
             return;
         }
         if (message.filePath == null) return;

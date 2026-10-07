@@ -13,7 +13,7 @@ import java.util.List;
 /** Local-only conversation and message index. Message content never passes through Firebase. */
 public final class MessageStore extends SQLiteOpenHelper {
     private static final String DB_NAME = "noir_chat.db";
-    private static final int DB_VERSION = 2;
+    private static final int DB_VERSION = 3;
     private final MessageContentCipher contentCipher = new MessageContentCipher();
 
     public MessageStore(Context context) {
@@ -25,7 +25,8 @@ public final class MessageStore extends SQLiteOpenHelper {
         db.execSQL("CREATE TABLE contacts (uid TEXT PRIMARY KEY, added_at INTEGER NOT NULL)");
         db.execSQL("CREATE TABLE messages (id TEXT PRIMARY KEY, peer_uid TEXT NOT NULL, sender_uid TEXT NOT NULL, " +
                 "kind TEXT NOT NULL, body TEXT NOT NULL, mime TEXT, file_path TEXT, created_at INTEGER NOT NULL, " +
-                "outgoing INTEGER NOT NULL, status TEXT NOT NULL, transfer_size INTEGER NOT NULL DEFAULT 0)");
+                "outgoing INTEGER NOT NULL, status TEXT NOT NULL, transfer_size INTEGER NOT NULL DEFAULT 0, " +
+                "transfer_offset INTEGER NOT NULL DEFAULT 0)");
         db.execSQL("CREATE INDEX messages_peer_created ON messages(peer_uid, created_at)");
         db.execSQL("CREATE INDEX messages_pending ON messages(peer_uid, outgoing, status, created_at)");
     }
@@ -33,6 +34,9 @@ public final class MessageStore extends SQLiteOpenHelper {
     @Override
     public void onUpgrade(SQLiteDatabase db, int oldVersion, int newVersion) {
         if (oldVersion < 2) encryptExistingMessageContent(db);
+        if (oldVersion < 3) {
+            db.execSQL("ALTER TABLE messages ADD COLUMN transfer_offset INTEGER NOT NULL DEFAULT 0");
+        }
     }
 
     private void encryptExistingMessageContent(SQLiteDatabase db) {
@@ -98,10 +102,16 @@ public final class MessageStore extends SQLiteOpenHelper {
         getWritableDatabase().update("messages", values, "id=?", new String[]{id});
     }
 
+    public synchronized void updateTransferOffset(String id, long offset) {
+        ContentValues values = new ContentValues();
+        values.put("transfer_offset", Math.max(0L, offset));
+        getWritableDatabase().update("messages", values, "id=?", new String[]{id});
+    }
+
     public synchronized List<Message> getMessages(String peerUid, int limit) {
         ArrayList<Message> items = new ArrayList<>();
         try (Cursor cursor = getReadableDatabase().rawQuery(
-                "SELECT id,peer_uid,sender_uid,kind,body,mime,file_path,created_at,outgoing,status,transfer_size " +
+                "SELECT id,peer_uid,sender_uid,kind,body,mime,file_path,created_at,outgoing,status,transfer_size,transfer_offset " +
                         "FROM messages WHERE peer_uid=? ORDER BY created_at DESC LIMIT ?",
                 new String[]{peerUid, Integer.toString(limit)})) {
             while (cursor.moveToNext()) items.add(readMessage(cursor, false));
@@ -113,7 +123,7 @@ public final class MessageStore extends SQLiteOpenHelper {
     public synchronized List<Message> getPending(String peerUid, int limit) {
         ArrayList<Message> items = new ArrayList<>();
         try (Cursor cursor = getReadableDatabase().rawQuery(
-                "SELECT id,peer_uid,sender_uid,kind,body,mime,file_path,created_at,outgoing,status,transfer_size " +
+                "SELECT id,peer_uid,sender_uid,kind,body,mime,file_path,created_at,outgoing,status,transfer_size,transfer_offset " +
                         "FROM messages WHERE peer_uid=? AND outgoing=1 AND status='pending' " +
                         "ORDER BY created_at ASC LIMIT ?",
                 new String[]{peerUid, Integer.toString(limit)})) {
@@ -124,7 +134,7 @@ public final class MessageStore extends SQLiteOpenHelper {
 
     public synchronized Message getMessage(String id) {
         try (Cursor cursor = getReadableDatabase().rawQuery(
-                "SELECT id,peer_uid,sender_uid,kind,body,mime,file_path,created_at,outgoing,status,transfer_size " +
+                "SELECT id,peer_uid,sender_uid,kind,body,mime,file_path,created_at,outgoing,status,transfer_size,transfer_offset " +
                         "FROM messages WHERE id=? LIMIT 1", new String[]{id})) {
             return cursor.moveToFirst() ? readMessage(cursor, false) : null;
         }
@@ -143,6 +153,7 @@ public final class MessageStore extends SQLiteOpenHelper {
         values.put("outgoing", message.outgoing ? 1 : 0);
         values.put("status", message.status);
         values.put("transfer_size", message.transferSize);
+        values.put("transfer_offset", message.transferOffset);
         return values;
     }
 
@@ -152,7 +163,7 @@ public final class MessageStore extends SQLiteOpenHelper {
         String mime = c.isNull(5) ? null : c.getString(5);
         return new Message(id, c.getString(1), c.getString(2), c.getString(3), body,
                 mime, c.isNull(6) ? null : c.getString(6), c.getLong(7),
-                c.getInt(8) != 0, c.getString(9), c.getLong(10));
+                c.getInt(8) != 0, c.getString(9), c.getLong(10), c.getLong(11));
     }
 
     private String decryptLocalField(String messageId, String field, String value, boolean failOnError) {
@@ -177,9 +188,16 @@ public final class MessageStore extends SQLiteOpenHelper {
         public final boolean outgoing;
         public final String status;
         public final long transferSize;
+        public final long transferOffset;
 
         public Message(String id, String peerUid, String senderUid, String kind, String body, String mime,
                        String filePath, long createdAt, boolean outgoing, String status, long transferSize) {
+            this(id, peerUid, senderUid, kind, body, mime, filePath, createdAt, outgoing, status, transferSize, 0L);
+        }
+
+        public Message(String id, String peerUid, String senderUid, String kind, String body, String mime,
+                       String filePath, long createdAt, boolean outgoing, String status, long transferSize,
+                       long transferOffset) {
             this.id = id;
             this.peerUid = peerUid;
             this.senderUid = senderUid;
@@ -191,6 +209,7 @@ public final class MessageStore extends SQLiteOpenHelper {
             this.outgoing = outgoing;
             this.status = status;
             this.transferSize = transferSize;
+            this.transferOffset = Math.max(0L, transferOffset);
         }
     }
 }
