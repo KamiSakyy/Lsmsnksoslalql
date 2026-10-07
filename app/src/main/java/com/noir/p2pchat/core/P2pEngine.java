@@ -2,7 +2,9 @@ package com.noir.p2pchat.core;
 
 import android.content.ContentResolver;
 import android.content.Context;
+import android.content.pm.PackageManager;
 import android.database.Cursor;
+import android.media.AudioManager;
 import android.net.Uri;
 import android.os.Handler;
 import android.os.Looper;
@@ -28,13 +30,30 @@ import org.signal.libsignal.protocol.message.CiphertextMessage;
 import org.signal.libsignal.protocol.message.PreKeySignalMessage;
 import org.signal.libsignal.protocol.message.SignalMessage;
 import org.signal.libsignal.protocol.state.PreKeyBundle;
+import org.webrtc.AudioSource;
+import org.webrtc.AudioTrack;
+import org.webrtc.Camera1Enumerator;
+import org.webrtc.Camera2Enumerator;
+import org.webrtc.CameraEnumerator;
+import org.webrtc.CameraVideoCapturer;
 import org.webrtc.DataChannel;
+import org.webrtc.DefaultVideoDecoderFactory;
+import org.webrtc.DefaultVideoEncoderFactory;
+import org.webrtc.EglBase;
 import org.webrtc.IceCandidate;
 import org.webrtc.MediaConstraints;
+import org.webrtc.MediaStream;
+import org.webrtc.MediaStreamTrack;
 import org.webrtc.PeerConnection;
 import org.webrtc.PeerConnectionFactory;
+import org.webrtc.RtpReceiver;
+import org.webrtc.RtpTransceiver;
 import org.webrtc.SdpObserver;
 import org.webrtc.SessionDescription;
+import org.webrtc.SurfaceTextureHelper;
+import org.webrtc.VideoCapturer;
+import org.webrtc.VideoSource;
+import org.webrtc.VideoTrack;
 
 import java.io.File;
 import java.io.FileInputStream;
@@ -111,6 +130,8 @@ public final class P2pEngine {
     private final CopyOnWriteArraySet<Listener> listeners = new CopyOnWriteArraySet<>();
     private final Map<String, PeerSession> sessionsByPeer = new ConcurrentHashMap<>();
     private final Map<String, PeerSession> sessionsById = new ConcurrentHashMap<>();
+    private final Map<String, MediaCallSession> mediaCallsById = new ConcurrentHashMap<>();
+    private final Map<String, MediaCallSession> mediaCallsByPeer = new ConcurrentHashMap<>();
     private final Map<String, Object> signalLocks = new ConcurrentHashMap<>();
     private final Set<String> signalReadyPeers = ConcurrentHashMap.newKeySet();
     private final Set<String> activeFileTransfers = ConcurrentHashMap.newKeySet();
@@ -121,12 +142,15 @@ public final class P2pEngine {
     private final ConcurrentLinkedQueue<QueuedText> pendingTexts = new ConcurrentLinkedQueue<>();
     private final AtomicInteger pendingTextCount = new AtomicInteger();
     private final Set<String> pendingInviteDeclines = ConcurrentHashMap.newKeySet();
+    private final Set<String> pendingMediaCallAccepts = ConcurrentHashMap.newKeySet();
+    private final Set<String> pendingMediaCallDeclines = ConcurrentHashMap.newKeySet();
     private final Map<String, AtomicInteger> reconnectAttempts = new ConcurrentHashMap<>();
     private final AtomicBoolean started = new AtomicBoolean(false);
     private final AtomicBoolean manuallyStopped = new AtomicBoolean(false);
     private final AtomicBoolean inboxReadRunning = new AtomicBoolean(false);
     private final AtomicBoolean inboxReadRequested = new AtomicBoolean(false);
     private volatile PeerConnectionFactory factory;
+    private volatile EglBase eglBase;
     private volatile EncryptedSignalProtocolStore signalStore;
     private volatile String uid;
     private volatile String status = "Ожидание подключения к Firebase";
@@ -143,6 +167,11 @@ public final class P2pEngine {
         String currentUid = uid;
         if (currentUid != null) mainHandler.post(() -> listener.onIdentity(currentUid));
         mainHandler.post(() -> listener.onEngineStatus(status));
+        for (MediaCallSession call : new ArrayList<>(mediaCallsById.values())) {
+            if (!call.closed.get()) {
+                mainHandler.post(() -> listener.onMediaCallState(call.id, call.peerUid, call.video, call.state));
+            }
+        }
     }
 
     public void removeListener(Listener listener) {
@@ -161,6 +190,191 @@ public final class P2pEngine {
         ArrayList<String> result = new ArrayList<>(pendingInvites.keySet());
         Collections.sort(result);
         return result;
+    }
+
+    public String startMediaCall(String peerUid, boolean video) {
+        if (!isValidUid(peerUid) || peerUid.equals(uid) || uid == null || factory == null) {
+            setStatus("Подождите, пока приложение подключится к Firebase");
+            return null;
+        }
+        if (!messages.isContact(peerUid)) {
+            setStatus("Добавьте собеседника в контакты перед звонком");
+            return null;
+        }
+        if (!mediaCallsById.isEmpty()) {
+            setStatus("Завершите текущий звонок, прежде чем начинать новый");
+            return null;
+        }
+        MediaCallSession call = new MediaCallSession(UUID.randomUUID().toString().replace("-", ""),
+                peerUid, video, true);
+        mediaCallsById.put(call.id, call);
+        mediaCallsByPeer.put(peerUid, call);
+        notifyMediaCallState(call, "calling");
+        ioExecutor.execute(() -> startOutgoingMediaCall(call));
+        scheduler.schedule(() -> {
+            if (!call.closed.get() && ("calling".equals(call.state) || "ringing".equals(call.state))) {
+                finishMediaCall(call, "no_answer", true);
+            }
+        }, 60, TimeUnit.SECONDS);
+        return call.id;
+    }
+
+    private void scheduleMediaConnectionTimeout(MediaCallSession call) {
+        scheduler.schedule(() -> {
+            if (!call.closed.get() && "connecting".equals(call.state)) {
+                failMediaCall(call, "Не удалось установить соединение звонка за отведённое время");
+            }
+        }, 45, TimeUnit.SECONDS);
+    }
+
+    public void acceptMediaCall(String callId) {
+        if (callId == null || !callId.matches("[A-Za-z0-9_-]{1,128}")) return;
+        pendingMediaCallDeclines.remove(callId);
+        MediaCallSession call = mediaCallsById.get(callId);
+        if (call == null) {
+            if (pendingMediaCallAccepts.add(callId)) {
+                scheduler.schedule(() -> pendingMediaCallAccepts.remove(callId), 90, TimeUnit.SECONDS);
+            }
+            start();
+            readInbox();
+            return;
+        }
+        if (call.outgoing || call.closed.get() || !"ringing".equals(call.state)) return;
+        pendingMediaCallAccepts.remove(callId);
+        notifyMediaCallState(call, "connecting");
+        scheduleMediaConnectionTimeout(call);
+        MessageNotifications.cancelIncomingCall(appContext, call.id);
+        ioExecutor.execute(() -> answerIncomingMediaCall(call));
+    }
+
+    public void declineMediaCall(String callId) {
+        if (callId == null || !callId.matches("[A-Za-z0-9_-]{1,128}")) return;
+        pendingMediaCallAccepts.remove(callId);
+        MediaCallSession call = mediaCallsById.get(callId);
+        if (call == null) {
+            if (pendingMediaCallDeclines.add(callId)) {
+                scheduler.schedule(() -> pendingMediaCallDeclines.remove(callId), 2, TimeUnit.MINUTES);
+            }
+            if (uid == null) start();
+            else deleteMediaCallRecord(callId);
+            return;
+        }
+        if (call.outgoing || call.closed.get()) return;
+        finishMediaCall(call, "declined", true);
+    }
+
+    private void deleteMediaCallRecord(String callId) {
+        if (uid == null) {
+            pendingMediaCallDeclines.add(callId);
+            start();
+            return;
+        }
+        String localUid = uid;
+        ioExecutor.execute(() -> {
+            try { firebase.delete("inbox/" + localUid + "/" + callId); }
+            catch (Exception e) { Log.w(TAG, "Could not remove declined call inbox entry", e); }
+            try { firebase.delete("calls/" + callId); }
+            catch (Exception e) { Log.w(TAG, "Could not reject call signaling record", e); }
+        });
+        MessageNotifications.cancelIncomingCall(appContext, callId);
+    }
+
+    public void endMediaCall(String callId) {
+        MediaCallSession call = mediaCallsById.get(callId);
+        if (call != null) finishMediaCall(call, "ended", true);
+    }
+
+    public String getMediaCallState(String callId) {
+        MediaCallSession call = mediaCallsById.get(callId);
+        return call == null ? "unknown" : call.state;
+    }
+
+    public String getMediaCallPeerUid(String callId) {
+        MediaCallSession call = mediaCallsById.get(callId);
+        return call == null ? null : call.peerUid;
+    }
+
+    public boolean isVideoCall(String callId) {
+        MediaCallSession call = mediaCallsById.get(callId);
+        return call != null && call.video;
+    }
+
+    public boolean isOutgoingMediaCall(String callId) {
+        MediaCallSession call = mediaCallsById.get(callId);
+        return call != null && call.outgoing;
+    }
+
+    public VideoTrack getLocalVideoTrack(String callId) {
+        MediaCallSession call = mediaCallsById.get(callId);
+        return call == null ? null : call.localVideoTrack;
+    }
+
+    public VideoTrack getRemoteVideoTrack(String callId) {
+        MediaCallSession call = mediaCallsById.get(callId);
+        return call == null ? null : call.remoteVideoTrack;
+    }
+
+    public EglBase.Context getEglBaseContext() {
+        EglBase current = eglBase;
+        return current == null ? null : current.getEglBaseContext();
+    }
+
+    public void setMediaCallMuted(String callId, boolean muted) {
+        MediaCallSession call = mediaCallsById.get(callId);
+        if (call != null) {
+            call.muted = muted;
+            if (call.localAudioTrack != null) call.localAudioTrack.setEnabled(!muted);
+        }
+    }
+
+    public void setMediaCallVideoEnabled(String callId, boolean enabled) {
+        MediaCallSession call = mediaCallsById.get(callId);
+        if (call == null || !call.video) return;
+        call.videoEnabled = enabled;
+        if (call.localVideoTrack != null) call.localVideoTrack.setEnabled(enabled);
+        CameraVideoCapturer capturer = call.cameraCapturer;
+        if (capturer != null) {
+            ioExecutor.execute(() -> {
+                if (call.closed.get() || call.cameraCapturer != capturer) return;
+                try {
+                    if (enabled) capturer.startCapture(640, 480, 24);
+                    else capturer.stopCapture();
+                } catch (InterruptedException e) {
+                    Thread.currentThread().interrupt();
+                } catch (Exception e) {
+                    Log.w(TAG, "Could not change local camera capture state", e);
+                }
+            });
+        }
+    }
+
+    public void setMediaCallSpeakerEnabled(String callId, boolean enabled) {
+        MediaCallSession call = mediaCallsById.get(callId);
+        AudioManager audioManager = (AudioManager) appContext.getSystemService(Context.AUDIO_SERVICE);
+        if (call == null || audioManager == null) return;
+        call.speakerEnabled = enabled;
+        call.speakerRouteSet = true;
+        if (!call.audioRouteChanged) return;
+        try {
+            audioManager.setMode(AudioManager.MODE_IN_COMMUNICATION);
+            audioManager.setSpeakerphoneOn(enabled);
+        } catch (RuntimeException e) {
+            Log.w(TAG, "Could not change call audio route", e);
+        }
+    }
+
+    public void switchMediaCallCamera(String callId) {
+        MediaCallSession call = mediaCallsById.get(callId);
+        CameraVideoCapturer capturer = call == null ? null : call.cameraCapturer;
+        if (capturer == null) return;
+        capturer.switchCamera(new CameraVideoCapturer.CameraSwitchHandler() {
+            @Override public void onCameraSwitchDone(boolean isFrontCamera) {
+                notifyMediaCallState(call, call.state);
+            }
+            @Override public void onCameraSwitchError(String errorDescription) {
+                Log.w(TAG, "Camera switch failed: " + errorDescription);
+            }
+        });
     }
 
     public void setActiveChatPeer(String peerUid) {
@@ -190,6 +404,7 @@ public final class P2pEngine {
                 processPendingOutbox();
                 drainPendingTexts();
                 processPendingInviteDeclines();
+                processPendingMediaCallActions();
             } catch (Exception e) {
                 Log.e(TAG, "Unable to start signaling", e);
                 started.set(false);
@@ -212,6 +427,7 @@ public final class P2pEngine {
         inboxStream = null;
         if (inbox != null) inbox.close();
         for (PeerSession session : sessionsByPeer.values()) session.close();
+        for (MediaCallSession call : mediaCallsById.values()) finishMediaCall(call, "ended", true);
         sessionsByPeer.clear();
         sessionsById.clear();
         signalReadyPeers.clear();
@@ -228,7 +444,12 @@ public final class P2pEngine {
             PeerConnectionFactory.InitializationOptions options =
                     PeerConnectionFactory.InitializationOptions.builder(appContext).createInitializationOptions();
             PeerConnectionFactory.initialize(options);
-            factory = PeerConnectionFactory.builder().createPeerConnectionFactory();
+            eglBase = EglBase.create();
+            EglBase.Context eglContext = eglBase.getEglBaseContext();
+            factory = PeerConnectionFactory.builder()
+                    .setVideoEncoderFactory(new DefaultVideoEncoderFactory(eglContext, true, true))
+                    .setVideoDecoderFactory(new DefaultVideoDecoderFactory(eglContext))
+                    .createPeerConnectionFactory();
         }
     }
 
@@ -407,6 +628,11 @@ public final class P2pEngine {
                 String caller = call.optString("caller", "");
                 String callee = call.optString("callee", "");
                 if (!expectedCaller.equals(caller) || !uid.equals(callee)) return;
+                if ("media".equals(call.optString("mode", ""))) {
+                    if (messages.isContact(caller)) receiveIncomingMediaCall(sessionId, caller, call);
+                    else rejectUnknownMediaCall(sessionId, caller);
+                    return;
+                }
                 if (!messages.isContact(caller)) {
                     Set<String> ids = pendingInvites.computeIfAbsent(caller, ignored -> ConcurrentHashMap.newKeySet());
                     if (ids.add(sessionId)) {
@@ -420,6 +646,511 @@ public final class P2pEngine {
                 Log.w(TAG, "Could not load signaling call " + sessionId, e);
             }
         });
+    }
+
+    private void receiveIncomingMediaCall(String callId, String callerUid, JSONObject callJson) {
+        MediaCallSession existing = mediaCallsById.get(callId);
+        if (existing != null) return;
+        if (!mediaCallsById.isEmpty()) {
+            rejectUnknownMediaCall(callId, callerUid);
+            return;
+        }
+        long createdAt = callJson.optLong("createdAt", 0L);
+        if (createdAt <= 0L || System.currentTimeMillis() - createdAt > TimeUnit.SECONDS.toMillis(60)
+                || createdAt > System.currentTimeMillis() + TimeUnit.MINUTES.toMillis(2)) {
+            rejectUnknownMediaCall(callId, callerUid);
+            return;
+        }
+        JSONObject offer = callJson.optJSONObject("offer");
+        String encryptedOffer = offer == null ? "" : offer.optString("sdp", "");
+        boolean video = "video".equals(callJson.optString("media", "audio"));
+        if (offer == null || !"offer".equals(offer.optString("type", ""))
+                || encryptedOffer.isEmpty() || encryptedOffer.length() > 24_000) {
+            rejectUnknownMediaCall(callId, callerUid);
+            return;
+        }
+        MediaCallSession incoming = new MediaCallSession(callId, callerUid, video, false);
+        incoming.encryptedOffer = encryptedOffer;
+        incoming.createdAt = createdAt;
+        mediaCallsById.put(callId, incoming);
+        mediaCallsByPeer.put(callerUid, incoming);
+        notifyMediaCallState(incoming, "ringing");
+        mainHandler.post(() -> {
+            for (Listener listener : listeners) listener.onIncomingMediaCall(callId, callerUid, video);
+        });
+        MessageNotifications.showIncomingCall(appContext, callerUid, callId, video);
+        watchMediaSignaling(incoming);
+        if (pendingMediaCallDeclines.remove(callId)) {
+            declineMediaCall(callId);
+            return;
+        }
+        if (pendingMediaCallAccepts.contains(callId)) {
+            acceptMediaCall(callId);
+            return;
+        }
+        long remainingRingMs = Math.max(1_000L,
+                TimeUnit.SECONDS.toMillis(60) - Math.max(0L, System.currentTimeMillis() - createdAt));
+        scheduler.schedule(() -> {
+            if (!incoming.closed.get() && "ringing".equals(incoming.state)) finishMediaCall(incoming, "missed", true);
+        }, remainingRingMs, TimeUnit.MILLISECONDS);
+    }
+
+    private void rejectUnknownMediaCall(String callId, String callerUid) {
+        if (uid == null) return;
+        String localUid = uid;
+        ioExecutor.execute(() -> {
+            try { firebase.delete("inbox/" + localUid + "/" + callId); }
+            catch (Exception e) { Log.w(TAG, "Could not remove an untrusted media-call invite", e); }
+            try { firebase.delete("calls/" + callId); }
+            catch (Exception e) { Log.w(TAG, "Could not reject an untrusted media call", e); }
+        });
+    }
+
+    private void startOutgoingMediaCall(MediaCallSession call) {
+        try {
+            ensureSignalSession(call.peerUid);
+            if (call.closed.get()) return;
+            initializeWebRtc();
+            createMediaPeerConnection(call);
+            addLocalCallTracks(call);
+            call.peerConnection.createOffer(new SdpObserverAdapter() {
+                @Override public void onCreateSuccess(SessionDescription offer) {
+                    if (call.closed.get()) return;
+                    PeerConnection pc = call.peerConnection;
+                    if (pc == null) return;
+                    pc.setLocalDescription(new SdpObserverAdapter() {
+                        @Override public void onSetSuccess() {
+                            if (!call.closed.get()) publishMediaOffer(call, offer);
+                        }
+                        @Override public void onSetFailure(String error) {
+                            if (!call.closed.get()) failMediaCall(call, "Не удалось установить SDP звонка: " + error);
+                        }
+                    }, offer);
+                }
+                @Override public void onCreateFailure(String error) {
+                    if (!call.closed.get()) failMediaCall(call, "Не удалось создать SDP звонка: " + error);
+                }
+            }, mediaCallConstraints(call));
+        } catch (Exception e) {
+            Log.e(TAG, "Could not start a WebRTC media call", e);
+            failMediaCall(call, "Не удалось начать звонок: " + safeError(e));
+        }
+    }
+
+    private void answerIncomingMediaCall(MediaCallSession call) {
+        try {
+            JSONObject offerJson = new JSONObject(new String(decryptCallSignal(call.peerUid, call.encryptedOffer),
+                    StandardCharsets.UTF_8));
+            SessionDescription offer = sessionDescriptionFromJson(offerJson);
+            if (offer.type != SessionDescription.Type.OFFER) throw new IOException("Некорректное Signal SDP-предложение");
+            call.signalReady = true;
+            initializeWebRtc();
+            createMediaPeerConnection(call);
+            addLocalCallTracks(call);
+            call.remoteDescriptionStarted.set(true);
+            call.peerConnection.setRemoteDescription(new SdpObserverAdapter() {
+                @Override public void onSetSuccess() {
+                    if (call.closed.get()) return;
+                    markMediaRemoteDescriptionReady(call);
+                    PeerConnection pc = call.peerConnection;
+                    if (pc == null) return;
+                    pc.createAnswer(new SdpObserverAdapter() {
+                        @Override public void onCreateSuccess(SessionDescription answer) {
+                            if (call.closed.get()) return;
+                            PeerConnection current = call.peerConnection;
+                            if (current == null) return;
+                            current.setLocalDescription(new SdpObserverAdapter() {
+                                @Override public void onSetSuccess() {
+                                    if (!call.closed.get()) publishMediaAnswer(call, answer);
+                                }
+                                @Override public void onSetFailure(String error) {
+                                    if (!call.closed.get()) failMediaCall(call, "Не удалось установить ответ звонка: " + error);
+                                }
+                            }, answer);
+                        }
+                        @Override public void onCreateFailure(String error) {
+                            if (!call.closed.get()) failMediaCall(call, "Не удалось создать ответ звонка: " + error);
+                        }
+                    }, mediaCallConstraints(call));
+                }
+                @Override public void onSetFailure(String error) {
+                    if (!call.closed.get()) failMediaCall(call, "Не удалось принять Signal SDP: " + error);
+                }
+            }, offer);
+            refreshMediaCall(call);
+        } catch (Exception e) {
+            Log.e(TAG, "Could not accept a WebRTC media call", e);
+            failMediaCall(call, "Не удалось принять звонок: " + safeError(e));
+        }
+    }
+
+    private void createMediaPeerConnection(MediaCallSession call) throws IOException {
+        PeerConnectionFactory currentFactory = factory;
+        if (currentFactory == null) throw new IOException("WebRTC не инициализирован");
+        PeerConnection.RTCConfiguration configuration = new PeerConnection.RTCConfiguration(iceServers());
+        configuration.sdpSemantics = PeerConnection.SdpSemantics.UNIFIED_PLAN;
+        call.peerConnection = currentFactory.createPeerConnection(configuration, new PeerConnection.Observer() {
+            @Override public void onSignalingChange(PeerConnection.SignalingState state) { }
+            @Override public void onIceConnectionChange(PeerConnection.IceConnectionState state) {
+                if (call.closed.get()) return;
+                if (state == PeerConnection.IceConnectionState.CONNECTED
+                        || state == PeerConnection.IceConnectionState.COMPLETED) {
+                    notifyMediaCallState(call, "connected");
+                } else if (state == PeerConnection.IceConnectionState.DISCONNECTED) {
+                    notifyMediaCallState(call, "reconnecting");
+                    scheduler.schedule(() -> {
+                        PeerConnection current = call.peerConnection;
+                        if (!call.closed.get() && current != null
+                                && current.iceConnectionState() == PeerConnection.IceConnectionState.DISCONNECTED) {
+                            failMediaCall(call, "Связь звонка потеряна");
+                        }
+                    }, 15, TimeUnit.SECONDS);
+                } else if (state == PeerConnection.IceConnectionState.FAILED) {
+                    failMediaCall(call, "Не удалось установить медиа-соединение");
+                }
+            }
+            @Override public void onIceConnectionReceivingChange(boolean receiving) { }
+            @Override public void onIceGatheringChange(PeerConnection.IceGatheringState state) { }
+            @Override public void onIceCandidate(IceCandidate candidate) { publishMediaCandidate(call, candidate); }
+            @Override public void onIceCandidatesRemoved(IceCandidate[] candidates) { }
+            @Override public void onAddStream(MediaStream stream) {
+                for (VideoTrack track : stream.videoTracks) setRemoteVideoTrack(call, track);
+            }
+            @Override public void onRemoveStream(MediaStream stream) {
+                for (VideoTrack track : stream.videoTracks) {
+                    track.setEnabled(false);
+                    if (call.remoteVideoTrack == track) call.remoteVideoTrack = null;
+                    notifyCallTracksChanged(call);
+                }
+            }
+            @Override public void onDataChannel(DataChannel channel) { channel.close(); channel.dispose(); }
+            @Override public void onRenegotiationNeeded() { }
+            @Override public void onAddTrack(RtpReceiver receiver, MediaStream[] streams) {
+                setRemoteMediaTrack(call, receiver.track());
+            }
+            @Override public void onTrack(RtpTransceiver transceiver) {
+                setRemoteMediaTrack(call, transceiver.getReceiver().track());
+            }
+            @Override public void onConnectionChange(PeerConnection.PeerConnectionState state) {
+                if (state == PeerConnection.PeerConnectionState.FAILED) failMediaCall(call, "WebRTC-соединение звонка завершилось с ошибкой");
+            }
+            @Override public void onStandardizedIceConnectionChange(PeerConnection.IceConnectionState state) { }
+        });
+        if (call.peerConnection == null) throw new IOException("WebRTC не создал медиа-соединение");
+    }
+
+    private void activateMediaAudioRoute(MediaCallSession call) {
+        AudioManager audioManager = (AudioManager) appContext.getSystemService(Context.AUDIO_SERVICE);
+        if (audioManager == null) return;
+        synchronized (call) {
+            if (call.audioRouteChanged) return;
+            call.previousAudioMode = audioManager.getMode();
+            call.previousSpeakerphone = audioManager.isSpeakerphoneOn();
+            call.audioRouteChanged = true;
+        }
+        try {
+            audioManager.setMode(AudioManager.MODE_IN_COMMUNICATION);
+            if (!call.speakerRouteSet) call.speakerEnabled = call.video;
+            audioManager.setSpeakerphoneOn(call.speakerEnabled);
+        } catch (RuntimeException e) {
+            Log.w(TAG, "Could not activate call audio route", e);
+        }
+    }
+
+    private void restoreMediaAudioRoute(MediaCallSession call) {
+        if (!call.audioRouteChanged) return;
+        AudioManager audioManager = (AudioManager) appContext.getSystemService(Context.AUDIO_SERVICE);
+        if (audioManager == null) return;
+        synchronized (call) {
+            if (!call.audioRouteChanged) return;
+            call.audioRouteChanged = false;
+        }
+        try {
+            audioManager.setSpeakerphoneOn(call.previousSpeakerphone);
+            audioManager.setMode(call.previousAudioMode);
+        } catch (RuntimeException e) {
+            Log.w(TAG, "Could not restore audio route after call", e);
+        }
+    }
+
+    private void addLocalCallTracks(MediaCallSession call) throws IOException {
+        if (appContext.checkSelfPermission(android.Manifest.permission.RECORD_AUDIO) != PackageManager.PERMISSION_GRANTED) {
+            throw new IOException("Нет разрешения на микрофон");
+        }
+        activateMediaAudioRoute(call);
+        PeerConnection pc = call.peerConnection;
+        if (pc == null) throw new IOException("Медиа-соединение не готово");
+        call.localAudioSource = factory.createAudioSource(new MediaConstraints());
+        call.localAudioTrack = factory.createAudioTrack("noir-audio-" + call.id, call.localAudioSource);
+        call.localAudioTrack.setEnabled(!call.muted);
+        pc.addTrack(call.localAudioTrack, Collections.singletonList("noir-call-" + call.id));
+        if (call.video) {
+            if (appContext.checkSelfPermission(android.Manifest.permission.CAMERA) != PackageManager.PERMISSION_GRANTED) {
+                throw new IOException("Нет разрешения на камеру");
+            }
+            CameraVideoCapturer capturer = createCameraCapturer();
+            if (capturer == null) throw new IOException("Камера не найдена");
+            EglBase currentEgl = eglBase;
+            if (currentEgl == null) throw new IOException("WebRTC EGL не инициализирован");
+            call.cameraCapturer = capturer;
+            call.surfaceTextureHelper = SurfaceTextureHelper.create("NoirCallCapture-" + call.id,
+                    currentEgl.getEglBaseContext());
+            call.localVideoSource = factory.createVideoSource(capturer.isScreencast());
+            capturer.initialize(call.surfaceTextureHelper, appContext, call.localVideoSource.getCapturerObserver());
+            if (call.videoEnabled) capturer.startCapture(640, 480, 24);
+            call.localVideoTrack = factory.createVideoTrack("noir-video-" + call.id, call.localVideoSource);
+            call.localVideoTrack.setEnabled(call.videoEnabled);
+            pc.addTrack(call.localVideoTrack, Collections.singletonList("noir-call-" + call.id));
+        }
+        notifyCallTracksChanged(call);
+    }
+
+    private CameraVideoCapturer createCameraCapturer() {
+        CameraEnumerator enumerator = Camera2Enumerator.isSupported(appContext)
+                ? new Camera2Enumerator(appContext) : new Camera1Enumerator(true);
+        for (String name : enumerator.getDeviceNames()) {
+            if (enumerator.isFrontFacing(name)) {
+                CameraVideoCapturer capturer = enumerator.createCapturer(name, null);
+                if (capturer != null) return capturer;
+            }
+        }
+        for (String name : enumerator.getDeviceNames()) {
+            CameraVideoCapturer capturer = enumerator.createCapturer(name, null);
+            if (capturer != null) return capturer;
+        }
+        return null;
+    }
+
+    private static MediaConstraints mediaCallConstraints(MediaCallSession call) {
+        MediaConstraints constraints = new MediaConstraints();
+        constraints.mandatory.add(new MediaConstraints.KeyValuePair("OfferToReceiveAudio", "true"));
+        constraints.mandatory.add(new MediaConstraints.KeyValuePair("OfferToReceiveVideo", call.video ? "true" : "false"));
+        return constraints;
+    }
+
+    private void setRemoteMediaTrack(MediaCallSession call, MediaStreamTrack track) {
+        if (track instanceof VideoTrack) setRemoteVideoTrack(call, (VideoTrack) track);
+    }
+
+    private void setRemoteVideoTrack(MediaCallSession call, VideoTrack track) {
+        if (call.closed.get() || track == null) return;
+        call.remoteVideoTrack = track;
+        track.setEnabled(true);
+        notifyCallTracksChanged(call);
+    }
+
+    private void publishMediaOffer(MediaCallSession call, SessionDescription offer) {
+        if (call.closed.get()) return;
+        ioExecutor.execute(() -> {
+            if (call.closed.get()) return;
+            try {
+                JSONObject record = new JSONObject()
+                        .put("caller", uid)
+                        .put("callee", call.peerUid)
+                        .put("createdAt", call.createdAt)
+                        .put("mode", "media")
+                        .put("media", call.video ? "video" : "audio");
+                byte[] clearSignal = sessionDescriptionJson(offer).toString().getBytes(StandardCharsets.UTF_8);
+                encryptAndPublishSignal(call.peerUid, clearSignal, encrypted -> {
+                    record.put("offer", new JSONObject().put("type", "offer").put("sdp", encrypted));
+                    firebase.put("calls/" + call.id, record);
+                    firebase.put("inbox/" + call.peerUid + "/" + call.id,
+                            new JSONObject().put("from", uid).put("createdAt", call.createdAt)
+                                    .put("callType", call.video ? "video" : "audio"));
+                });
+                call.signalReady = true;
+                call.published.set(true);
+                watchMediaSignaling(call);
+                notifyMediaCallState(call, "ringing");
+                flushMediaLocalCandidates(call);
+                refreshMediaCall(call);
+            } catch (Exception e) {
+                Log.e(TAG, "Could not publish Signal-encrypted media call offer", e);
+                failMediaCall(call, "Не удалось отправить приглашение на звонок: " + safeError(e));
+            }
+        });
+    }
+
+    private void publishMediaAnswer(MediaCallSession call, SessionDescription answer) {
+        if (call.closed.get()) return;
+        ioExecutor.execute(() -> {
+            if (call.closed.get()) return;
+            try {
+                byte[] clearSignal = sessionDescriptionJson(answer).toString().getBytes(StandardCharsets.UTF_8);
+                encryptAndPublishSignal(call.peerUid, clearSignal, encrypted ->
+                        firebase.patch("calls/" + call.id,
+                                new JSONObject().put("answer", new JSONObject().put("type", "answer").put("sdp", encrypted))));
+                call.published.set(true);
+                flushMediaLocalCandidates(call);
+                try { firebase.delete("inbox/" + uid + "/" + call.id); }
+                catch (Exception e) { Log.w(TAG, "Could not clear the answered media-call invite", e); }
+                refreshMediaCall(call);
+            } catch (Exception e) {
+                Log.e(TAG, "Could not publish Signal-encrypted media call answer", e);
+                failMediaCall(call, "Не удалось принять звонок: " + safeError(e));
+            }
+        });
+    }
+
+    private void watchMediaSignaling(MediaCallSession call) {
+        if (call.callStream != null || call.closed.get()) return;
+        call.callStream = firebase.stream("calls/" + call.id, new FirebaseRestClient.StreamListener() {
+            @Override public void onEvent(String event, JSONObject payload) {
+                refreshMediaCall(call);
+            }
+            @Override public void onStreamError(Exception error) {
+                Log.w(TAG, "Media-call signaling stream reconnecting", error);
+            }
+        });
+    }
+
+    private void refreshMediaCall(MediaCallSession call) {
+        if (call.closed.get()) return;
+        ioExecutor.execute(() -> {
+            try {
+                JSONObject record = firebase.get("calls/" + call.id);
+                if (record == null) {
+                    finishMediaCall(call, call.outgoing ? "declined" : "ended", false);
+                    return;
+                }
+                handleMediaCallSnapshot(call, record);
+            } catch (Exception e) {
+                Log.w(TAG, "Could not refresh media-call signaling", e);
+            }
+        });
+    }
+
+    private void handleMediaCallSnapshot(MediaCallSession call, JSONObject record) throws Exception {
+        if (call.closed.get()) return;
+        if (call.outgoing) {
+            JSONObject answer = record.optJSONObject("answer");
+            if (answer != null && call.remoteDescriptionStarted.compareAndSet(false, true)) {
+                String encrypted = answer.optString("sdp", "");
+                JSONObject clear = new JSONObject(new String(decryptCallSignal(call.peerUid, encrypted), StandardCharsets.UTF_8));
+                SessionDescription remoteAnswer = sessionDescriptionFromJson(clear);
+                if (remoteAnswer.type != SessionDescription.Type.ANSWER) throw new IOException("Invalid encrypted media answer");
+                notifyMediaCallState(call, "connecting");
+                scheduleMediaConnectionTimeout(call);
+                PeerConnection pc = call.peerConnection;
+                if (pc == null) return;
+                pc.setRemoteDescription(new SdpObserverAdapter() {
+                    @Override public void onSetSuccess() { markMediaRemoteDescriptionReady(call); }
+                    @Override public void onSetFailure(String error) { failMediaCall(call, "Не удалось принять ответ звонка: " + error); }
+                }, remoteAnswer);
+            }
+        }
+        if (!call.signalReady) return;
+        JSONObject allCandidates = record.optJSONObject("candidates");
+        JSONObject remoteCandidates = allCandidates == null ? null : allCandidates.optJSONObject(call.peerUid);
+        if (remoteCandidates == null) return;
+        ArrayList<String> keys = new ArrayList<>();
+        Iterator<String> iterator = remoteCandidates.keys();
+        while (iterator.hasNext() && keys.size() < 512) keys.add(iterator.next());
+        Collections.sort(keys);
+        for (String key : keys) {
+            if (call.remoteCandidateKeys.contains(key)) continue;
+            JSONObject encryptedCandidate = remoteCandidates.optJSONObject(key);
+            if (encryptedCandidate == null) continue;
+            String wire = encryptedCandidate.optString("candidate", "");
+            if (wire.isEmpty()) continue;
+            JSONObject clearCandidate = new JSONObject(new String(decryptCallSignal(call.peerUid, wire), StandardCharsets.UTF_8));
+            String candidateText = clearCandidate.optString("candidate", "");
+            if (candidateText.isEmpty() || candidateText.length() > 2048) continue;
+            IceCandidate candidate = new IceCandidate(
+                    clearCandidate.isNull("sdpMid") ? null : clearCandidate.optString("sdpMid", null),
+                    clearCandidate.optInt("sdpMLineIndex", 0), candidateText);
+            call.remoteCandidateKeys.add(key);
+            if (call.remoteDescriptionReady.get()) call.peerConnection.addIceCandidate(candidate);
+            else call.pendingRemoteCandidates.add(candidate);
+        }
+    }
+
+    private void markMediaRemoteDescriptionReady(MediaCallSession call) {
+        call.remoteDescriptionReady.set(true);
+        synchronized (call.pendingRemoteCandidates) {
+            PeerConnection pc = call.peerConnection;
+            if (pc != null) {
+                for (IceCandidate candidate : call.pendingRemoteCandidates) pc.addIceCandidate(candidate);
+            }
+            call.pendingRemoteCandidates.clear();
+        }
+        refreshMediaCall(call);
+    }
+
+    private void publishMediaCandidate(MediaCallSession call, IceCandidate candidate) {
+        if (call.closed.get()) return;
+        synchronized (call.pendingLocalCandidates) {
+            if (!call.published.get()) {
+                call.pendingLocalCandidates.add(candidate);
+                return;
+            }
+        }
+        ioExecutor.execute(() -> writeMediaCandidate(call, candidate));
+    }
+
+    private void flushMediaLocalCandidates(MediaCallSession call) {
+        ArrayList<IceCandidate> pending;
+        synchronized (call.pendingLocalCandidates) {
+            pending = new ArrayList<>(call.pendingLocalCandidates);
+            call.pendingLocalCandidates.clear();
+        }
+        for (IceCandidate candidate : pending) writeMediaCandidate(call, candidate);
+    }
+
+    private void writeMediaCandidate(MediaCallSession call, IceCandidate candidate) {
+        if (call.closed.get() || uid == null) return;
+        try {
+            JSONObject clear = new JSONObject()
+                    .put("sdpMid", candidate.sdpMid)
+                    .put("sdpMLineIndex", candidate.sdpMLineIndex)
+                    .put("candidate", candidate.sdp);
+            encryptAndPublishSignal(call.peerUid, clear.toString().getBytes(StandardCharsets.UTF_8), encrypted ->
+                    firebase.post("calls/" + call.id + "/candidates/" + uid,
+                            new JSONObject().put("sdpMLineIndex", 0).put("candidate", encrypted)));
+        } catch (Exception e) {
+            Log.w(TAG, "Could not publish an encrypted media ICE candidate", e);
+        }
+    }
+
+    private void failMediaCall(MediaCallSession call, String error) {
+        Log.e(TAG, error);
+        finishMediaCall(call, "failed", true);
+    }
+
+    private void finishMediaCall(MediaCallSession call, String terminalState, boolean deleteRemote) {
+        if (!mediaCallsById.remove(call.id, call)) return;
+        mediaCallsByPeer.remove(call.peerUid, call);
+        call.state = terminalState;
+        call.close();
+        restoreMediaAudioRoute(call);
+        MessageNotifications.cancelIncomingCall(appContext, call.id);
+        notifyMediaCallState(call, terminalState);
+        if (deleteRemote && uid != null) {
+            String calleeUid = call.outgoing ? call.peerUid : uid;
+            ioExecutor.execute(() -> {
+                try { firebase.delete("inbox/" + calleeUid + "/" + call.id); }
+                catch (Exception e) { Log.w(TAG, "Could not clean up the media-call inbox", e); }
+                try { firebase.delete("calls/" + call.id); }
+                catch (Exception e) { Log.w(TAG, "Could not clean up media-call signaling", e); }
+            });
+        }
+    }
+
+    private void notifyMediaCallState(MediaCallSession call, String state) {
+        call.state = state;
+        mainHandler.post(() -> {
+            for (Listener listener : listeners) listener.onMediaCallState(call.id, call.peerUid, call.video, state);
+        });
+    }
+
+    private void notifyCallTracksChanged(MediaCallSession call) {
+        mainHandler.post(() -> {
+            for (Listener listener : listeners) listener.onCallTracksChanged(call.id);
+        });
+    }
+
+    private static String safeError(Exception e) {
+        return e.getMessage() == null ? e.getClass().getSimpleName() : e.getMessage();
     }
 
     public void addContact(String peerUid) {
@@ -469,6 +1200,18 @@ public final class P2pEngine {
     private void processPendingInviteDeclines() {
         for (String peerUid : new ArrayList<>(pendingInviteDeclines)) {
             if (pendingInviteDeclines.remove(peerUid)) declineInvite(peerUid);
+        }
+    }
+
+    private void processPendingMediaCallActions() {
+        for (String callId : new ArrayList<>(pendingMediaCallDeclines)) {
+            MediaCallSession call = mediaCallsById.get(callId);
+            if (call != null) declineMediaCall(callId);
+            else deleteMediaCallRecord(callId);
+        }
+        for (String callId : new ArrayList<>(pendingMediaCallAccepts)) {
+            MediaCallSession call = mediaCallsById.get(callId);
+            if (call != null && pendingMediaCallAccepts.remove(callId)) acceptMediaCall(callId);
         }
     }
 
@@ -1343,13 +2086,27 @@ public final class P2pEngine {
     }
 
     private byte[] decryptSignalFrame(PeerSession session, SignalEnvelope.Envelope envelope) throws Exception {
+        return decryptSignalFrame(session.peerUid, envelope);
+    }
+
+    private byte[] decryptCallSignal(String peerUid, String wire) throws Exception {
+        if (wire == null || wire.isEmpty() || wire.length() > 32_000) throw new IOException("Invalid encrypted call signal");
+        final byte[] frame;
+        try { frame = Base64.getDecoder().decode(wire); }
+        catch (IllegalArgumentException e) { throw new IOException("Invalid call signal encoding", e); }
+        SignalEnvelope.Envelope envelope = SignalEnvelope.decode(frame);
+        if (envelope == null) throw new IOException("Malformed encrypted call signal");
+        return decryptSignalFrame(peerUid, envelope);
+    }
+
+    private byte[] decryptSignalFrame(String peerUid, SignalEnvelope.Envelope envelope) throws Exception {
         EncryptedSignalProtocolStore store = signalStore;
         String localUid = uid;
         if (store == null || localUid == null) throw new IOException("Signal identity is not initialized");
-        Object lock = signalLocks.computeIfAbsent(session.peerUid, ignored -> new Object());
+        Object lock = signalLocks.computeIfAbsent(peerUid, ignored -> new Object());
         synchronized (lock) {
             SignalProtocolAddress localAddress = new SignalProtocolAddress(localUid, store.getLocalDeviceId());
-            SignalProtocolAddress remoteAddress = new SignalProtocolAddress(session.peerUid, store.getLocalDeviceId());
+            SignalProtocolAddress remoteAddress = new SignalProtocolAddress(peerUid, store.getLocalDeviceId());
             SessionCipher cipher = new SessionCipher(store, localAddress, remoteAddress);
             if (envelope.type == CiphertextMessage.PREKEY_TYPE) {
                 return cipher.decrypt(new PreKeySignalMessage(envelope.ciphertext));
@@ -1358,6 +2115,28 @@ public final class P2pEngine {
                 return cipher.decrypt(new SignalMessage(envelope.ciphertext));
             }
             throw new IOException("Unsupported Signal message type");
+        }
+    }
+
+    private void encryptAndPublishSignal(String peerUid, byte[] cleartext, EncryptedSignalPublisher publisher)
+            throws Exception {
+        EncryptedSignalProtocolStore store = signalStore;
+        String localUid = uid;
+        if (store == null || localUid == null) throw new IOException("Signal identity is not initialized");
+        Object lock = signalLocks.computeIfAbsent(peerUid, ignored -> new Object());
+        synchronized (lock) {
+            SignalProtocolAddress localAddress = new SignalProtocolAddress(localUid, store.getLocalDeviceId());
+            SignalProtocolAddress remoteAddress = new SignalProtocolAddress(peerUid, store.getLocalDeviceId());
+            org.signal.libsignal.protocol.state.SessionRecord previous = store.loadSession(remoteAddress);
+            byte[] previousState = previous == null ? null : previous.serialize();
+            try {
+                CiphertextMessage ciphertext = new SessionCipher(store, localAddress, remoteAddress).encrypt(cleartext);
+                byte[] frame = SignalEnvelope.encode(ciphertext.getType(), ciphertext.serialize());
+                publisher.publish(Base64.getEncoder().encodeToString(frame));
+            } catch (Exception e) {
+                restoreSignalSession(store, remoteAddress, previousState);
+                throw e;
+            }
         }
     }
 
@@ -1671,6 +2450,10 @@ public final class P2pEngine {
         return "Firebase: " + (message.isEmpty() ? "ошибка подключения" : message);
     }
 
+    private interface EncryptedSignalPublisher {
+        void publish(String wire) throws Exception;
+    }
+
     private static final class QueuedText {
         final String peerUid;
         final String body;
@@ -1678,6 +2461,92 @@ public final class P2pEngine {
         QueuedText(String peerUid, String body) {
             this.peerUid = peerUid;
             this.body = body;
+        }
+    }
+
+    private static final class MediaCallSession {
+        final String id;
+        final String peerUid;
+        final boolean video;
+        final boolean outgoing;
+        final AtomicBoolean closed = new AtomicBoolean(false);
+        final AtomicBoolean published = new AtomicBoolean(false);
+        final AtomicBoolean remoteDescriptionStarted = new AtomicBoolean(false);
+        final AtomicBoolean answerStarted = new AtomicBoolean(false);
+        final AtomicBoolean remoteDescriptionReady = new AtomicBoolean(false);
+        final Set<String> remoteCandidateKeys = ConcurrentHashMap.newKeySet();
+        final List<IceCandidate> pendingLocalCandidates = Collections.synchronizedList(new ArrayList<>());
+        final List<IceCandidate> pendingRemoteCandidates = Collections.synchronizedList(new ArrayList<>());
+        volatile String state = "new";
+        volatile String encryptedOffer;
+        volatile long createdAt = System.currentTimeMillis();
+        volatile boolean signalReady;
+        volatile PeerConnection peerConnection;
+        volatile FirebaseRestClient.StreamHandle callStream;
+        volatile AudioSource localAudioSource;
+        volatile AudioTrack localAudioTrack;
+        volatile VideoSource localVideoSource;
+        volatile VideoTrack localVideoTrack;
+        volatile VideoTrack remoteVideoTrack;
+        volatile CameraVideoCapturer cameraCapturer;
+        volatile SurfaceTextureHelper surfaceTextureHelper;
+        volatile int previousAudioMode = AudioManager.MODE_NORMAL;
+        volatile boolean previousSpeakerphone;
+        volatile boolean audioRouteChanged;
+        volatile boolean speakerEnabled;
+        volatile boolean speakerRouteSet;
+        volatile boolean muted;
+        volatile boolean videoEnabled = true;
+
+        MediaCallSession(String id, String peerUid, boolean video, boolean outgoing) {
+            this.id = id;
+            this.peerUid = peerUid;
+            this.video = video;
+            this.outgoing = outgoing;
+        }
+
+        void close() {
+            if (!closed.compareAndSet(false, true)) return;
+            FirebaseRestClient.StreamHandle stream = callStream;
+            callStream = null;
+            if (stream != null) stream.close();
+            CameraVideoCapturer capturer = cameraCapturer;
+            cameraCapturer = null;
+            if (capturer != null) {
+                try { capturer.stopCapture(); } catch (InterruptedException e) { Thread.currentThread().interrupt(); }
+                catch (Exception ignored) { }
+                try { capturer.dispose(); } catch (Exception ignored) { }
+            }
+            PeerConnection pc = peerConnection;
+            peerConnection = null;
+            if (pc != null) {
+                try { pc.close(); } catch (Exception ignored) { }
+                try { pc.dispose(); } catch (Exception ignored) { }
+            }
+            VideoTrack remote = remoteVideoTrack;
+            remoteVideoTrack = null;
+            if (remote != null) try { remote.setEnabled(false); } catch (Exception ignored) { }
+            VideoTrack localVideo = localVideoTrack;
+            localVideoTrack = null;
+            if (localVideo != null) {
+                try { localVideo.setEnabled(false); } catch (Exception ignored) { }
+                try { localVideo.dispose(); } catch (Exception ignored) { }
+            }
+            AudioTrack audio = localAudioTrack;
+            localAudioTrack = null;
+            if (audio != null) {
+                try { audio.setEnabled(false); } catch (Exception ignored) { }
+                try { audio.dispose(); } catch (Exception ignored) { }
+            }
+            VideoSource videoSource = localVideoSource;
+            localVideoSource = null;
+            if (videoSource != null) try { videoSource.dispose(); } catch (Exception ignored) { }
+            AudioSource audioSource = localAudioSource;
+            localAudioSource = null;
+            if (audioSource != null) try { audioSource.dispose(); } catch (Exception ignored) { }
+            SurfaceTextureHelper helper = surfaceTextureHelper;
+            surfaceTextureHelper = null;
+            if (helper != null) try { helper.dispose(); } catch (Exception ignored) { }
         }
     }
 
@@ -1871,6 +2740,9 @@ public final class P2pEngine {
         default void onPeerState(String peerUid, String state) { }
         default void onMessagesChanged(String peerUid) { }
         default void onIncomingInvite(String peerUid) { }
+        default void onIncomingMediaCall(String callId, String peerUid, boolean video) { }
+        default void onMediaCallState(String callId, String peerUid, boolean video, String state) { }
+        default void onCallTracksChanged(String callId) { }
         default void onContactsChanged() { }
     }
 }

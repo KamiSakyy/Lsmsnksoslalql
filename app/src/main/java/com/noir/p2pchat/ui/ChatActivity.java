@@ -67,7 +67,9 @@ public final class ChatActivity extends ComponentActivity implements P2pEngine.L
     private TextView recordingButton;
     private ActivityResultLauncher<String> contentPicker;
     private ActivityResultLauncher<String> microphonePermission;
+    private ActivityResultLauncher<String[]> mediaCallPermission;
     private ActivityResultLauncher<Intent> videoCapture;
+    private boolean pendingCallVideo;
     private String nextAttachmentKind = "file";
     private Uri circleCaptureUri;
     private File circleCaptureFile;
@@ -100,6 +102,15 @@ public final class ChatActivity extends ComponentActivity implements P2pEngine.L
             if (granted) startVoiceRecording();
             else Toast.makeText(this, "Для записи голосового нужно разрешить микрофон", Toast.LENGTH_SHORT).show();
         });
+        mediaCallPermission = registerForActivityResult(new ActivityResultContracts.RequestMultiplePermissions(), results -> {
+            boolean allGranted = true;
+            for (String permission : mediaCallPermissions(pendingCallVideo)) {
+                allGranted &= Boolean.TRUE.equals(results.get(permission))
+                        || ContextCompat.checkSelfPermission(this, permission) == PackageManager.PERMISSION_GRANTED;
+            }
+            if (allGranted) beginMediaCall(pendingCallVideo);
+            else Toast.makeText(this, "Для звонка нужны разрешения на микрофон" + (pendingCallVideo ? " и камеру" : ""), Toast.LENGTH_LONG).show();
+        });
         videoCapture = registerForActivityResult(new ActivityResultContracts.StartActivityForResult(), result -> {
             if (result.getResultCode() == RESULT_OK && circleCaptureUri != null && circleCaptureFile != null
                     && circleCaptureFile.isFile() && circleCaptureFile.length() > 0) {
@@ -123,6 +134,35 @@ public final class ChatActivity extends ComponentActivity implements P2pEngine.L
         renderMessages(false);
         updateConnectionStatus();
         startConnectionService();
+    }
+
+    private String[] mediaCallPermissions(boolean video) {
+        return video
+                ? new String[]{Manifest.permission.RECORD_AUDIO, Manifest.permission.CAMERA}
+                : new String[]{Manifest.permission.RECORD_AUDIO};
+    }
+
+    private void requestMediaCall(boolean video) {
+        pendingCallVideo = video;
+        boolean permitted = true;
+        for (String permission : mediaCallPermissions(video)) {
+            permitted &= ContextCompat.checkSelfPermission(this, permission) == PackageManager.PERMISSION_GRANTED;
+        }
+        if (permitted) beginMediaCall(video);
+        else mediaCallPermission.launch(mediaCallPermissions(video));
+    }
+
+    private void beginMediaCall(boolean video) {
+        String callId = engine.startMediaCall(peerUid, video);
+        if (callId == null) {
+            Toast.makeText(this, engine.getStatus(), Toast.LENGTH_LONG).show();
+            return;
+        }
+        Intent intent = new Intent(this, CallActivity.class)
+                .putExtra(CallActivity.EXTRA_CALL_ID, callId)
+                .putExtra(CallActivity.EXTRA_PEER_UID, peerUid)
+                .putExtra(CallActivity.EXTRA_VIDEO, video);
+        startActivity(intent);
     }
 
     private void setUpSystemBars() {
@@ -168,6 +208,22 @@ public final class ChatActivity extends ComponentActivity implements P2pEngine.L
         titleBlock.addView(title);
         titleBlock.addView(connectionStatus, stateParams);
         header.addView(titleBlock, new LinearLayout.LayoutParams(0, -2, 1));
+        TextView audioCall = Ui.text(this, "☎", 17, Ui.TEXT);
+        audioCall.setGravity(Gravity.CENTER);
+        audioCall.setBackground(Ui.rounded(Ui.SURFACE_ALT, Ui.dp(this, 17), Ui.STROKE));
+        audioCall.setContentDescription("Начать аудиозвонок");
+        audioCall.setOnClickListener(v -> requestMediaCall(false));
+        LinearLayout.LayoutParams callButtonParams = new LinearLayout.LayoutParams(Ui.dp(this, 38), Ui.dp(this, 38));
+        callButtonParams.leftMargin = Ui.dp(this, 4);
+        header.addView(audioCall, callButtonParams);
+        TextView videoCall = Ui.text(this, "▣", 16, Ui.TEXT);
+        videoCall.setGravity(Gravity.CENTER);
+        videoCall.setBackground(Ui.rounded(Ui.SURFACE_ALT, Ui.dp(this, 17), Ui.STROKE));
+        videoCall.setContentDescription("Начать видеозвонок");
+        videoCall.setOnClickListener(v -> requestMediaCall(true));
+        LinearLayout.LayoutParams videoButtonParams = new LinearLayout.LayoutParams(Ui.dp(this, 38), Ui.dp(this, 38));
+        videoButtonParams.leftMargin = Ui.dp(this, 5);
+        header.addView(videoCall, videoButtonParams);
         identityStatusIndicator = Ui.text(this, "●", 12, Ui.MUTED);
         identityStatusIndicator.setContentDescription("Signal E2E · нажмите, чтобы проверить отпечаток ключа");
         identityStatusIndicator.setPadding(Ui.dp(this, 9), Ui.dp(this, 8), Ui.dp(this, 3), Ui.dp(this, 8));
@@ -767,4 +823,14 @@ public final class ChatActivity extends ComponentActivity implements P2pEngine.L
 
     @Override
     public void onIncomingInvite(String incomingPeerUid) { }
+
+    @Override
+    public void onIncomingMediaCall(String callId, String incomingPeerUid, boolean video) {
+        if (!peerUid.equals(incomingPeerUid) || isFinishing() || isDestroyed()) return;
+        Intent intent = new Intent(this, CallActivity.class)
+                .putExtra(CallActivity.EXTRA_CALL_ID, callId)
+                .putExtra(CallActivity.EXTRA_PEER_UID, incomingPeerUid)
+                .putExtra(CallActivity.EXTRA_VIDEO, video);
+        startActivity(intent);
+    }
 }

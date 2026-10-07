@@ -1,6 +1,7 @@
 package com.noir.p2pchat.ui;
 
 import android.Manifest;
+import android.app.AlertDialog;
 import android.content.ClipData;
 import android.content.ClipboardManager;
 import android.content.Context;
@@ -38,7 +39,9 @@ import com.noir.p2pchat.core.MessageStore;
 import com.noir.p2pchat.core.P2pEngine;
 import com.noir.p2pchat.service.ChatConnectionService;
 
+import java.util.HashSet;
 import java.util.List;
+import java.util.Set;
 
 public final class MainActivity extends ComponentActivity implements P2pEngine.Listener {
     private AppKernel app;
@@ -50,6 +53,9 @@ public final class MainActivity extends ComponentActivity implements P2pEngine.L
     private TextView statusValue;
     private ActivityResultLauncher<String> notificationPermission;
     private boolean permissionRequested;
+    private AlertDialog incomingCallDialog;
+    private String incomingCallDialogId;
+    private final Set<String> shownIncomingCallIds = new HashSet<>();
 
     @Override
     protected void onCreate(Bundle savedInstanceState) {
@@ -433,6 +439,7 @@ public final class MainActivity extends ComponentActivity implements P2pEngine.L
 
     @Override
     protected void onStop() {
+        if (incomingCallDialog != null) incomingCallDialog.dismiss();
         engine.removeListener(this);
         super.onStop();
     }
@@ -451,6 +458,47 @@ public final class MainActivity extends ComponentActivity implements P2pEngine.L
     @Override
     public void onIncomingInvite(String peerUid) {
         renderLists();
+    }
+
+    @Override
+    public void onIncomingMediaCall(String callId, String peerUid, boolean video) {
+        if (isFinishing() || isDestroyed() || !shownIncomingCallIds.add(callId)) return;
+        runOnUiThread(() -> {
+            if (isFinishing() || isDestroyed() || !hasWindowFocus()) return;
+            AlertDialog dialog = new AlertDialog.Builder(this)
+                    .setTitle(video ? "Входящий видеозвонок" : "Входящий аудиозвонок")
+                    .setMessage("Звонит: " + shortId(peerUid))
+                    .setCancelable(false)
+                    .setPositiveButton("Принять", (ignored, which) -> openCall(callId, peerUid, video, true))
+                    .setNegativeButton("Отклонить", (ignored, which) -> engine.declineMediaCall(callId))
+                    .create();
+            incomingCallDialog = dialog;
+            incomingCallDialogId = callId;
+            dialog.setOnDismissListener(ignored -> {
+                if (callId.equals(incomingCallDialogId)) {
+                    incomingCallDialog = null;
+                    incomingCallDialogId = null;
+                }
+            });
+            dialog.show();
+        });
+    }
+
+    private void openCall(String callId, String peerUid, boolean video, boolean accept) {
+        Intent intent = new Intent(this, CallActivity.class)
+                .putExtra(CallActivity.EXTRA_CALL_ID, callId)
+                .putExtra(CallActivity.EXTRA_PEER_UID, peerUid)
+                .putExtra(CallActivity.EXTRA_VIDEO, video)
+                .putExtra(CallActivity.EXTRA_ACCEPT_ON_OPEN, accept);
+        startActivity(intent);
+    }
+
+    @Override
+    public void onMediaCallState(String callId, String peerUid, boolean video, String state) {
+        if (!callId.equals(incomingCallDialogId) || "ringing".equals(state)) return;
+        runOnUiThread(() -> {
+            if (incomingCallDialog != null && callId.equals(incomingCallDialogId)) incomingCallDialog.dismiss();
+        });
     }
 
     @Override

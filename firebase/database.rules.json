@@ -33,7 +33,8 @@
           ".write": "auth != null && ((auth.uid === $uid && !newData.exists()) || (!newData.exists() && root.child('calls').child($sid).child('caller').val() === auth.uid && root.child('calls').child($sid).child('callee').val() === $uid) || (root.child('calls').child($sid).child('callee').val() === $uid && root.child('calls').child($sid).child('caller').val() === auth.uid && newData.child('from').val() === auth.uid))",
           ".validate": "!newData.exists() || (newData.hasChildren(['from', 'createdAt']) && newData.child('from').val() === root.child('calls').child($sid).child('caller').val())",
           "from": { ".validate": "newData.isString()" },
-          "createdAt": { ".validate": "newData.isNumber()" }
+          "createdAt": { ".validate": "newData.isNumber()" },
+          "callType": { ".validate": "newData.isString() && (newData.val() === 'audio' || newData.val() === 'video')" }
         }
       }
     },
@@ -42,6 +43,12 @@
         ".read": "auth != null && (data.child('caller').val() === auth.uid || data.child('callee').val() === auth.uid)",
         ".write": "auth != null && ((!data.exists() && newData.child('caller').val() === auth.uid && newData.child('callee').isString() && newData.child('callee').val() !== auth.uid) || (data.exists() && !newData.exists() && (data.child('caller').val() === auth.uid || data.child('callee').val() === auth.uid)))",
         ".validate": "newData.hasChildren(['caller', 'callee', 'createdAt', 'offer']) && newData.child('offer').child('type').val() === 'offer' && newData.child('offer').child('sdp').isString() && newData.child('offer').child('sdp').val().length < 24000 && newData.child('createdAt').isNumber()",
+        "mode": {
+          ".validate": "newData.isString() && newData.val() === 'media'"
+        },
+        "media": {
+          ".validate": "newData.isString() && (newData.val() === 'audio' || newData.val() === 'video')"
+        },
         "answer": {
           ".write": "auth != null && root.child('calls').child($sid).child('callee').val() === auth.uid && !data.exists()",
           ".validate": "newData.hasChildren(['type', 'sdp']) && newData.child('type').val() === 'answer' && newData.child('sdp').isString() && newData.child('sdp').val().length < 24000"

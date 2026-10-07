@@ -18,9 +18,18 @@ public final class ChatConnectionService extends Service implements P2pEngine.Li
     public static final String ACTION_SEND_TEXT = "com.noir.p2pchat.action.SEND_TEXT";
     public static final String ACTION_ACCEPT_INVITE = "com.noir.p2pchat.action.ACCEPT_INVITE";
     public static final String ACTION_DECLINE_INVITE = "com.noir.p2pchat.action.DECLINE_INVITE";
+    public static final String ACTION_DECLINE_CALL = "com.noir.p2pchat.action.DECLINE_CALL";
+    public static final String ACTION_END_CALL = "com.noir.p2pchat.action.END_CALL";
+    public static final String EXTRA_CALL_ID = "call_id";
     public static final String EXTRA_PEER_UID = "peer_uid";
     public static final String EXTRA_MESSAGE_TEXT = "message_text";
     private AppKernel app;
+    private volatile boolean mediaCallActive;
+    private volatile boolean videoCallActive;
+    private volatile String activeCallId;
+    private volatile String activeCallPeerUid;
+    private volatile String activeCallState;
+    private volatile boolean activeCallIsVideo;
 
     @Override
     public void onCreate() {
@@ -39,7 +48,7 @@ public final class ChatConnectionService extends Service implements P2pEngine.Li
             stopSelf(startId);
             return START_NOT_STICKY;
         }
-        startAsForeground(MessageNotifications.connectionNotification(this, app.p2p().getStatus()));
+        startAsForeground(foregroundNotification(app.p2p().getStatus()), foregroundServiceType());
         app.p2p().start();
         if (intent != null) {
             String peerUid = intent.getStringExtra(EXTRA_PEER_UID);
@@ -48,6 +57,10 @@ public final class ChatConnectionService extends Service implements P2pEngine.Li
                 app.p2p().addContact(peerUid);
             } else if (ACTION_DECLINE_INVITE.equals(action) && peerUid != null) {
                 app.p2p().declineInvite(peerUid);
+            } else if (ACTION_DECLINE_CALL.equals(action)) {
+                app.p2p().declineMediaCall(intent.getStringExtra(EXTRA_CALL_ID));
+            } else if (ACTION_END_CALL.equals(action)) {
+                app.p2p().endMediaCall(intent.getStringExtra(EXTRA_CALL_ID));
             } else if (ACTION_SEND_TEXT.equals(action) && peerUid != null) {
                 app.p2p().addContact(peerUid);
                 app.p2p().sendText(peerUid, intent.getStringExtra(EXTRA_MESSAGE_TEXT));
@@ -56,14 +69,38 @@ public final class ChatConnectionService extends Service implements P2pEngine.Li
         return START_STICKY;
     }
 
-    private void startAsForeground(android.app.Notification notification) {
-        if (Build.VERSION.SDK_INT >= 34) {
-            ServiceCompat.startForeground(this, MessageNotifications.CONNECTION_NOTIFICATION_ID,
-                    notification, ServiceInfo.FOREGROUND_SERVICE_TYPE_REMOTE_MESSAGING);
-        } else {
-            ServiceCompat.startForeground(this, MessageNotifications.CONNECTION_NOTIFICATION_ID,
-                    notification, 0);
+    private int foregroundServiceType() {
+        if (Build.VERSION.SDK_INT < 34) return 0;
+        int type = ServiceInfo.FOREGROUND_SERVICE_TYPE_REMOTE_MESSAGING;
+        if (mediaCallActive) {
+            type |= ServiceInfo.FOREGROUND_SERVICE_TYPE_MICROPHONE;
+            if (videoCallActive) type |= ServiceInfo.FOREGROUND_SERVICE_TYPE_CAMERA;
         }
+        return type;
+    }
+
+    private android.app.Notification foregroundNotification(String fallback) {
+        if (mediaCallActive && activeCallId != null && activeCallPeerUid != null) {
+            return MessageNotifications.mediaCallNotification(this, activeCallId, activeCallPeerUid,
+                    activeCallIsVideo, activeCallState);
+        }
+        return MessageNotifications.connectionNotification(this, foregroundDetails(fallback));
+    }
+
+    private String foregroundDetails(String fallback) {
+        if (!mediaCallActive || activeCallPeerUid == null) return fallback;
+        String peer = activeCallPeerUid.length() <= 12 ? activeCallPeerUid : activeCallPeerUid.substring(0, 12) + "…";
+        String media = activeCallIsVideo ? "Видеозвонок" : "Аудиозвонок";
+        if ("calling".equals(activeCallState)) return media + " · вызов " + peer;
+        if ("ringing".equals(activeCallState)) return media + " · ожидает ответа " + peer;
+        if ("connecting".equals(activeCallState)) return media + " · соединяем с " + peer;
+        if ("reconnecting".equals(activeCallState)) return media + " · восстанавливаем связь с " + peer;
+        return media + " · разговор с " + peer;
+    }
+
+    private void startAsForeground(android.app.Notification notification, int foregroundType) {
+        ServiceCompat.startForeground(this, MessageNotifications.CONNECTION_NOTIFICATION_ID,
+                notification, foregroundType);
     }
 
     @Override
@@ -73,10 +110,29 @@ public final class ChatConnectionService extends Service implements P2pEngine.Li
             if (manager != null) {
                 try {
                     manager.notify(MessageNotifications.CONNECTION_NOTIFICATION_ID,
-                            MessageNotifications.connectionNotification(this, status));
+                            foregroundNotification(status));
                 } catch (SecurityException ignored) {
                     // Foreground-service notification remains owned by Android when notifications are denied.
                 }
+            }
+        }
+    }
+
+    @Override
+    public void onMediaCallState(String callId, String peerUid, boolean video, String state) {
+        boolean outgoingRinging = "ringing".equals(state) && app != null && app.p2p().isOutgoingMediaCall(callId);
+        mediaCallActive = "calling".equals(state) || outgoingRinging || "connecting".equals(state)
+                || "connected".equals(state) || "reconnecting".equals(state);
+        videoCallActive = mediaCallActive && video;
+        activeCallId = mediaCallActive ? callId : null;
+        activeCallPeerUid = mediaCallActive ? peerUid : null;
+        activeCallState = mediaCallActive ? state : null;
+        activeCallIsVideo = mediaCallActive && video;
+        if (app != null) {
+            try {
+                startAsForeground(foregroundNotification(app.p2p().getStatus()), foregroundServiceType());
+            } catch (IllegalStateException | SecurityException e) {
+                android.util.Log.w("NoirP2P", "Could not update media-call foreground service type", e);
             }
         }
     }
