@@ -1,0 +1,14 @@
+# Android/Gradle build outputs
+.gradle/
+**/build/
+local.properties
+
+# Signing keys and local credentials
+*.jks
+*.keystore
+**/serviceAccountKey.json
+**/*firebase-adminsdk*.json
+**/*service-account*.json
+**/*service_account*.json
+
+# Keep google-services.json: it is Firebase client configuration, not an Admin SDK key.
