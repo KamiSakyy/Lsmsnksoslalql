@@ -1,0 +1,116 @@
+name: Rig and animate the 3D girl
+
+on:
+  push:
+    branches:
+      - arena/1e52fcec-lsmsnksoslalql
+    paths:
+      - .github/workflows/rig-model.yml
+      - tools/rigging/**
+      - tests/rigging/**
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+concurrency:
+  group: rig-girl-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  rig-and-animate:
+    if: github.ref == 'refs/heads/arena/1e52fcec-lsmsnksoslalql'
+    runs-on: ubuntu-22.04
+    timeout-minutes: 75
+    env:
+      OPENBLAS_NUM_THREADS: '2'
+      OMP_NUM_THREADS: '2'
+      PYTHONUNBUFFERED: '1'
+      SOURCE_ARCHIVE: handoff/d247d7c3_46ba_414e_b821_b731d4b67026_ab2fefced0df785fa9f396410d0b5905.zip
+    steps:
+      - name: Check out the same working branch
+        uses: actions/checkout@v4
+        with:
+          ref: arena/1e52fcec-lsmsnksoslalql
+
+      - name: Set up Python 3.11
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+          cache: pip
+          cache-dependency-path: tools/rigging/requirements.txt
+
+      - name: Install headless Blender runtime libraries
+        run: |
+          sudo apt-get update -qq
+          sudo apt-get install -y --no-install-recommends \
+            libxrender1 libxxf86vm1 libxfixes3 libxi6 libxkbcommon0 \
+            libsm6 libice6 libgl1 libegl1
+          python -m pip install -r tools/rigging/requirements.txt
+
+      - name: Test ZIP safety, skinning and inverse kinematics
+        run: python -m unittest discover -s tests/rigging -v
+
+      - name: Build the actual skeleton, skin and animation assets on CPU
+        run: |
+          python tools/rigging/rig_model.py \
+            --archive "$SOURCE_ARCHIVE" \
+            --output build/rigged \
+            --target-triangles 160000 \
+            --render
+
+      - name: Set up Node for official Khronos glTF validation
+        uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: npm
+          cache-dependency-path: tools/rigging/package-lock.json
+
+      - name: Validate both GLBs with the Khronos validator
+        run: |
+          npm ci --prefix tools/rigging --no-audit --no-fund
+          node tools/rigging/validate-glb.cjs \
+            build/rigged/anime-girl-rigged.glb \
+            build/rigged/anime-girl-full.glb
+
+      - name: Upload complete editable and full-resolution results
+        uses: actions/upload-artifact@v4
+        with:
+          name: anime-girl-rigged
+          retention-days: 90
+          compression-level: 6
+          if-no-files-found: error
+          path: |
+            build/rigged/*.glb
+            build/rigged/*.fbx
+            build/rigged/*.blend
+            build/rigged/*.json
+            build/rigged/*.png
+            build/rigged/*.gif
+            build/rigged/README_RU.md
+
+      - name: Save the runtime model and previews in handoff on this branch
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p handoff/rigged
+          cp build/rigged/anime-girl-rigged.glb handoff/rigged/
+          cp build/rigged/rig-report.json build/rigged/khronos-validation.json handoff/rigged/
+          cp build/rigged/rest-pose.png build/rigged/skeleton.png build/rigged/animation-preview.gif handoff/rigged/
+          cp build/rigged/README_RU.md handoff/rigged/
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add -- handoff/rigged
+          if ! git diff --cached --quiet; then
+            git commit -m "Add rigged girl model, five animations and validated previews"
+            git push origin HEAD:arena/1e52fcec-lsmsnksoslalql
+          fi
+          {
+            echo '## Модель со скелетом и анимациями готова'
+            echo '- 48 костей: тело, волосы, пальто, юбка; не более 4 влияний на вершину.'
+            echo '- 5 процедурных клипов: Idle, Walk_InPlace, Run_InPlace, Wave, Dance.'
+            echo '- Облегчённый GLB и превью сохранены в handoff/rigged этой ветки.'
+            echo '- Полный GLB без упрощения, Blender и FBX: артефакт anime-girl-rigged (90 дней).'
+            echo '- Проверены bind-матрицы, веса, деформации и оба GLB валидатором Khronos.'
+            echo '- Это автоматический стартовый FK-риг: без мимики, отдельных пальцев и физической ткани.'
+          } >> "$GITHUB_STEP_SUMMARY"

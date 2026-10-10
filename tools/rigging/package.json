@@ -1,0 +1,9 @@
+{
+  "name": "anime-girl-gltf-validation",
+  "private": true,
+  "version": "1.0.0",
+  "description": "Khronos validation for the GitHub Actions rigging pipeline",
+  "dependencies": {
+    "gltf-validator": "2.0.0-dev.3.10"
+  }
+}

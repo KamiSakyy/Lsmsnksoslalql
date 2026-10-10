@@ -1,0 +1,773 @@
+{
+  "description": "Height-normalized glTF landmarks fitted to this Tripo girl in the supplied asymmetric pose. Y up; +X anatomical left; +Z forward. Not a universal autorigger.",
+  "bones": [
+    {
+      "name": "Root",
+      "parent": null,
+      "head": [
+        0,
+        0,
+        0
+      ],
+      "tail": [
+        0,
+        0.1,
+        0
+      ],
+      "radius": 0.01,
+      "category": "root"
+    },
+    {
+      "name": "mixamorig:Hips",
+      "parent": "Root",
+      "head": [
+        0,
+        0.535,
+        0.006
+      ],
+      "tail": [
+        0,
+        0.6,
+        0.009
+      ],
+      "radius": 0.07,
+      "category": "body"
+    },
+    {
+      "name": "mixamorig:Spine",
+      "parent": "mixamorig:Hips",
+      "head": [
+        0,
+        0.6,
+        0.009
+      ],
+      "tail": [
+        0,
+        0.67,
+        0.009
+      ],
+      "radius": 0.063,
+      "category": "body"
+    },
+    {
+      "name": "mixamorig:Spine1",
+      "parent": "mixamorig:Spine",
+      "head": [
+        0,
+        0.67,
+        0.009
+      ],
+      "tail": [
+        0,
+        0.74,
+        0.013
+      ],
+      "radius": 0.074,
+      "category": "body"
+    },
+    {
+      "name": "mixamorig:Spine2",
+      "parent": "mixamorig:Spine1",
+      "head": [
+        0,
+        0.74,
+        0.013
+      ],
+      "tail": [
+        0,
+        0.81,
+        0.01
+      ],
+      "radius": 0.069,
+      "category": "body"
+    },
+    {
+      "name": "mixamorig:Neck",
+      "parent": "mixamorig:Spine2",
+      "head": [
+        0,
+        0.81,
+        0.01
+      ],
+      "tail": [
+        0,
+        0.854,
+        0.016
+      ],
+      "radius": 0.026,
+      "category": "body"
+    },
+    {
+      "name": "mixamorig:Head",
+      "parent": "mixamorig:Neck",
+      "head": [
+        0,
+        0.854,
+        0.016
+      ],
+      "tail": [
+        0,
+        0.988,
+        0.015
+      ],
+      "radius": 0.075,
+      "category": "body"
+    },
+    {
+      "name": "mixamorig:LeftShoulder",
+      "parent": "mixamorig:Spine2",
+      "head": [
+        0.02,
+        0.795,
+        0.012
+      ],
+      "tail": [
+        0.083,
+        0.788,
+        0.014
+      ],
+      "radius": 0.024,
+      "category": "body"
+    },
+    {
+      "name": "mixamorig:LeftArm",
+      "parent": "mixamorig:LeftShoulder",
+      "head": [
+        0.083,
+        0.788,
+        0.014
+      ],
+      "tail": [
+        0.1,
+        0.683,
+        0.047
+      ],
+      "radius": 0.023,
+      "category": "body"
+    },
+    {
+      "name": "mixamorig:LeftForeArm",
+      "parent": "mixamorig:LeftArm",
+      "head": [
+        0.1,
+        0.683,
+        0.047
+      ],
+      "tail": [
+        0.148,
+        0.79,
+        0.063
+      ],
+      "radius": 0.023,
+      "category": "body"
+    },
+    {
+      "name": "mixamorig:LeftHand",
+      "parent": "mixamorig:LeftForeArm",
+      "head": [
+        0.148,
+        0.79,
+        0.063
+      ],
+      "tail": [
+        0.126,
+        0.853,
+        0.058
+      ],
+      "radius": 0.021,
+      "category": "body"
+    },
+    {
+      "name": "mixamorig:LeftUpLeg",
+      "parent": "mixamorig:Hips",
+      "head": [
+        0.045,
+        0.522,
+        0.007
+      ],
+      "tail": [
+        0.045,
+        0.29,
+        0.016
+      ],
+      "radius": 0.036,
+      "category": "body"
+    },
+    {
+      "name": "mixamorig:LeftLeg",
+      "parent": "mixamorig:LeftUpLeg",
+      "head": [
+        0.045,
+        0.29,
+        0.016
+      ],
+      "tail": [
+        0.046,
+        0.076,
+        0.006
+      ],
+      "radius": 0.026,
+      "category": "body"
+    },
+    {
+      "name": "mixamorig:LeftFoot",
+      "parent": "mixamorig:LeftLeg",
+      "head": [
+        0.046,
+        0.076,
+        0.006
+      ],
+      "tail": [
+        0.046,
+        0.021,
+        0.079
+      ],
+      "radius": 0.027,
+      "category": "body"
+    },
+    {
+      "name": "mixamorig:LeftToeBase",
+      "parent": "mixamorig:LeftFoot",
+      "head": [
+        0.046,
+        0.021,
+        0.079
+      ],
+      "tail": [
+        0.046,
+        0.018,
+        0.119
+      ],
+      "radius": 0.027,
+      "category": "body"
+    },
+    {
+      "name": "mixamorig:RightShoulder",
+      "parent": "mixamorig:Spine2",
+      "head": [
+        -0.02,
+        0.795,
+        0.012
+      ],
+      "tail": [
+        -0.083,
+        0.788,
+        0.014
+      ],
+      "radius": 0.024,
+      "category": "body"
+    },
+    {
+      "name": "mixamorig:RightArm",
+      "parent": "mixamorig:RightShoulder",
+      "head": [
+        -0.083,
+        0.788,
+        0.014
+      ],
+      "tail": [
+        -0.116,
+        0.651,
+        0.025
+      ],
+      "radius": 0.023,
+      "category": "body"
+    },
+    {
+      "name": "mixamorig:RightForeArm",
+      "parent": "mixamorig:RightArm",
+      "head": [
+        -0.116,
+        0.651,
+        0.025
+      ],
+      "tail": [
+        -0.148,
+        0.512,
+        0.048
+      ],
+      "radius": 0.023,
+      "category": "body"
+    },
+    {
+      "name": "mixamorig:RightHand",
+      "parent": "mixamorig:RightForeArm",
+      "head": [
+        -0.148,
+        0.512,
+        0.048
+      ],
+      "tail": [
+        -0.151,
+        0.448,
+        0.051
+      ],
+      "radius": 0.021,
+      "category": "body"
+    },
+    {
+      "name": "mixamorig:RightUpLeg",
+      "parent": "mixamorig:Hips",
+      "head": [
+        -0.045,
+        0.522,
+        0.007
+      ],
+      "tail": [
+        -0.044,
+        0.299,
+        -0.009
+      ],
+      "radius": 0.036,
+      "category": "body"
+    },
+    {
+      "name": "mixamorig:RightLeg",
+      "parent": "mixamorig:RightUpLeg",
+      "head": [
+        -0.044,
+        0.299,
+        -0.009
+      ],
+      "tail": [
+        -0.045,
+        0.08,
+        -0.078
+      ],
+      "radius": 0.026,
+      "category": "body"
+    },
+    {
+      "name": "mixamorig:RightFoot",
+      "parent": "mixamorig:RightLeg",
+      "head": [
+        -0.045,
+        0.08,
+        -0.078
+      ],
+      "tail": [
+        -0.045,
+        0.026,
+        -0.024
+      ],
+      "radius": 0.027,
+      "category": "body"
+    },
+    {
+      "name": "mixamorig:RightToeBase",
+      "parent": "mixamorig:RightFoot",
+      "head": [
+        -0.045,
+        0.026,
+        -0.024
+      ],
+      "tail": [
+        -0.045,
+        0.022,
+        0.015
+      ],
+      "radius": 0.027,
+      "category": "body"
+    },
+    {
+      "name": "Hair.Back.L.01",
+      "parent": "mixamorig:Head",
+      "head": [
+        0.052,
+        0.94,
+        -0.051
+      ],
+      "tail": [
+        0.052,
+        0.803,
+        -0.08
+      ],
+      "radius": 0.021,
+      "category": "hair"
+    },
+    {
+      "name": "Hair.Back.L.02",
+      "parent": "Hair.Back.L.01",
+      "head": [
+        0.052,
+        0.803,
+        -0.08
+      ],
+      "tail": [
+        0.05824,
+        0.674,
+        -0.089
+      ],
+      "radius": 0.021,
+      "category": "hair"
+    },
+    {
+      "name": "Hair.Back.L.03",
+      "parent": "Hair.Back.L.02",
+      "head": [
+        0.05824,
+        0.674,
+        -0.089
+      ],
+      "tail": [
+        0.06396,
+        0.535,
+        -0.058
+      ],
+      "radius": 0.021,
+      "category": "hair"
+    },
+    {
+      "name": "Hair.Back.C.01",
+      "parent": "mixamorig:Head",
+      "head": [
+        0,
+        0.94,
+        -0.051
+      ],
+      "tail": [
+        0,
+        0.803,
+        -0.08
+      ],
+      "radius": 0.021,
+      "category": "hair"
+    },
+    {
+      "name": "Hair.Back.C.02",
+      "parent": "Hair.Back.C.01",
+      "head": [
+        0,
+        0.803,
+        -0.08
+      ],
+      "tail": [
+        0.0,
+        0.674,
+        -0.089
+      ],
+      "radius": 0.021,
+      "category": "hair"
+    },
+    {
+      "name": "Hair.Back.C.03",
+      "parent": "Hair.Back.C.02",
+      "head": [
+        0.0,
+        0.674,
+        -0.089
+      ],
+      "tail": [
+        0.0,
+        0.535,
+        -0.058
+      ],
+      "radius": 0.021,
+      "category": "hair"
+    },
+    {
+      "name": "Hair.Back.R.01",
+      "parent": "mixamorig:Head",
+      "head": [
+        -0.052,
+        0.94,
+        -0.051
+      ],
+      "tail": [
+        -0.052,
+        0.803,
+        -0.08
+      ],
+      "radius": 0.021,
+      "category": "hair"
+    },
+    {
+      "name": "Hair.Back.R.02",
+      "parent": "Hair.Back.R.01",
+      "head": [
+        -0.052,
+        0.803,
+        -0.08
+      ],
+      "tail": [
+        -0.05824,
+        0.674,
+        -0.089
+      ],
+      "radius": 0.021,
+      "category": "hair"
+    },
+    {
+      "name": "Hair.Back.R.03",
+      "parent": "Hair.Back.R.02",
+      "head": [
+        -0.05824,
+        0.674,
+        -0.089
+      ],
+      "tail": [
+        -0.06396,
+        0.535,
+        -0.058
+      ],
+      "radius": 0.021,
+      "category": "hair"
+    },
+    {
+      "name": "Hair.Front.L.01",
+      "parent": "mixamorig:Head",
+      "head": [
+        0.055,
+        0.92,
+        0.055
+      ],
+      "tail": [
+        0.055,
+        0.82,
+        0.073
+      ],
+      "radius": 0.012,
+      "category": "hair"
+    },
+    {
+      "name": "Hair.Front.L.02",
+      "parent": "Hair.Front.L.01",
+      "head": [
+        0.055,
+        0.82,
+        0.073
+      ],
+      "tail": [
+        0.055,
+        0.745,
+        0.068
+      ],
+      "radius": 0.012,
+      "category": "hair"
+    },
+    {
+      "name": "Hair.Front.R.01",
+      "parent": "mixamorig:Head",
+      "head": [
+        -0.055,
+        0.92,
+        0.055
+      ],
+      "tail": [
+        -0.055,
+        0.82,
+        0.073
+      ],
+      "radius": 0.012,
+      "category": "hair"
+    },
+    {
+      "name": "Hair.Front.R.02",
+      "parent": "Hair.Front.R.01",
+      "head": [
+        -0.055,
+        0.82,
+        0.073
+      ],
+      "tail": [
+        -0.055,
+        0.745,
+        0.068
+      ],
+      "radius": 0.012,
+      "category": "hair"
+    },
+    {
+      "name": "Hair.Held.01",
+      "parent": "mixamorig:Head",
+      "head": [
+        0.063,
+        0.935,
+        0.034
+      ],
+      "tail": [
+        0.111,
+        0.862,
+        0.058
+      ],
+      "radius": 0.01,
+      "category": "hair"
+    },
+    {
+      "name": "Hair.Held.02",
+      "parent": "Hair.Held.01",
+      "head": [
+        0.111,
+        0.862,
+        0.058
+      ],
+      "tail": [
+        0.145,
+        0.831,
+        0.063
+      ],
+      "radius": 0.01,
+      "category": "hair"
+    },
+    {
+      "name": "Coat.L.01",
+      "parent": "mixamorig:Hips",
+      "head": [
+        0.087,
+        0.59,
+        -0.018
+      ],
+      "tail": [
+        0.10701,
+        0.49,
+        -0.039
+      ],
+      "radius": 0.036,
+      "category": "coat"
+    },
+    {
+      "name": "Coat.L.02",
+      "parent": "Coat.L.01",
+      "head": [
+        0.10701,
+        0.49,
+        -0.039
+      ],
+      "tail": [
+        0.12702,
+        0.376,
+        -0.043
+      ],
+      "radius": 0.036,
+      "category": "coat"
+    },
+    {
+      "name": "Coat.C.01",
+      "parent": "mixamorig:Hips",
+      "head": [
+        0,
+        0.59,
+        -0.018
+      ],
+      "tail": [
+        0.0,
+        0.49,
+        -0.039
+      ],
+      "radius": 0.036,
+      "category": "coat"
+    },
+    {
+      "name": "Coat.C.02",
+      "parent": "Coat.C.01",
+      "head": [
+        0.0,
+        0.49,
+        -0.039
+      ],
+      "tail": [
+        0.0,
+        0.376,
+        -0.043
+      ],
+      "radius": 0.036,
+      "category": "coat"
+    },
+    {
+      "name": "Coat.R.01",
+      "parent": "mixamorig:Hips",
+      "head": [
+        -0.087,
+        0.59,
+        -0.018
+      ],
+      "tail": [
+        -0.10701,
+        0.49,
+        -0.039
+      ],
+      "radius": 0.036,
+      "category": "coat"
+    },
+    {
+      "name": "Coat.R.02",
+      "parent": "Coat.R.01",
+      "head": [
+        -0.10701,
+        0.49,
+        -0.039
+      ],
+      "tail": [
+        -0.12702,
+        0.376,
+        -0.043
+      ],
+      "radius": 0.036,
+      "category": "coat"
+    },
+    {
+      "name": "Skirt.L.01",
+      "parent": "mixamorig:Hips",
+      "head": [
+        0.043,
+        0.575,
+        0.031
+      ],
+      "tail": [
+        0.05288999999999999,
+        0.503,
+        0.052
+      ],
+      "radius": 0.041,
+      "category": "skirt"
+    },
+    {
+      "name": "Skirt.L.02",
+      "parent": "Skirt.L.01",
+      "head": [
+        0.05288999999999999,
+        0.503,
+        0.052
+      ],
+      "tail": [
+        0.0688,
+        0.439,
+        0.066
+      ],
+      "radius": 0.041,
+      "category": "skirt"
+    },
+    {
+      "name": "Skirt.R.01",
+      "parent": "mixamorig:Hips",
+      "head": [
+        -0.043,
+        0.575,
+        0.031
+      ],
+      "tail": [
+        -0.05288999999999999,
+        0.503,
+        0.052
+      ],
+      "radius": 0.041,
+      "category": "skirt"
+    },
+    {
+      "name": "Skirt.R.02",
+      "parent": "Skirt.R.01",
+      "head": [
+        -0.05288999999999999,
+        0.503,
+        0.052
+      ],
+      "tail": [
+        -0.0688,
+        0.439,
+        0.066
+      ],
+      "radius": 0.041,
+      "category": "skirt"
+    }
+  ]
+}
