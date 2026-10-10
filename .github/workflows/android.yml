@@ -67,18 +67,6 @@ jobs:
             echo "::notice title=Gradle failure details::$DETAILS"
           fi
 
-      - name: Run Signal ratchet round-trip on Android 16 emulator
-        uses: reactivecircus/android-emulator-runner@v2.38.0
-        with:
-          api-level: 36
-          target: google_apis
-          arch: x86_64
-          profile: pixel_6
-          script: gradle --no-daemon --stacktrace :app:connectedDebugAndroidTest
-
-      - name: Validate RTDB rules with the Firebase emulator
-        run: npx --yes firebase-tools@latest emulators:exec --only database --project demo-tsuyu "echo 'Realtime Database rules loaded'"
-
       - name: Pack versioned Android source handoff
         run: |
           mkdir -p handoff
@@ -101,3 +89,42 @@ jobs:
           name: Tsuyu-source-${{ github.run_number }}
           if-no-files-found: error
           path: handoff/tsuyu-android-source-${{ github.run_number }}.zip
+
+      - name: Run Signal ratchet round-trip on Android 16 emulator
+        id: signal_test
+        continue-on-error: true
+        uses: reactivecircus/android-emulator-runner@v2.38.0
+        with:
+          api-level: 36
+          target: google_apis
+          arch: x86_64
+          profile: pixel_6
+          emulator-options: -no-window -no-audio -no-boot-anim -gpu swiftshader_indirect -no-snapshot
+          disable-animations: true
+          script: |
+            if gradle --no-daemon --console=plain --stacktrace :app:connectedDebugAndroidTest > emulator-test.log 2>&1; then
+              result=0
+            else
+              result=$?
+            fi
+            tail -n 100 emulator-test.log
+            exit "$result"
+
+      - name: Publish Signal emulator diagnostics
+        if: steps.signal_test.outcome == 'failure'
+        run: |
+          if [ -f emulator-test.log ]; then
+            {
+              echo '## Signal emulator test diagnostics'
+              echo '```text'
+              tail -n 100 emulator-test.log
+              echo '```'
+            } >> "$GITHUB_STEP_SUMMARY"
+            DETAILS="$(tail -n 60 emulator-test.log | sed -e 's/%/%25/g' -e ':a' -e 'N' -e '$!ba' -e 's/\r/%0D/g' -e 's/\n/%0A/g')"
+            echo "::notice title=Signal emulator test failure details::$DETAILS"
+          else
+            echo '::notice title=Signal emulator test failure::Emulator runner exited before the Gradle test script produced a log.'
+          fi
+
+      - name: Validate RTDB rules with the Firebase emulator
+        run: npx --yes firebase-tools@latest emulators:exec --only database --project demo-tsuyu "echo 'Realtime Database rules loaded'"
