@@ -96,6 +96,17 @@ def main() -> None:
                 name = entry.filename
                 parts = name.split("/")
 
+                filename = parts[-1]
+
+                # These desktop/testing libraries ship inside libsignal-client but are
+                # not used by the Android client. Exclude them wherever the JAR placed them.
+                if (
+                    filename == "libsignal_jni_testing.so"
+                    or (filename.startswith("libsignal_jni_") and filename.endswith((".so", ".dylib")))
+                    or (filename.startswith("signal_jni") and filename.endswith(".dll"))
+                ):
+                    continue
+
                 # Keep only the native library ABI used by current Android phones.
                 if len(parts) >= 2 and parts[0] == "lib" and parts[1] != ABI:
                     continue

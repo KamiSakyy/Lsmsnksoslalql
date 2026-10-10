@@ -62,8 +62,17 @@ android {
     }
 
     packaging {
+        jniLibs {
+            excludes += ['**/libsignal_jni_testing.so']
+        }
         resources {
-            excludes += ['/META-INF/AL2.0', '/META-INF/LGPL2.1']
+            excludes += [
+                '/META-INF/AL2.0',
+                '/META-INF/LGPL2.1',
+                '**/libsignal_jni_*.so',
+                '**/libsignal_jni*.dylib',
+                '**/signal_jni*.dll'
+            ]
         }
     }
 }
