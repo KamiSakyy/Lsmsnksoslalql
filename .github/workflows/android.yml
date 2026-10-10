@@ -58,16 +58,17 @@ jobs:
         id: prepare_apk
         run: |
           set -o pipefail
-          python3 tools/prepare_release_apk.py \
-            app/build/outputs/apk/release/app-release.apk \
-            --sdk "${ANDROID_HOME}" \
-            --build-tools 36.0.0 \
-            --ndk 27.2.12479018 \
-            --keystore signing/tsuyu-release.p12 \
-            --signing-properties signing/keystore.properties 2>&1 | tee apk-preparation.log
+          if python3 tools/prepare_release_apk.py app/build/outputs/apk/release/app-release.apk --sdk "${ANDROID_HOME}" --build-tools 36.0.0 --ndk 27.2.12479018 --keystore signing/tsuyu-release.p12 --signing-properties signing/keystore.properties 2>&1 | tee apk-preparation.log; then
+            exit 0
+          else
+            result=$?
+            DETAILS="$(tail -n 35 apk-preparation.log | sed -e 's/%/%25/g' -e ':a' -e 'N' -e '$!ba' -e 's/\\r/%0D/g' -e 's/\\n/%0A/g')"
+            echo "::error title=APK preparation failed::$DETAILS"
+            exit "$result"
+          fi
 
       - name: Publish concise APK preparation diagnostics
-        if: steps.prepare_apk.outcome == 'failure'
+        if: always() && steps.prepare_apk.outcome == 'failure'
         run: |
           if [ -f apk-preparation.log ]; then
             {
