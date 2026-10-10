@@ -159,7 +159,7 @@ public final class SignalE2ee {
                 signedId, signedKey, signedSignature, identity, kyberId, kyberKey, kyberSignature);
     }
 
-    public synchronized void trustRemoteIdentity(String remoteUid, Map<String, Object> remoteBundle) {
+    public synchronized void trustRemoteIdentity(String remoteUid, Map<String, Object> remoteBundle) throws Exception {
         if (remoteUid == null || remoteUid.isEmpty() || remoteUid.equals(localUid)) throw new IllegalArgumentException("Invalid peer");
         if (remoteBundle == null || !"libsignal-pqxdh-dr-v1".equals(remoteBundle.get("protocol"))) {
             throw new IllegalArgumentException("Missing compatible Signal public key");
