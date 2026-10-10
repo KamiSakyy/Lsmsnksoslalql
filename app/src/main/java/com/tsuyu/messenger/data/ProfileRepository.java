@@ -21,7 +21,7 @@ import java.util.concurrent.atomic.AtomicInteger;
 public final class ProfileRepository {
     public interface Result<T> {
         void success(T value);
-        void error(String message);
+        default void error(String message) { }
     }
 
     private final DatabaseReference root;
