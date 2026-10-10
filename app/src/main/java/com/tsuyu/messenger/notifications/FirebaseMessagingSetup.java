@@ -9,12 +9,12 @@ public final class FirebaseMessagingSetup {
     private FirebaseMessagingSetup() {}
 
     public static void registerTokenListener(FirebaseApp app) {
-        FirebaseMessaging.getInstance(app).getToken().addOnSuccessListener(token -> {
+        FirebaseMessaging.getInstance().getToken().addOnSuccessListener(token -> {
             if (token != null) saveToken(app, token);
         });
         FirebaseAuth.getInstance(app).addAuthStateListener(auth -> {
             if (auth.getCurrentUser() != null) {
-                FirebaseMessaging.getInstance(app).getToken().addOnSuccessListener(token -> {
+                FirebaseMessaging.getInstance().getToken().addOnSuccessListener(token -> {
                     if (token != null) saveToken(app, token);
                 });
             }

@@ -3,6 +3,7 @@ package com.tsuyu.messenger.notifications;
 import android.content.BroadcastReceiver;
 import android.content.Context;
 import android.content.Intent;
+import android.os.Bundle;
 
 import androidx.core.app.RemoteInput;
 
@@ -17,9 +18,9 @@ public final class NotificationReplyReceiver extends BroadcastReceiver {
 
     @Override
     public void onReceive(Context context, Intent intent) {
-        RemoteInput input = RemoteInput.getResultsFromIntent(intent);
-        if (input == null) return;
-        CharSequence reply = input.getCharSequence(KEY_TEXT);
+        Bundle results = RemoteInput.getResultsFromIntent(intent);
+        if (results == null) return;
+        CharSequence reply = results.getCharSequence(KEY_TEXT);
         String chatId = intent.getStringExtra("chatId");
         String peerUid = intent.getStringExtra("peerUid");
         if (reply == null || reply.toString().trim().isEmpty() || chatId == null || peerUid == null) return;
