@@ -1,0 +1,362 @@
+{
+  "toolchain": {
+    "blender": "4.2.23 LTS",
+    "method": "Anatomical capsule envelopes + surface diffusion + 4-influence normalization",
+    "fps": 30
+  },
+  "source": {
+    "file": "d247d7c3_46ba_414e_b821_b731d4b67026_ab2fefced0df785fa9f396410d0b5905.glb",
+    "archive_sha256": "5b3a69491504d2a526c3a25f32012a102456663d7dbb3082d154287cfbab2eb5",
+    "glb_sha256": "c185de86a14426dd0ff7627c7f3f5d1409b48e4c7fa5ac674193b124f65f3eec",
+    "vertices": 1159795,
+    "triangles": 1981742,
+    "original_skins": 0,
+    "original_animations": 0
+  },
+  "runtime": {
+    "file": "anime-girl-rigged.glb",
+    "vertices": 156219,
+    "triangles": 159999,
+    "skin": {
+      "joints": 48,
+      "vertices": 201411,
+      "unweighted_vertices": 0,
+      "max_influences": 4,
+      "rest_bind_error": 7.848589749934213e-07,
+      "animations": [
+        "Dance",
+        "Idle",
+        "Run_InPlace",
+        "Walk_InPlace",
+        "Wave"
+      ]
+    },
+    "bytes": 21974996
+  },
+  "full_resolution": {
+    "file": "anime-girl-full.glb",
+    "geometry_and_textures_preserved": true,
+    "skin": {
+      "joints": 48,
+      "vertices": 1159795,
+      "unweighted_vertices": 0,
+      "max_influences": 4,
+      "rest_bind_error": 7.848589749934213e-07,
+      "animations": [
+        "Dance",
+        "Idle",
+        "Run_InPlace",
+        "Walk_InPlace",
+        "Wave"
+      ]
+    },
+    "bytes": 100792328
+  },
+  "bones": [
+    {
+      "name": "Root",
+      "parent": null,
+      "category": "root"
+    },
+    {
+      "name": "mixamorig:Hips",
+      "parent": "Root",
+      "category": "body"
+    },
+    {
+      "name": "mixamorig:Spine",
+      "parent": "mixamorig:Hips",
+      "category": "body"
+    },
+    {
+      "name": "mixamorig:Spine1",
+      "parent": "mixamorig:Spine",
+      "category": "body"
+    },
+    {
+      "name": "mixamorig:Spine2",
+      "parent": "mixamorig:Spine1",
+      "category": "body"
+    },
+    {
+      "name": "mixamorig:Neck",
+      "parent": "mixamorig:Spine2",
+      "category": "body"
+    },
+    {
+      "name": "mixamorig:Head",
+      "parent": "mixamorig:Neck",
+      "category": "body"
+    },
+    {
+      "name": "mixamorig:LeftShoulder",
+      "parent": "mixamorig:Spine2",
+      "category": "body"
+    },
+    {
+      "name": "mixamorig:LeftArm",
+      "parent": "mixamorig:LeftShoulder",
+      "category": "body"
+    },
+    {
+      "name": "mixamorig:LeftForeArm",
+      "parent": "mixamorig:LeftArm",
+      "category": "body"
+    },
+    {
+      "name": "mixamorig:LeftHand",
+      "parent": "mixamorig:LeftForeArm",
+      "category": "body"
+    },
+    {
+      "name": "mixamorig:LeftUpLeg",
+      "parent": "mixamorig:Hips",
+      "category": "body"
+    },
+    {
+      "name": "mixamorig:LeftLeg",
+      "parent": "mixamorig:LeftUpLeg",
+      "category": "body"
+    },
+    {
+      "name": "mixamorig:LeftFoot",
+      "parent": "mixamorig:LeftLeg",
+      "category": "body"
+    },
+    {
+      "name": "mixamorig:LeftToeBase",
+      "parent": "mixamorig:LeftFoot",
+      "category": "body"
+    },
+    {
+      "name": "mixamorig:RightShoulder",
+      "parent": "mixamorig:Spine2",
+      "category": "body"
+    },
+    {
+      "name": "mixamorig:RightArm",
+      "parent": "mixamorig:RightShoulder",
+      "category": "body"
+    },
+    {
+      "name": "mixamorig:RightForeArm",
+      "parent": "mixamorig:RightArm",
+      "category": "body"
+    },
+    {
+      "name": "mixamorig:RightHand",
+      "parent": "mixamorig:RightForeArm",
+      "category": "body"
+    },
+    {
+      "name": "mixamorig:RightUpLeg",
+      "parent": "mixamorig:Hips",
+      "category": "body"
+    },
+    {
+      "name": "mixamorig:RightLeg",
+      "parent": "mixamorig:RightUpLeg",
+      "category": "body"
+    },
+    {
+      "name": "mixamorig:RightFoot",
+      "parent": "mixamorig:RightLeg",
+      "category": "body"
+    },
+    {
+      "name": "mixamorig:RightToeBase",
+      "parent": "mixamorig:RightFoot",
+      "category": "body"
+    },
+    {
+      "name": "Hair.Back.L.01",
+      "parent": "mixamorig:Head",
+      "category": "hair"
+    },
+    {
+      "name": "Hair.Back.L.02",
+      "parent": "Hair.Back.L.01",
+      "category": "hair"
+    },
+    {
+      "name": "Hair.Back.L.03",
+      "parent": "Hair.Back.L.02",
+      "category": "hair"
+    },
+    {
+      "name": "Hair.Back.C.01",
+      "parent": "mixamorig:Head",
+      "category": "hair"
+    },
+    {
+      "name": "Hair.Back.C.02",
+      "parent": "Hair.Back.C.01",
+      "category": "hair"
+    },
+    {
+      "name": "Hair.Back.C.03",
+      "parent": "Hair.Back.C.02",
+      "category": "hair"
+    },
+    {
+      "name": "Hair.Back.R.01",
+      "parent": "mixamorig:Head",
+      "category": "hair"
+    },
+    {
+      "name": "Hair.Back.R.02",
+      "parent": "Hair.Back.R.01",
+      "category": "hair"
+    },
+    {
+      "name": "Hair.Back.R.03",
+      "parent": "Hair.Back.R.02",
+      "category": "hair"
+    },
+    {
+      "name": "Hair.Front.L.01",
+      "parent": "mixamorig:Head",
+      "category": "hair"
+    },
+    {
+      "name": "Hair.Front.L.02",
+      "parent": "Hair.Front.L.01",
+      "category": "hair"
+    },
+    {
+      "name": "Hair.Front.R.01",
+      "parent": "mixamorig:Head",
+      "category": "hair"
+    },
+    {
+      "name": "Hair.Front.R.02",
+      "parent": "Hair.Front.R.01",
+      "category": "hair"
+    },
+    {
+      "name": "Hair.Held.01",
+      "parent": "mixamorig:Head",
+      "category": "hair"
+    },
+    {
+      "name": "Hair.Held.02",
+      "parent": "Hair.Held.01",
+      "category": "hair"
+    },
+    {
+      "name": "Coat.L.01",
+      "parent": "mixamorig:Hips",
+      "category": "coat"
+    },
+    {
+      "name": "Coat.L.02",
+      "parent": "Coat.L.01",
+      "category": "coat"
+    },
+    {
+      "name": "Coat.C.01",
+      "parent": "mixamorig:Hips",
+      "category": "coat"
+    },
+    {
+      "name": "Coat.C.02",
+      "parent": "Coat.C.01",
+      "category": "coat"
+    },
+    {
+      "name": "Coat.R.01",
+      "parent": "mixamorig:Hips",
+      "category": "coat"
+    },
+    {
+      "name": "Coat.R.02",
+      "parent": "Coat.R.01",
+      "category": "coat"
+    },
+    {
+      "name": "Skirt.L.01",
+      "parent": "mixamorig:Hips",
+      "category": "skirt"
+    },
+    {
+      "name": "Skirt.L.02",
+      "parent": "Skirt.L.01",
+      "category": "skirt"
+    },
+    {
+      "name": "Skirt.R.01",
+      "parent": "mixamorig:Hips",
+      "category": "skirt"
+    },
+    {
+      "name": "Skirt.R.02",
+      "parent": "Skirt.R.01",
+      "category": "skirt"
+    }
+  ],
+  "clips": [
+    {
+      "name": "Idle",
+      "duration_seconds": 4.0,
+      "fps": 30,
+      "procedural": true,
+      "loop": true
+    },
+    {
+      "name": "Walk_InPlace",
+      "duration_seconds": 1.2,
+      "fps": 30,
+      "procedural": true,
+      "loop": true
+    },
+    {
+      "name": "Run_InPlace",
+      "duration_seconds": 0.8,
+      "fps": 30,
+      "procedural": true,
+      "loop": true
+    },
+    {
+      "name": "Wave",
+      "duration_seconds": 3.0,
+      "fps": 30,
+      "procedural": true,
+      "loop": false
+    },
+    {
+      "name": "Dance",
+      "duration_seconds": 4.0,
+      "fps": 30,
+      "procedural": true,
+      "loop": true
+    }
+  ],
+  "pose_checks": {
+    "Idle": {
+      "sampled_frames": 5,
+      "maximum_extent_in_model_heights": 1.0016520126541384
+    },
+    "Walk_InPlace": {
+      "sampled_frames": 5,
+      "maximum_extent_in_model_heights": 0.9946032712563057
+    },
+    "Run_InPlace": {
+      "sampled_frames": 5,
+      "maximum_extent_in_model_heights": 0.9939335380402629
+    },
+    "Wave": {
+      "sampled_frames": 5,
+      "maximum_extent_in_model_heights": 1.0016031754063648
+    },
+    "Dance": {
+      "sampled_frames": 5,
+      "maximum_extent_in_model_heights": 0.9876032454692657
+    }
+  },
+  "limitations": [
+    "Profile is fitted to this model, not a universal arbitrary-pose autorigger.",
+    "No facial blendshapes or individually articulated fingers.",
+    "Hair/clothing motion is skeletal/procedural, not physical simulation.",
+    "Extreme poses may need manual weights and corrective shapes."
+  ]
+}
