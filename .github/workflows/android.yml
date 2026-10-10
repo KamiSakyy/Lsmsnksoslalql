@@ -80,7 +80,7 @@ jobs:
           fi
 
       - name: Publish concise Gradle failure details
-        if: steps.build_apks.outcome == 'failure'
+        if: always() && steps.build_apks.outcome == 'failure'
         run: |
           if [ -f gradle-build.log ]; then
             {
