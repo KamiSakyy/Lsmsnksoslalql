@@ -4,34 +4,24 @@ import android.Manifest;
 import android.app.AlertDialog;
 import android.content.ClipData;
 import android.content.ClipboardManager;
-import android.content.Context;
 import android.content.Intent;
 import android.content.pm.PackageManager;
 import android.graphics.Bitmap;
 import android.graphics.BitmapFactory;
-import android.graphics.Typeface;
-import android.graphics.drawable.GradientDrawable;
 import android.net.Uri;
 import android.os.Build;
 import android.os.Bundle;
 import android.os.Handler;
 import android.os.Looper;
 import android.text.Editable;
-import android.text.InputType;
 import android.text.TextWatcher;
-import android.view.Gravity;
 import android.view.MenuItem;
 import android.view.View;
-import android.view.ViewGroup;
+import android.view.animation.AnimationUtils;
 import android.view.inputmethod.InputMethodManager;
 import android.util.Base64;
-import android.widget.EditText;
 import android.widget.FrameLayout;
-import android.widget.ImageView;
-import android.widget.LinearLayout;
 import android.widget.PopupMenu;
-import android.widget.ScrollView;
-import android.widget.SeekBar;
 import android.widget.TextView;
 import android.widget.Toast;
 
@@ -39,19 +29,32 @@ import androidx.activity.result.ActivityResultLauncher;
 import androidx.activity.result.contract.ActivityResultContracts;
 import androidx.appcompat.app.AppCompatActivity;
 import androidx.core.content.ContextCompat;
-import androidx.core.graphics.drawable.RoundedBitmapDrawable;
-import androidx.core.graphics.drawable.RoundedBitmapDrawableFactory;
+import androidx.core.graphics.Insets;
+import androidx.core.view.ViewCompat;
+import androidx.core.view.WindowCompat;
+import androidx.core.view.WindowInsetsCompat;
+import androidx.recyclerview.widget.LinearLayoutManager;
+import androidx.recyclerview.widget.RecyclerView;
+import androidx.transition.TransitionManager;
+
+import com.google.android.material.appbar.MaterialToolbar;
+import com.google.android.material.bottomnavigation.BottomNavigationView;
+import com.google.android.material.button.MaterialButton;
+import com.google.android.material.checkbox.MaterialCheckBox;
+import com.google.android.material.imageview.ShapeableImageView;
+import com.google.android.material.materialswitch.MaterialSwitch;
+import com.google.android.material.slider.Slider;
+import com.google.android.material.textfield.TextInputEditText;
+import com.google.android.material.transition.MaterialFadeThrough;
 
 import com.google.android.gms.tasks.Tasks;
 import com.google.firebase.FirebaseApp;
-import com.google.firebase.auth.AuthResult;
 import com.google.firebase.auth.FirebaseAuth;
 import com.google.firebase.auth.FirebaseUser;
 import com.google.firebase.database.DataSnapshot;
 import com.google.firebase.database.DatabaseError;
 import com.google.firebase.database.DatabaseReference;
 import com.google.firebase.database.FirebaseDatabase;
-import com.google.firebase.database.ServerValue;
 import com.google.firebase.database.ValueEventListener;
 import com.google.firebase.messaging.FirebaseMessaging;
 import com.tsuyu.messenger.crypto.LocalMessageCache;
@@ -63,9 +66,12 @@ import com.tsuyu.messenger.data.PresenceManager;
 import com.tsuyu.messenger.data.ProfileRepository;
 import com.tsuyu.messenger.notifications.FirebaseMessagingSetup;
 import com.tsuyu.messenger.notifications.NotificationSounds;
-import com.tsuyu.messenger.ui.Ui;
+import com.tsuyu.messenger.ui.ChatListAdapter;
+import com.tsuyu.messenger.ui.MessageListAdapter;
+import com.tsuyu.messenger.ui.ProfileSearchAdapter;
 import com.tsuyu.messenger.ui.ZoomImageView;
 
+import org.json.JSONArray;
 import org.json.JSONObject;
 
 import java.io.ByteArrayOutputStream;
@@ -81,6 +87,7 @@ import java.util.List;
 import java.util.Locale;
 import java.util.Map;
 import java.util.Set;
+import java.util.UUID;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
@@ -105,7 +112,7 @@ public final class MainActivity extends AppCompatActivity {
     private boolean authFormIsRegister;
     private boolean editingAvatar;
     private boolean isNewProfile;
-    private boolean searchMode;
+    private boolean chatIndexLoaded;
     private String replyToId;
     private String replyToText;
     private long lastTypingWrite;
@@ -115,11 +122,15 @@ public final class MainActivity extends AppCompatActivity {
     private final ExecutorService dataQueue = Executors.newFixedThreadPool(3);
     private final Set<String> decrypting = ConcurrentHashMap.newKeySet();
     private final Set<String> decryptFailures = ConcurrentHashMap.newKeySet();
+    private final Set<String> loadingSummaryIds = ConcurrentHashMap.newKeySet();
     private final Map<String, ChatSummary> summaries = new ConcurrentHashMap<>();
+    private final Map<String, ChatMessage> optimisticMessages = new ConcurrentHashMap<>();
     private final Map<String, DatabaseReference> summaryPresenceRefs = new ConcurrentHashMap<>();
     private final Map<String, ValueEventListener> summaryPresenceListeners = new ConcurrentHashMap<>();
     private final Map<String, DatabaseReference> summaryTypingRefs = new ConcurrentHashMap<>();
     private final Map<String, ValueEventListener> summaryTypingListeners = new ConcurrentHashMap<>();
+    private final Map<String, DatabaseReference> summaryMetaRefs = new ConcurrentHashMap<>();
+    private final Map<String, ValueEventListener> summaryMetaListeners = new ConcurrentHashMap<>();
     private final Map<String, Set<String>> messageReactions = new ConcurrentHashMap<>();
 
     private ActivityResultLauncher<String> avatarPicker;
@@ -130,15 +141,27 @@ public final class MainActivity extends AppCompatActivity {
     private String pendingMediaKind;
     private String draftAvatarBase64 = "";
 
-    private LinearLayout pageRoot;
-    private LinearLayout chatList;
-    private LinearLayout searchResults;
-    private EditText searchInput;
-    private EditText composer;
+    private FrameLayout screenHost;
+    private View currentScreen;
+    private RecyclerView chatList;
+    private RecyclerView searchResults;
+    private RecyclerView messageList;
+    private View homeEmptyState;
+    private View homeLoadingState;
+    private View searchEmptyState;
+    private View chatEmptyState;
+    private TextView searchEmptyText;
+    private TextInputEditText searchInput;
+    private TextInputEditText composer;
     private TextView chatStatus;
-    private TextView replyBanner;
-    private ScrollView messageScroll;
-    private LinearLayout messageColumn;
+    private View chatAvatarDot;
+    private View replyBanner;
+    private TextView replyBannerText;
+    private ChatListAdapter chatListAdapter;
+    private ProfileSearchAdapter profileSearchAdapter;
+    private MessageListAdapter messageListAdapter;
+    private List<ChatMessage> lastRemoteMessages = new ArrayList<>();
+    private String lastRemoteChatId;
     private ValueEventListener userChatsListener;
     private ValueEventListener messagesListener;
     private ValueEventListener typingListener;
@@ -159,6 +182,15 @@ public final class MainActivity extends AppCompatActivity {
     @Override
     protected void onCreate(Bundle savedInstanceState) {
         super.onCreate(savedInstanceState);
+        setContentView(R.layout.activity_main);
+        screenHost = findViewById(R.id.screen_host);
+        WindowCompat.setDecorFitsSystemWindows(getWindow(), false);
+        ViewCompat.setOnApplyWindowInsetsListener(screenHost, (view, windowInsets) -> {
+            Insets systemBars = windowInsets.getInsets(WindowInsetsCompat.Type.systemBars());
+            view.setPadding(systemBars.left, systemBars.top, systemBars.right, systemBars.bottom);
+            return WindowInsetsCompat.CONSUMED;
+        });
+        ViewCompat.requestApplyInsets(screenHost);
         FirebaseBootstrap.initialize(this);
         FirebaseApp app = FirebaseApp.getInstance();
         auth = FirebaseAuth.getInstance(app);
@@ -169,11 +201,12 @@ public final class MainActivity extends AppCompatActivity {
         NotificationSounds.ensureChannel(this);
 
         avatarPicker = registerForActivityResult(new ActivityResultContracts.GetContent(), uri -> {
-            if (uri == null) return;
+            if (uri == null) { editingAvatar = false; return; }
             if (editingAvatar) {
                 editingAvatar = false;
                 try {
                     draftAvatarBase64 = imageToBase64(uri, 512, 280_000);
+                    updateDraftAvatarPreview();
                     Toast.makeText(this, "Фото выбрано", Toast.LENGTH_SHORT).show();
                 } catch (Exception e) {
                     toast("Не удалось прочитать изображение.");
@@ -206,6 +239,12 @@ public final class MainActivity extends AppCompatActivity {
                 uid = null;
                 crypto = null;
                 messageCache = null;
+                myProfile = null;
+                peerProfile = null;
+                isNewProfile = false;
+                summaries.clear();
+                optimisticMessages.clear();
+                chatIndexLoaded = false;
                 stopBackgroundSync();
                 detachRealtimeListeners();
                 page = "";
@@ -290,37 +329,16 @@ public final class MainActivity extends AppCompatActivity {
     private void showAuth() {
         if (isFinishing()) return;
         page = "auth";
-        LinearLayout root = vertical(Ui.BLACK);
-        root.setGravity(Gravity.CENTER_HORIZONTAL);
-        root.setPadding(Ui.dp(this, 24), Ui.dp(this, 28), Ui.dp(this, 24), Ui.dp(this, 24));
-        TextView logo = Ui.text(this, "TSUYU", 34, Ui.WHITE, true);
-        logo.setGravity(Gravity.CENTER);
-        logo.setLetterSpacing(0.12f);
-        root.addView(logo, matchWrap());
-        TextView subtitle = Ui.text(this, "Личные сообщения. Ваши ключи — на вашем устройстве.", 13, 0xff888888, false);
-        subtitle.setGravity(Gravity.CENTER);
-        subtitle.setPadding(0, Ui.dp(this, 8), 0, Ui.dp(this, 22));
-        root.addView(subtitle, matchWrap());
-        TextView badge = Ui.text(this, "  ◈  Сквозное шифрование", 12, Ui.SECONDARY, true);
-        badge.setGravity(Gravity.CENTER);
-        badge.setPadding(Ui.dp(this, 12), Ui.dp(this, 8), Ui.dp(this, 12), Ui.dp(this, 8));
-        badge.setBackground(Ui.bordered(Ui.INPUT, Ui.BORDER, this, 16, 1));
-        LinearLayout.LayoutParams badgeLp = wrap();
-        badgeLp.bottomMargin = Ui.dp(this, 20);
-        root.addView(badge, badgeLp);
-
-        EditText email = Ui.input(this, "Почта", false);
-        email.setInputType(InputType.TYPE_CLASS_TEXT | InputType.TYPE_TEXT_VARIATION_EMAIL_ADDRESS);
-        root.addView(email, fieldParams());
-        EditText password = Ui.input(this, "Пароль", true);
-        root.addView(password, fieldParams());
-        TextView primary = Ui.button(this, authFormIsRegister ? "Создать аккаунт" : "Войти", Ui.WHITE, Ui.BLACK, 14);
-        LinearLayout.LayoutParams buttonLp = new LinearLayout.LayoutParams(-1, Ui.dp(this, 52));
-        buttonLp.topMargin = Ui.dp(this, 8);
-        root.addView(primary, buttonLp);
+        View root = showScreen(R.layout.screen_auth);
+        TextInputEditText email = root.findViewById(R.id.auth_email);
+        TextInputEditText password = root.findViewById(R.id.auth_password);
+        MaterialButton primary = root.findViewById(R.id.auth_primary);
+        MaterialButton switchMode = root.findViewById(R.id.auth_switch_mode);
+        primary.setText(authFormIsRegister ? R.string.auth_register : R.string.auth_login);
+        switchMode.setText(authFormIsRegister ? R.string.auth_have_account : R.string.auth_create_account);
         primary.setOnClickListener(v -> {
-            String mail = email.getText().toString().trim();
-            String pass = password.getText().toString();
+            String mail = email.getText() == null ? "" : email.getText().toString().trim();
+            String pass = password.getText() == null ? "" : password.getText().toString();
             if (mail.isEmpty() || pass.length() < 6) {
                 toast("Введите почту и пароль (не короче 6 символов).");
                 return;
@@ -328,7 +346,11 @@ public final class MainActivity extends AppCompatActivity {
             primary.setEnabled(false);
             if (authFormIsRegister) {
                 auth.createUserWithEmailAndPassword(mail, pass)
-                        .addOnSuccessListener(result -> { primary.setEnabled(true); toast("Аккаунт создан. Настройте профиль."); handleSignedIn(result.getUser().getUid()); })
+                        .addOnSuccessListener(result -> {
+                            primary.setEnabled(true);
+                            toast("Аккаунт создан. Настройте профиль.");
+                            handleSignedIn(result.getUser().getUid());
+                        })
                         .addOnFailureListener(e -> { primary.setEnabled(true); toast(authError(e)); });
             } else {
                 auth.signInWithEmailAndPassword(mail, pass)
@@ -336,16 +358,7 @@ public final class MainActivity extends AppCompatActivity {
                         .addOnFailureListener(e -> { primary.setEnabled(true); toast(authError(e)); });
             }
         });
-        TextView switchMode = Ui.text(this, authFormIsRegister ? "Уже есть аккаунт? Войти" : "Нет аккаунта? Зарегистрироваться", 14, Ui.BLUE, true);
-        switchMode.setGravity(Gravity.CENTER);
-        switchMode.setPadding(0, Ui.dp(this, 18), 0, Ui.dp(this, 10));
         switchMode.setOnClickListener(v -> { authFormIsRegister = !authFormIsRegister; showAuth(); });
-        root.addView(switchMode, matchWrap());
-        TextView footer = Ui.text(this, "Tsuyu • только личные диалоги", 12, 0xff666666, false);
-        footer.setGravity(Gravity.CENTER);
-        LinearLayout.LayoutParams footLp = new LinearLayout.LayoutParams(-1, 0, 1);
-        root.addView(footer, footLp);
-        setContentView(root);
     }
 
     private void showProfileEditor(boolean newProfile) {
@@ -353,88 +366,85 @@ public final class MainActivity extends AppCompatActivity {
         page = "profile_edit";
         isNewProfile = newProfile;
         draftAvatarBase64 = myProfile == null || myProfile.avatarBase64 == null ? "" : myProfile.avatarBase64;
-        LinearLayout root = vertical(Ui.BLACK);
-        addTopBar(root, newProfile ? "Ваш профиль" : "Редактировать профиль", "‹", () -> {
+        View root = showScreen(R.layout.screen_profile_editor);
+        MaterialToolbar toolbar = root.findViewById(R.id.profile_toolbar);
+        toolbar.setTitle(newProfile ? "Создать профиль" : "Редактировать профиль");
+        toolbar.setNavigationOnClickListener(v -> {
             if (newProfile) auth.signOut(); else showSettings();
-        }, null, null);
-        ScrollView scroll = new ScrollView(this);
-        LinearLayout body = vertical(Ui.BLACK);
-        body.setPadding(Ui.dp(this, 20), Ui.dp(this, 20), Ui.dp(this, 20), Ui.dp(this, 24));
-        TextView avatar = Ui.text(this, "Изменить фото профиля", 14, Ui.WHITE, true);
-        avatar.setGravity(Gravity.CENTER);
-        avatar.setBackground(Ui.shape(Ui.INPUT, this, 18));
-        avatar.setLayoutParams(new LinearLayout.LayoutParams(Ui.dp(this, 118), Ui.dp(this, 118)));
-        avatar.setOnClickListener(v -> { editingAvatar = true; avatarPicker.launch("image/*"); });
-        LinearLayout.LayoutParams avatarLp = wrap(); avatarLp.gravity = Gravity.CENTER_HORIZONTAL; avatarLp.bottomMargin = Ui.dp(this, 24);
-        body.addView(avatar, avatarLp);
-        EditText name = Ui.input(this, "Имя", false);
-        EditText username = Ui.input(this, "@юзернейм", false);
-        EditText about = Ui.input(this, "Описание", false);
-        about.setSingleLine(false); about.setMinLines(2); about.setGravity(Gravity.TOP | Gravity.START);
+        });
+        TextInputEditText name = root.findViewById(R.id.profile_name);
+        TextInputEditText username = root.findViewById(R.id.profile_username);
+        TextInputEditText about = root.findViewById(R.id.profile_about);
         if (myProfile != null) {
-            name.setText(myProfile.displayName);
-            username.setText(myProfile.username == null ? "" : "@" + myProfile.username);
-            about.setText(myProfile.about);
+            name.setText(myProfile.displayName == null ? "" : myProfile.displayName);
+            username.setText(myProfile.username == null ? "" : myProfile.username);
+            about.setText(myProfile.about == null ? "" : myProfile.about);
         }
-        body.addView(name, fieldParams()); body.addView(username, fieldParams()); body.addView(about, fieldParams());
-        TextView hint = Ui.text(this, "Юзернейм должен быть уникальным: латиница, цифры и _ (3–20 знаков).", 12, Ui.SECONDARY, false);
-        hint.setPadding(0, 0, 0, Ui.dp(this, 16)); body.addView(hint, matchWrap());
-        TextView save = Ui.button(this, "Сохранить", Ui.BLUE, Ui.WHITE, 14);
-        body.addView(save, new LinearLayout.LayoutParams(-1, Ui.dp(this, 52)));
+        ShapeableImageView avatar = root.findViewById(R.id.profile_avatar);
+        TextView avatarInitial = root.findViewById(R.id.profile_avatar_initial);
+        bindAvatar(avatar, avatarInitial, myProfile, name.getText().toString(), draftAvatarBase64);
+        View avatarContainer = root.findViewById(R.id.profile_avatar_container);
+        View.OnClickListener choosePhoto = v -> { editingAvatar = true; avatarPicker.launch("image/*"); };
+        avatarContainer.setOnClickListener(choosePhoto);
+        root.findViewById(R.id.profile_pick_photo).setOnClickListener(choosePhoto);
+        MaterialButton save = root.findViewById(R.id.profile_save);
         save.setOnClickListener(v -> {
             save.setEnabled(false);
-            profileRepository.saveProfile(uid, name.getText().toString(), username.getText().toString(),
-                    about.getText().toString(), draftAvatarBase64,
+            profileRepository.saveProfile(uid,
+                    name.getText() == null ? "" : name.getText().toString(),
+                    username.getText() == null ? "" : username.getText().toString(),
+                    about.getText() == null ? "" : about.getText().toString(),
+                    draftAvatarBase64,
                     new ProfileRepository.Result<Profile>() {
                         @Override public void success(Profile profile) {
-                            save.setEnabled(true); myProfile = profile; attachUserChatsListener(); showHome();
+                            save.setEnabled(true);
+                            myProfile = profile;
+                            isNewProfile = false;
+                            attachUserChatsListener();
+                            showHome();
                         }
                         @Override public void error(String message) { save.setEnabled(true); toast(message); }
                     });
         });
-        scroll.addView(body); root.addView(scroll, new LinearLayout.LayoutParams(-1, 0, 1)); setContentView(root);
     }
 
     private void showHome() {
         if (uid == null) { showAuth(); return; }
+        isNewProfile = false;
         markNoActiveChat();
         page = "home";
-        activeChatId = null; activePeerUid = null;
-        LinearLayout root = vertical(Ui.BLACK);
-        LinearLayout header = horizontal(Ui.HEADER);
-        header.setPadding(Ui.dp(this, 12), 0, Ui.dp(this, 10), 0);
-        TextView menu = Ui.iconButton(this, "☰", Ui.WHITE);
-        header.addView(menu, new LinearLayout.LayoutParams(Ui.dp(this, 40), Ui.dp(this, 40)));
-        menu.setOnClickListener(v -> showSettings());
-        LinearLayout titleBox = vertical(Ui.HEADER);
-        TextView title = Ui.text(this, "Tsuyu", 20, Ui.WHITE, true);
-        title.setLetterSpacing(0.04f);
-        TextView subtitle = Ui.text(this, "Личные диалоги", 11, Ui.SECONDARY, false);
-        titleBox.addView(title); titleBox.addView(subtitle);
-        LinearLayout.LayoutParams titleLp = new LinearLayout.LayoutParams(0, -2, 1);
-        titleLp.leftMargin = Ui.dp(this, 10);
-        header.addView(titleBox, titleLp);
-        TextView search = Ui.iconButton(this, "⌕", Ui.SECONDARY);
-        header.addView(search, new LinearLayout.LayoutParams(Ui.dp(this, 40), Ui.dp(this, 40)));
-        search.setOnClickListener(v -> showSearchScreen());
-        TextView profile = Ui.iconButton(this, "●", Ui.WHITE);
-        header.addView(profile, new LinearLayout.LayoutParams(Ui.dp(this, 40), Ui.dp(this, 40)));
-        profile.setOnClickListener(v -> showProfileEditor(false));
-        root.addView(header, new LinearLayout.LayoutParams(-1, Ui.dp(this, 56)));
-        root.addView(Ui.divider(this));
-
-        chatList = vertical(Ui.BLACK);
-        ScrollView scroll = new ScrollView(this);
-        scroll.setFillViewport(true);
-        scroll.addView(chatList);
-        root.addView(scroll, new LinearLayout.LayoutParams(-1, 0, 1));
-        TextView empty = Ui.text(this, "Здесь появятся ваши диалоги.\nНайдите человека по @юзернейму.", 14, Ui.SECONDARY, false);
-        empty.setGravity(Gravity.CENTER);
-        empty.setPadding(Ui.dp(this, 28), Ui.dp(this, 60), Ui.dp(this, 28), Ui.dp(this, 60));
-        chatList.addView(empty, matchWrap());
-        root.addView(bottomBar("Диалоги"));
-        setContentView(root);
+        activeChatId = null;
+        activePeerUid = null;
+        View root = showScreen(R.layout.screen_home);
+        MaterialToolbar toolbar = root.findViewById(R.id.home_toolbar);
+        toolbar.setOnMenuItemClickListener(item -> {
+            if (item.getItemId() == R.id.action_search) { showSearchScreen(); return true; }
+            if (item.getItemId() == R.id.action_profile) { showProfileEditor(false); return true; }
+            return false;
+        });
+        android.view.MenuItem profileItem = toolbar.getMenu().findItem(R.id.action_profile);
+        if (profileItem != null && profileItem.getActionView() != null) {
+            View profileAction = profileItem.getActionView();
+            ShapeableImageView avatar = profileAction.findViewById(R.id.action_profile_avatar);
+            TextView initial = profileAction.findViewById(R.id.action_profile_initial);
+            bindAvatar(avatar, initial, myProfile, myProfile == null ? "T" : myProfile.displayNameOrUsername(),
+                    myProfile == null ? null : myProfile.avatarBase64);
+            profileAction.setOnClickListener(v -> showProfileEditor(false));
+        }
+        chatList = root.findViewById(R.id.chats_list);
+        chatList.setLayoutManager(new LinearLayoutManager(this));
+        chatList.setItemAnimator(new androidx.recyclerview.widget.DefaultItemAnimator());
+        chatListAdapter = new ChatListAdapter(new ChatListAdapter.Listener() {
+            @Override public void onChatSelected(ChatSummary summary) { openChat(summary); }
+            @Override public String previewFor(ChatSummary summary) { return MainActivity.this.previewFor(summary); }
+        });
+        chatList.setAdapter(chatListAdapter);
+        homeEmptyState = root.findViewById(R.id.home_empty_state);
+        homeLoadingState = root.findViewById(R.id.home_loading_state);
+        root.findViewById(R.id.home_find_people).setOnClickListener(v -> showSearchScreen());
+        setupBottomNavigation(root, R.id.nav_chats);
         attachUserChatsListener();
+        renderChatList();
         if (getIntent() != null) handleNotificationIntent(getIntent());
     }
 
@@ -444,7 +454,11 @@ public final class MainActivity extends AppCompatActivity {
         listenedUserChatsUid = uid;
         userChatsListener = new ValueEventListener() {
             @Override public void onDataChange(DataSnapshot snapshot) { loadChatSummaries(snapshot); }
-            @Override public void onCancelled(DatabaseError error) { toast("Не удалось загрузить диалоги: " + error.getMessage()); }
+            @Override public void onCancelled(DatabaseError error) {
+                chatIndexLoaded = true;
+                renderChatList();
+                toast("Не удалось загрузить диалоги: " + error.getMessage());
+            }
         };
         chatRepository.userChats(uid).addValueEventListener(userChatsListener);
     }
@@ -455,65 +469,109 @@ public final class MainActivity extends AppCompatActivity {
         }
         userChatsListener = null;
         listenedUserChatsUid = null;
+        chatIndexLoaded = false;
         summaries.clear();
-        for (String chatId : new HashSet<>(summaryPresenceRefs.keySet())) removeSummaryRealtime(chatId);
+        loadingSummaryIds.clear();
+        optimisticMessages.clear();
+        Set<String> watched = new HashSet<>(summaryPresenceRefs.keySet());
+        watched.addAll(summaryTypingRefs.keySet());
+        watched.addAll(summaryMetaRefs.keySet());
+        for (String chatId : watched) removeSummaryRealtime(chatId);
     }
 
     private void loadChatSummaries(DataSnapshot snapshot) {
-        summaries.clear();
+        chatIndexLoaded = true;
         List<String> ids = new ArrayList<>();
         for (DataSnapshot child : snapshot.getChildren()) if (child.getKey() != null) ids.add(child.getKey());
         Set<String> idSet = new HashSet<>(ids);
-        for (String oldId : new HashSet<>(summaryPresenceRefs.keySet())) if (!idSet.contains(oldId)) removeSummaryRealtime(oldId);
-        if (ids.isEmpty()) { renderChatList(); return; }
-        for (String chatId : ids) dataQueue.execute(() -> loadOneSummary(chatId));
+        Set<String> known = new HashSet<>(summaries.keySet());
+        known.addAll(summaryPresenceRefs.keySet());
+        known.addAll(summaryTypingRefs.keySet());
+        known.addAll(summaryMetaRefs.keySet());
+        for (String oldId : known) {
+            if (!idSet.contains(oldId)) {
+                summaries.remove(oldId);
+                removeSummaryRealtime(oldId);
+            }
+        }
+        for (String chatId : ids) {
+            if (!summaries.containsKey(chatId) && loadingSummaryIds.add(chatId)) {
+                dataQueue.execute(() -> loadOneSummary(chatId));
+            }
+        }
+        renderChatList();
     }
 
     private void loadOneSummary(String chatId) {
+        String expectedUid = uid;
         try {
             DataSnapshot members = Tasks.await(chatRepository.root().child("chats").child(chatId).child("members").get(), 10, TimeUnit.SECONDS);
             String peerUid = null;
             for (DataSnapshot child : members.getChildren()) {
-                if (child.getKey() != null && !child.getKey().equals(uid)) { peerUid = child.getKey(); break; }
+                if (child.getKey() != null && !child.getKey().equals(expectedUid)) { peerUid = child.getKey(); break; }
             }
-            if (peerUid == null) return;
+            if (peerUid == null || !expectedUid.equals(uid)) return;
             DatabaseReference profileRef = chatRepository.root().child("users").child(peerUid).child("profile");
-            Profile profile = new Profile(); profile.uid = peerUid;
-            profile.username = Tasks.await(profileRef.child("username").get(), 10, TimeUnit.SECONDS).getValue(String.class);
+            Profile profile = new Profile();
+            profile.uid = peerUid;
+            profile.username = readOptionalProfileField(profileRef, "username");
             profile.displayName = readOptionalProfileField(profileRef, "displayName");
             profile.avatarBase64 = readOptionalProfileField(profileRef, "avatarBase64");
             profile.about = readOptionalProfileField(profileRef, "about");
-            if (profile.username == null) return;
-            DataSnapshot meta = Tasks.await(chatRepository.chatMeta(chatId).get(), 10, TimeUnit.SECONDS);
-            ChatMessage last = meta.child("lastMessage").getValue(ChatMessage.class);
+            if ((profile.displayName == null || profile.displayName.trim().isEmpty())
+                    && (profile.username == null || profile.username.trim().isEmpty())) profile.displayName = "Собеседник";
+
+            DataSnapshot meta = readOptionalSnapshot(chatRepository.chatMeta(chatId));
+            ChatMessage last = meta == null ? null : meta.child("lastMessage").getValue(ChatMessage.class);
             if (last != null) last.id = meta.child("lastMessageId").getValue(String.class);
-            long at = number(meta.child("lastAt").getValue());
+            long at = meta == null ? 0L : number(meta.child("lastAt").getValue());
             boolean online = false;
             try {
                 DataSnapshot onlineSnapshot = Tasks.await(chatRepository.presence(peerUid).child("online").get(), 10, TimeUnit.SECONDS);
                 online = Boolean.TRUE.equals(onlineSnapshot.getValue(Boolean.class));
-            } catch (Exception hiddenOrUnavailable) { online = false; }
-            DataSnapshot typing = Tasks.await(chatRepository.typing(chatId).child(peerUid).get(), 10, TimeUnit.SECONDS);
-            boolean isTyping = Boolean.TRUE.equals(typing.child("typing").getValue(Boolean.class));
-            long typingAt = number(typing.child("at").getValue());
-            if (System.currentTimeMillis() - typingAt > 5500) isTyping = false;
-            ChatSummary summary = new ChatSummary(chatId, peerUid, profile, at,
-                    last == null ? null : last.cipher);
+            } catch (Exception ignored) { }
+            boolean typingNow = false;
+            try {
+                DataSnapshot typing = Tasks.await(chatRepository.typing(chatId).child(peerUid).get(), 10, TimeUnit.SECONDS);
+                long typingAt = number(typing.child("at").getValue());
+                typingNow = Boolean.TRUE.equals(typing.child("typing").getValue(Boolean.class))
+                        && System.currentTimeMillis() - typingAt <= 5500;
+            } catch (Exception ignored) { }
+            if (!expectedUid.equals(uid)) return;
+            if (last != null) {
+                last.id = meta == null ? null : meta.child("lastMessageId").getValue(String.class);
+                reconcileOptimisticMessage(chatId, last);
+            }
+            ChatSummary summary = new ChatSummary(chatId, peerUid, profile, at, last == null ? null : last.cipher);
             summary.online = online;
-            summary.typing = isTyping;
+            summary.typing = typingNow;
             summary.lastMessage = last;
+            ChatSummary optimistic = summaries.get(chatId);
+            if (optimistic != null && optimistic.lastMessage != null
+                    && (last == null || optimistic.lastAt > at)) {
+                summary.lastAt = optimistic.lastAt;
+                summary.lastMessage = optimistic.lastMessage;
+                summary.encryptedPreview = null;
+            }
             summaries.put(chatId, summary);
             watchSummaryRealtime(chatId, peerUid);
-            if (last != null) maybeDecryptPreview(summary, last);
+            if (summary.lastMessage != null) maybeDecryptPreview(summary, summary.lastMessage);
+        } catch (Exception error) {
+            android.util.Log.w("Tsuyu", "Could not load chat summary " + chatId, error);
+        } finally {
+            loadingSummaryIds.remove(chatId);
             runOnUiThread(this::renderChatList);
-        } catch (Exception ignored) {
-            // A missing/denied chat is omitted; the rules file documents the expected RTDB access.
         }
+    }
+
+    private DataSnapshot readOptionalSnapshot(DatabaseReference ref) {
+        try { return Tasks.await(ref.get(), 10, TimeUnit.SECONDS); }
+        catch (Exception ignored) { return null; }
     }
 
     private String readOptionalProfileField(DatabaseReference profileRef, String field) {
         try { return Tasks.await(profileRef.child(field).get(), 10, TimeUnit.SECONDS).getValue(String.class); }
-        catch (Exception deniedOrUnavailable) { return null; }
+        catch (Exception ignored) { return null; }
     }
 
     private void watchSummaryRealtime(String chatId, String peerUid) {
@@ -526,7 +584,9 @@ public final class MainActivity extends AppCompatActivity {
                 }
                 @Override public void onCancelled(DatabaseError error) { }
             };
-            summaryPresenceRefs.put(chatId, ref); summaryPresenceListeners.put(chatId, listener); ref.addValueEventListener(listener);
+            summaryPresenceRefs.put(chatId, ref);
+            summaryPresenceListeners.put(chatId, listener);
+            ref.addValueEventListener(listener);
         }
         if (!summaryTypingListeners.containsKey(chatId)) {
             DatabaseReference ref = chatRepository.typing(chatId).child(peerUid);
@@ -535,97 +595,124 @@ public final class MainActivity extends AppCompatActivity {
                     ChatSummary summary = summaries.get(chatId);
                     if (summary == null) return;
                     long at = number(snapshot.child("at").getValue());
-                    summary.typing = Boolean.TRUE.equals(snapshot.child("typing").getValue(Boolean.class)) && System.currentTimeMillis() - at <= 5500;
+                    summary.typing = Boolean.TRUE.equals(snapshot.child("typing").getValue(Boolean.class))
+                            && System.currentTimeMillis() - at <= 5500;
                     renderChatList();
                 }
                 @Override public void onCancelled(DatabaseError error) { }
             };
-            summaryTypingRefs.put(chatId, ref); summaryTypingListeners.put(chatId, listener); ref.addValueEventListener(listener);
+            summaryTypingRefs.put(chatId, ref);
+            summaryTypingListeners.put(chatId, listener);
+            ref.addValueEventListener(listener);
+        }
+        if (!summaryMetaListeners.containsKey(chatId)) {
+            DatabaseReference ref = chatRepository.chatMeta(chatId);
+            ValueEventListener listener = new ValueEventListener() {
+                @Override public void onDataChange(DataSnapshot snapshot) {
+                    ChatSummary summary = summaries.get(chatId);
+                    if (summary == null) return;
+                    ChatMessage last = snapshot.child("lastMessage").getValue(ChatMessage.class);
+                    if (last != null) last.id = snapshot.child("lastMessageId").getValue(String.class);
+                    long remoteAt = number(snapshot.child("lastAt").getValue());
+                    ChatMessage current = summary.lastMessage;
+                    boolean sameOptimisticMessage = last != null && current != null
+                            && current.clientId != null && current.clientId.equals(last.clientId);
+                    if (sameOptimisticMessage) reconcileOptimisticMessage(chatId, last);
+                    boolean preserveLocalPreview = current != null && current.localPayload != null
+                            && !sameOptimisticMessage && current.sentAt >= remoteAt;
+                    summary.lastAt = preserveLocalPreview ? current.sentAt : remoteAt;
+                    summary.lastMessage = preserveLocalPreview ? current : last;
+                    summary.encryptedPreview = summary.lastMessage == null || preserveLocalPreview
+                            ? null : summary.lastMessage.cipher;
+                    if (summary.lastMessage != null && !preserveLocalPreview) maybeDecryptPreview(summary, summary.lastMessage);
+                    renderChatList();
+                }
+                @Override public void onCancelled(DatabaseError error) { }
+            };
+            summaryMetaRefs.put(chatId, ref);
+            summaryMetaListeners.put(chatId, listener);
+            ref.addValueEventListener(listener);
         }
     }
 
     private void removeSummaryRealtime(String chatId) {
-        DatabaseReference p = summaryPresenceRefs.remove(chatId); ValueEventListener pl = summaryPresenceListeners.remove(chatId);
-        if (p != null && pl != null) p.removeEventListener(pl);
-        DatabaseReference t = summaryTypingRefs.remove(chatId); ValueEventListener tl = summaryTypingListeners.remove(chatId);
-        if (t != null && tl != null) t.removeEventListener(tl);
+        DatabaseReference presenceRef = summaryPresenceRefs.remove(chatId);
+        ValueEventListener presenceListener = summaryPresenceListeners.remove(chatId);
+        if (presenceRef != null && presenceListener != null) presenceRef.removeEventListener(presenceListener);
+        DatabaseReference typingRef = summaryTypingRefs.remove(chatId);
+        ValueEventListener typingListener = summaryTypingListeners.remove(chatId);
+        if (typingRef != null && typingListener != null) typingRef.removeEventListener(typingListener);
+        DatabaseReference metaRef = summaryMetaRefs.remove(chatId);
+        ValueEventListener metaListener = summaryMetaListeners.remove(chatId);
+        if (metaRef != null && metaListener != null) metaRef.removeEventListener(metaListener);
     }
 
     private void maybeDecryptPreview(ChatSummary summary, ChatMessage message) {
-        if (message.id == null || message.cipher == null || message.senderUid == null) return;
+        if (message.id == null || message.senderUid == null) return;
         String cached = messageCache == null ? null : messageCache.get(summary.chatId, message.id);
-        if (cached != null || message.senderUid.equals(uid)) return;
+        if (cached != null) return;
+        if (message.senderUid.equals(uid)) {
+            ChatMessage local = message.clientId == null ? null : optimisticMessages.get(message.clientId);
+            if (local != null && local.localPayload != null && messageCache != null) {
+                messageCache.put(summary.chatId, message.id, local.localPayload);
+            }
+            return;
+        }
+        if (message.cipher == null) return;
         String key = summary.chatId + ":" + message.id;
         if (!decrypting.add(key)) return;
         cryptoQueue.execute(() -> {
             try {
                 byte[] plaintext = crypto.decrypt(summary.peerUid, message.signalType, message.cipher);
                 String json = new String(plaintext, StandardCharsets.UTF_8);
-                messageCache.put(summary.chatId, message.id, json);
+                if (messageCache != null) messageCache.put(summary.chatId, message.id, json);
                 runOnUiThread(this::renderChatList);
             } catch (Exception ignored) { }
             finally { decrypting.remove(key); }
         });
     }
 
-    private void renderChatList() {
-        if (!"home".equals(page) || chatList == null) return;
-        chatList.removeAllViews();
-        List<ChatSummary> items = new ArrayList<>(summaries.values());
-        items.sort((a, b) -> Long.compare(b.lastAt, a.lastAt));
-        if (items.isEmpty()) {
-            TextView empty = Ui.text(this, "Здесь появятся ваши диалоги.\nНайдите человека по @юзернейму.", 14, Ui.SECONDARY, false);
-            empty.setGravity(Gravity.CENTER); empty.setTextAlignment(View.TEXT_ALIGNMENT_CENTER);
-            empty.setPadding(Ui.dp(this, 28), Ui.dp(this, 60), Ui.dp(this, 28), Ui.dp(this, 60));
-            chatList.addView(empty, matchWrap());
-            return;
+    private void reconcileOptimisticMessage(String chatId, ChatMessage serverMessage) {
+        if (serverMessage == null || serverMessage.clientId == null) return;
+        ChatMessage local = optimisticMessages.get(serverMessage.clientId);
+        if (local == null || !chatId.equals(local.localChatId)) return;
+        local.id = serverMessage.id;
+        local.pending = false;
+        local.failed = false;
+        if (messageCache != null && local.localPayload != null && serverMessage.id != null) {
+            messageCache.put(chatId, serverMessage.id, local.localPayload);
         }
-        for (ChatSummary item : items) chatList.addView(chatRow(item));
+        optimisticMessages.remove(serverMessage.clientId, local);
     }
 
-    private View chatRow(ChatSummary summary) {
-        LinearLayout row = horizontal(Ui.BLACK);
-        row.setPadding(Ui.dp(this, 14), Ui.dp(this, 11), Ui.dp(this, 14), Ui.dp(this, 11));
-        FrameLayout avatarWrap = new FrameLayout(this);
-        ImageView avatar = avatar(summary.peer, 50);
-        avatarWrap.addView(avatar, new FrameLayout.LayoutParams(Ui.dp(this, 50), Ui.dp(this, 50)));
-        View dot = new View(this);
-        dot.setBackground(Ui.bordered(summary.online ? Ui.GREEN : Ui.SECONDARY, Ui.BLACK, this, 8, 2));
-        FrameLayout.LayoutParams dotLp = new FrameLayout.LayoutParams(Ui.dp(this, 14), Ui.dp(this, 14), Gravity.BOTTOM | Gravity.RIGHT);
-        avatarWrap.addView(dot, dotLp);
-        LinearLayout.LayoutParams avatarLp = new LinearLayout.LayoutParams(Ui.dp(this, 50), Ui.dp(this, 50));
-        avatarLp.rightMargin = Ui.dp(this, 12);
-        row.addView(avatarWrap, avatarLp);
-
-        LinearLayout textCol = vertical(Ui.BLACK);
-        LinearLayout top = horizontal(Ui.BLACK);
-        TextView name = Ui.text(this, summary.peer.displayNameOrUsername(), 15, Ui.WHITE, true);
-        name.setSingleLine(true); name.setEllipsize(android.text.TextUtils.TruncateAt.END);
-        top.addView(name, new LinearLayout.LayoutParams(0, -2, 1));
-        TextView time = Ui.text(this, summary.lastAt <= 0 ? "" : new SimpleDateFormat("HH:mm", Locale.getDefault()).format(new Date(summary.lastAt)), 11, Ui.SECONDARY, false);
-        top.addView(time);
-        textCol.addView(top);
-        String preview = summary.typing ? "печатает…" : previewFor(summary);
-        TextView last = Ui.text(this, preview, 13, summary.typing ? Ui.BLUE : 0xff888888, false);
-        last.setSingleLine(true); last.setEllipsize(android.text.TextUtils.TruncateAt.END);
-        LinearLayout.LayoutParams lastLp = new LinearLayout.LayoutParams(-1, -2); lastLp.topMargin = Ui.dp(this, 6);
-        textCol.addView(last, lastLp);
-        LinearLayout.LayoutParams textLp = new LinearLayout.LayoutParams(0, -2, 1);
-        textLp.gravity = Gravity.CENTER_VERTICAL;
-        row.addView(textCol, textLp);
-        row.setMinimumHeight(Ui.dp(this, 74));
-        row.setOnClickListener(v -> openChat(summary));
-        row.setForeground(Ui.shape(0x00000000, this, 0));
-        return row;
+    private void renderChatList() {
+        if (!"home".equals(page) || chatList == null || chatListAdapter == null) return;
+        List<ChatSummary> items = new ArrayList<>(summaries.values());
+        items.sort((a, b) -> Long.compare(b.lastAt, a.lastAt));
+        chatListAdapter.submit(items);
+        if (items.isEmpty()) {
+            chatList.setVisibility(View.GONE);
+            homeLoadingState.setVisibility(chatIndexLoaded ? View.GONE : View.VISIBLE);
+            homeEmptyState.setVisibility(chatIndexLoaded ? View.VISIBLE : View.GONE);
+        } else {
+            chatList.setVisibility(View.VISIBLE);
+            homeLoadingState.setVisibility(View.GONE);
+            homeEmptyState.setVisibility(View.GONE);
+        }
     }
 
     private String previewFor(ChatSummary summary) {
-        ChatMessage msg = summary.lastMessage;
-        if (msg == null) return "Сквозное шифрование · начните диалог";
-        String cached = msg.id == null || messageCache == null ? null : messageCache.get(summary.chatId, msg.id);
+        ChatMessage message = summary.lastMessage;
+        if (message == null) return "Сквозное шифрование · начните диалог";
+        if (message.localPayload != null) return previewFromJson(message.localPayload);
+        String cached = message.id == null || messageCache == null ? null : messageCache.get(summary.chatId, message.id);
         if (cached != null) return previewFromJson(cached);
-        if (uid.equals(msg.senderUid)) return "Вы отправили сообщение";
-        return msg.cipher == null ? "Сообщение" : "Зашифрованное сообщение";
+        if (message.clientId != null) {
+            ChatMessage local = optimisticMessages.get(message.clientId);
+            if (local != null && local.localPayload != null) return previewFromJson(local.localPayload);
+        }
+        if (message.failed) return "Не отправлено · нажмите, чтобы повторить";
+        return message.cipher == null ? "Новое сообщение" : "Зашифрованное сообщение";
     }
 
     private void openChat(ChatSummary summary) { showChat(summary.chatId, summary.peerUid); }
@@ -634,146 +721,182 @@ public final class MainActivity extends AppCompatActivity {
         if (uid == null) return;
         markNoActiveChat();
         page = "search";
-        searchMode = true;
-        LinearLayout root = vertical(Ui.BLACK);
-        LinearLayout header = horizontal(Ui.HEADER); header.setPadding(Ui.dp(this, 12), 0, Ui.dp(this, 12), 0);
-        TextView back = Ui.iconButton(this, "‹", Ui.WHITE); header.addView(back, new LinearLayout.LayoutParams(Ui.dp(this, 40), Ui.dp(this, 40)));
-        back.setOnClickListener(v -> showHome());
-        TextView title = Ui.text(this, "Поиск людей", 18, Ui.WHITE, true);
-        LinearLayout.LayoutParams titleLp = new LinearLayout.LayoutParams(0, -2, 1); titleLp.leftMargin = Ui.dp(this, 10); header.addView(title, titleLp);
-        root.addView(header, new LinearLayout.LayoutParams(-1, Ui.dp(this, 56))); root.addView(Ui.divider(this));
-        LinearLayout searchWrap = horizontal(Ui.HEADER); searchWrap.setPadding(Ui.dp(this, 12), Ui.dp(this, 8), Ui.dp(this, 12), Ui.dp(this, 8));
-        TextView lens = Ui.text(this, "⌕", 22, Ui.SECONDARY, false); lens.setGravity(Gravity.CENTER); searchWrap.addView(lens, new LinearLayout.LayoutParams(Ui.dp(this, 28), Ui.dp(this, 42)));
-        searchInput = new EditText(this); searchInput.setSingleLine(true); searchInput.setTextColor(Ui.WHITE); searchInput.setHintTextColor(0xff666666); searchInput.setTextSize(14); searchInput.setHint("Введите @юзернейм"); searchInput.setPadding(Ui.dp(this, 6), 0, Ui.dp(this, 8), 0); searchInput.setBackgroundColor(android.graphics.Color.TRANSPARENT);
-        searchWrap.addView(searchInput, new LinearLayout.LayoutParams(0, Ui.dp(this, 42), 1));
-        root.addView(searchWrap); root.addView(Ui.divider(this));
-        ScrollView scroll = new ScrollView(this); searchResults = vertical(Ui.BLACK); scroll.addView(searchResults); root.addView(scroll, new LinearLayout.LayoutParams(-1, 0, 1));
-        TextView empty = Ui.text(this, "Поиск работает по уникальному @юзернейму.", 13, Ui.SECONDARY, false); empty.setGravity(Gravity.CENTER); searchResults.addView(empty, new LinearLayout.LayoutParams(-1, Ui.dp(this, 100)));
+        View root = showScreen(R.layout.screen_search);
+        MaterialToolbar toolbar = root.findViewById(R.id.search_toolbar);
+        toolbar.setNavigationOnClickListener(v -> showHome());
+        searchInput = root.findViewById(R.id.search_input);
+        searchResults = root.findViewById(R.id.search_results);
+        searchEmptyState = root.findViewById(R.id.search_empty_state);
+        searchEmptyText = root.findViewById(R.id.search_empty_text);
+        searchResults.setLayoutManager(new LinearLayoutManager(this));
+        profileSearchAdapter = new ProfileSearchAdapter(profile -> chatRepository.openOrCreate(uid, profile.uid,
+                new ChatRepository.Result<String>() {
+                    @Override public void success(String chatId) {
+                        peerProfile = profile;
+                        showChat(chatId, profile.uid);
+                    }
+                    @Override public void error(String error) { toast(error); }
+                }));
+        searchResults.setAdapter(profileSearchAdapter);
+        setupBottomNavigation(root, R.id.nav_search);
         searchInput.addTextChangedListener(new TextWatcher() {
             private final Handler debounce = new Handler(Looper.getMainLooper());
             private Runnable pending;
-            @Override public void beforeTextChanged(CharSequence s, int start, int count, int after) {}
+            @Override public void beforeTextChanged(CharSequence s, int start, int count, int after) { }
             @Override public void onTextChanged(CharSequence s, int start, int before, int count) {
                 if (pending != null) debounce.removeCallbacks(pending);
                 String query = s == null ? "" : s.toString();
                 pending = () -> runSearch(query);
                 debounce.postDelayed(pending, 260);
             }
-            @Override public void afterTextChanged(Editable s) {}
+            @Override public void afterTextChanged(Editable s) { }
         });
-        root.addView(bottomBar("Поиск"));
-        setContentView(root);
-        searchInput.requestFocus();
-        ((InputMethodManager) getSystemService(INPUT_METHOD_SERVICE)).showSoftInput(searchInput, InputMethodManager.SHOW_IMPLICIT);
+        searchEmptyState.setVisibility(View.VISIBLE);
+        searchInput.post(() -> {
+            if (!"search".equals(page)) return;
+            searchInput.requestFocus();
+            Object service = getSystemService(INPUT_METHOD_SERVICE);
+            if (service instanceof InputMethodManager) ((InputMethodManager) service).showSoftInput(searchInput, InputMethodManager.SHOW_IMPLICIT);
+        });
     }
 
     private void runSearch(String query) {
-        if (!"search".equals(page)) return;
+        if (!"search".equals(page) || profileSearchAdapter == null) return;
         String normalized = ProfileRepository.normalizeUsername(query);
-        if (normalized.length() < 1) return;
+        if (normalized.isEmpty()) {
+            profileSearchAdapter.submit(Collections.emptyList());
+            searchEmptyText.setText(R.string.search_prompt);
+            searchEmptyState.setVisibility(View.VISIBLE);
+            return;
+        }
+        searchEmptyText.setText("Поиск…");
+        searchEmptyState.setVisibility(View.VISIBLE);
         profileRepository.searchUsers(normalized, uid, new ProfileRepository.Result<List<Profile>>() {
             @Override public void success(List<Profile> profiles) {
-                if (!"search".equals(page)) return;
-                searchResults.removeAllViews();
+                if (!"search".equals(page) || profileSearchAdapter == null) return;
+                profileSearchAdapter.submit(profiles);
                 if (profiles.isEmpty()) {
-                    TextView empty = Ui.text(MainActivity.this, "Никого не найдено", 14, Ui.SECONDARY, false);
-                    empty.setGravity(Gravity.CENTER); searchResults.addView(empty, new LinearLayout.LayoutParams(-1, Ui.dp(MainActivity.this, 100)));
-                } else {
-                    for (Profile profile : profiles) {
-                        profileRepository.getProfile(profile.uid, full -> {
-                            if (full != null) {
-                                full.uid = profile.uid;
-                                searchResults.addView(searchRow(full), 0);
-                                searchResults.getChildAt(0).setAlpha(0f);
-                                searchResults.getChildAt(0).animate().alpha(1f).translationY(0f).setDuration(180).start();
-                            }
-                        });
-                    }
-                }
+                    searchEmptyText.setText(R.string.no_search_results);
+                    searchEmptyState.setVisibility(View.VISIBLE);
+                } else searchEmptyState.setVisibility(View.GONE);
             }
-            @Override public void error(String message) { toast(message); }
+            @Override public void error(String message) {
+                if (!"search".equals(page)) return;
+                profileSearchAdapter.submit(Collections.emptyList());
+                searchEmptyText.setText("Не удалось выполнить поиск. Проверьте соединение.");
+                searchEmptyState.setVisibility(View.VISIBLE);
+                toast(message);
+            }
         });
     }
 
-    private View searchRow(Profile profile) {
-        LinearLayout row = horizontal(Ui.BLACK); row.setPadding(Ui.dp(this, 14), Ui.dp(this, 11), Ui.dp(this, 14), Ui.dp(this, 11));
-        ImageView avatar = avatar(profile, 48);
-        LinearLayout.LayoutParams avLp = new LinearLayout.LayoutParams(Ui.dp(this, 48), Ui.dp(this, 48)); avLp.rightMargin = Ui.dp(this, 12); row.addView(avatar, avLp);
-        LinearLayout col = vertical(Ui.BLACK);
-        col.addView(Ui.text(this, profile.displayNameOrUsername(), 15, Ui.WHITE, true));
-        TextView handle = Ui.text(this, "@" + (profile.username == null ? "" : profile.username), 12, Ui.SECONDARY, false);
-        LinearLayout.LayoutParams hLp = new LinearLayout.LayoutParams(-1, -2); hLp.topMargin = Ui.dp(this, 5); col.addView(handle, hLp);
-        row.addView(col, new LinearLayout.LayoutParams(0, -2, 1));
-        TextView message = Ui.text(this, "Написать  ›", 12, Ui.BLUE, true); row.addView(message);
-        row.setOnClickListener(v -> chatRepository.openOrCreate(uid, profile.uid, new ChatRepository.Result<String>() {
-            @Override public void success(String chatId) { peerProfile = profile; showChat(chatId, profile.uid); }
-            @Override public void error(String error) { toast(error); }
-        }));
-        row.setOnLongClickListener(v -> { peerProfile = profile; showPeerProfile(); return true; });
-        return row;
-    }
 
     private void showChat(String chatId, String peerUid) {
         if (uid == null || chatId == null || peerUid == null) return;
         detachChatListeners();
-        activeChatId = chatId; activePeerUid = peerUid; replyToId = null; replyToText = null;
+        if (peerProfile == null || !peerUid.equals(peerProfile.uid)) peerProfile = null;
+        activeChatId = chatId;
+        activePeerUid = peerUid;
+        replyToId = null;
+        replyToText = null;
+        lastRemoteMessages = new ArrayList<>();
+        lastRemoteChatId = chatId;
         getSharedPreferences("tsuyu_settings", MODE_PRIVATE).edit().putString("active_chat", chatId).apply();
         page = "chat";
-        LinearLayout root = vertical(Ui.BLACK);
-        LinearLayout header = horizontal(Ui.HEADER); header.setPadding(Ui.dp(this, 10), 0, Ui.dp(this, 10), 0);
-        TextView back = Ui.iconButton(this, "‹", Ui.WHITE); header.addView(back, new LinearLayout.LayoutParams(Ui.dp(this, 38), Ui.dp(this, 38))); back.setOnClickListener(v -> { detachChatListeners(); showHome(); });
-        ImageView avatar = new ImageView(this);
-        LinearLayout.LayoutParams avLp = new LinearLayout.LayoutParams(Ui.dp(this, 38), Ui.dp(this, 38)); avLp.leftMargin = Ui.dp(this, 6); avLp.rightMargin = Ui.dp(this, 9); header.addView(avatar, avLp);
-        LinearLayout info = vertical(Ui.HEADER);
-        TextView name = Ui.text(this, "Tsuyu user", 15, Ui.WHITE, true);
-        chatStatus = Ui.text(this, "сквозное шифрование", 11, Ui.SECONDARY, false);
-        info.addView(name); info.addView(chatStatus);
-        LinearLayout.LayoutParams infoLp = new LinearLayout.LayoutParams(0, -2, 1); infoLp.gravity = Gravity.CENTER_VERTICAL; header.addView(info, infoLp);
-        TextView more = Ui.iconButton(this, "⋮", Ui.SECONDARY); header.addView(more, new LinearLayout.LayoutParams(Ui.dp(this, 38), Ui.dp(this, 38)));
-        more.setOnClickListener(v -> showChatMenu(more));
-        root.addView(header, new LinearLayout.LayoutParams(-1, Ui.dp(this, 56))); root.addView(Ui.divider(this));
+        View root = showScreen(R.layout.screen_chat);
+        MaterialToolbar toolbar = root.findViewById(R.id.chat_toolbar);
+        toolbar.setNavigationOnClickListener(v -> { detachChatListeners(); showHome(); });
+        toolbar.setOnMenuItemClickListener(item -> {
+            if (item.getItemId() == R.id.action_chat_more) { showChatMenu(toolbar); return true; }
+            return false;
+        });
+        ShapeableImageView avatar = root.findViewById(R.id.chat_peer_avatar);
+        TextView avatarInitial = root.findViewById(R.id.chat_peer_initial);
+        chatStatus = root.findViewById(R.id.chat_peer_status);
+        chatAvatarDot = root.findViewById(R.id.chat_peer_online_dot);
+        View avatarFrame = root.findViewById(R.id.chat_peer_avatar_frame);
+        View peerHeader = root.findViewById(R.id.chat_peer_header_text);
+        avatarFrame.setOnClickListener(v -> showPeerProfile());
+        peerHeader.setOnClickListener(v -> showPeerProfile());
+        Profile firstProfile = peerProfile;
+        if (firstProfile == null) {
+            firstProfile = new Profile();
+            firstProfile.uid = peerUid;
+            firstProfile.displayName = "Собеседник";
+        }
+        root.<TextView>findViewById(R.id.chat_peer_name).setText(firstProfile.displayNameOrUsername());
+        bindAvatar(avatar, avatarInitial, firstProfile, firstProfile.displayNameOrUsername(), firstProfile.avatarBase64);
 
-        messageColumn = vertical(Ui.BLACK); messageColumn.setPadding(Ui.dp(this, 10), Ui.dp(this, 10), Ui.dp(this, 10), Ui.dp(this, 10));
-        messageScroll = new ScrollView(this); messageScroll.setFillViewport(true); messageScroll.setClipToPadding(false); messageScroll.addView(messageColumn);
-        root.addView(messageScroll, new LinearLayout.LayoutParams(-1, 0, 1));
-
-        LinearLayout composerPanel = vertical(Ui.HEADER);
-        replyBanner = Ui.text(this, "", 12, Ui.BLUE, false); replyBanner.setPadding(Ui.dp(this, 14), Ui.dp(this, 8), Ui.dp(this, 14), Ui.dp(this, 4)); replyBanner.setVisibility(View.GONE); composerPanel.addView(replyBanner, matchWrap());
-        LinearLayout bar = horizontal(Ui.HEADER); bar.setGravity(Gravity.CENTER_VERTICAL); bar.setPadding(Ui.dp(this, 8), Ui.dp(this, 7), Ui.dp(this, 8), Ui.dp(this, 7));
-        TextView attach = Ui.iconButton(this, "+", Ui.SECONDARY); bar.addView(attach, new LinearLayout.LayoutParams(Ui.dp(this, 38), Ui.dp(this, 38)));
-        attach.setOnClickListener(v -> showAttachmentMenu());
-        composer = new EditText(this); composer.setTextColor(Ui.WHITE); composer.setHintTextColor(0xff666666); composer.setTextSize(14); composer.setHint("Сообщение"); composer.setMaxLines(4); composer.setPadding(Ui.dp(this, 14), Ui.dp(this, 10), Ui.dp(this, 14), Ui.dp(this, 10)); composer.setBackground(Ui.bordered(Ui.INPUT, 0xff2a2a2c, this, 20, 1));
-        LinearLayout.LayoutParams editLp = new LinearLayout.LayoutParams(0, -2, 1); editLp.leftMargin = Ui.dp(this, 6); editLp.rightMargin = Ui.dp(this, 6); bar.addView(composer, editLp);
-        TextView send = Ui.button(this, "➤", Ui.BLUE, Ui.WHITE, 24); send.setTextSize(19); send.setPadding(0, 0, 0, 0); bar.addView(send, new LinearLayout.LayoutParams(Ui.dp(this, 42), Ui.dp(this, 42)));
-        send.setOnClickListener(v -> sendCurrentText());
+        messageList = root.findViewById(R.id.message_list);
+        LinearLayoutManager messageLayout = new LinearLayoutManager(this);
+        messageLayout.setStackFromEnd(true);
+        messageList.setLayoutManager(messageLayout);
+        messageList.setItemAnimator(new androidx.recyclerview.widget.DefaultItemAnimator());
+        messageListAdapter = new MessageListAdapter(uid, textSize(), isTextBold(),
+                getSharedPreferences("tsuyu_settings", MODE_PRIVATE).getBoolean("italic", false),
+                new MessageListAdapter.Listener() {
+                    @Override public void onOpenPayload(String payload) { openPayload(payload); }
+                    @Override public void onMessageMenu(View anchor, ChatMessage message, String payload) { showMessageMenu(anchor, message, payload); }
+                    @Override public void onRetry(ChatMessage message) { retryMessage(message); }
+                    @Override public void onReact(ChatMessage message) { toggleHeart(message); }
+                    @Override public void onGalleryImage(String encodedImage) { showImageDialog(encodedImage); }
+                });
+        messageList.setAdapter(messageListAdapter);
+        chatEmptyState = root.findViewById(R.id.chat_empty_state);
+        composer = root.findViewById(R.id.chat_composer);
+        replyBanner = root.findViewById(R.id.reply_banner);
+        replyBannerText = root.findViewById(R.id.reply_banner_text);
+        root.findViewById(R.id.reply_cancel).setOnClickListener(v -> {
+            replyToId = null;
+            replyToText = null;
+            replyBanner.setVisibility(View.GONE);
+        });
+        root.findViewById(R.id.chat_attach).setOnClickListener(this::showAttachmentMenu);
+        root.findViewById(R.id.chat_send).setOnClickListener(v -> sendCurrentText());
         composer.setOnEditorActionListener((view, actionId, event) -> {
-            if (event != null && event.getKeyCode() == android.view.KeyEvent.KEYCODE_ENTER && !event.isShiftPressed()) { sendCurrentText(); return true; }
+            if (actionId == android.view.inputmethod.EditorInfo.IME_ACTION_SEND
+                    || (event != null && event.getKeyCode() == android.view.KeyEvent.KEYCODE_ENTER
+                    && event.getAction() == android.view.KeyEvent.ACTION_DOWN && !event.isShiftPressed())) {
+                sendCurrentText();
+                return true;
+            }
             return false;
         });
         composer.addTextChangedListener(new TextWatcher() {
-            @Override public void beforeTextChanged(CharSequence s, int start, int count, int after) {}
+            @Override public void beforeTextChanged(CharSequence s, int start, int count, int after) { }
             @Override public void onTextChanged(CharSequence s, int start, int before, int count) {
                 if (activeChatId != null && !presenceManager.isGhostMode()) {
                     long now = System.currentTimeMillis();
                     if (s != null && s.length() > 0 && now - lastTypingWrite > 800) {
-                        lastTypingWrite = now; chatRepository.setTyping(activeChatId, uid, true);
+                        lastTypingWrite = now;
+                        chatRepository.setTyping(activeChatId, uid, true);
                     }
                     ui.removeCallbacks(clearTyping);
                     if (s == null || s.length() == 0) chatRepository.setTyping(activeChatId, uid, false);
                     else ui.postDelayed(clearTyping, 1800);
                 }
             }
-            @Override public void afterTextChanged(Editable s) {}
+            @Override public void afterTextChanged(Editable s) { }
         });
-        composerPanel.addView(bar);
-        root.addView(composerPanel);
-        setContentView(root);
+
         profileRepository.getProfile(peerUid, profile -> {
             if (!"chat".equals(page) || !peerUid.equals(activePeerUid)) return;
+            if (profile == null) {
+                profile = new Profile();
+                profile.uid = peerUid;
+                profile.displayName = "Собеседник";
+            }
+            profile.uid = peerUid;
             peerProfile = profile;
-            if (profile != null) { name.setText(profile.displayNameOrUsername()); setAvatar(avatar, profile, 38); }
+            root.<TextView>findViewById(R.id.chat_peer_name).setText(profile.displayNameOrUsername());
+            bindAvatar(avatar, avatarInitial, profile, profile.displayNameOrUsername(), profile.avatarBase64);
         });
-        peerOnline = false; peerLastSeenVisible = false; peerLastSeen = 0; peerTyping = false; peerReadAt = 0;
+        peerOnline = false;
+        peerLastSeenVisible = false;
+        peerLastSeen = 0;
+        peerTyping = false;
+        peerReadAt = 0;
+        updateChatStatus();
         attachMessagesListener(chatId, peerUid);
         attachTypingListener(chatId, peerUid);
         attachPeerPresence(chatId, peerUid);
@@ -841,13 +964,27 @@ public final class MainActivity extends AppCompatActivity {
     }
 
     private void updateChatStatus() {
+        if (chatAvatarDot != null) {
+            chatAvatarDot.setVisibility(peerOnline ? View.VISIBLE : View.GONE);
+            if (peerOnline && chatAvatarDot.getAnimation() == null) {
+                chatAvatarDot.startAnimation(AnimationUtils.loadAnimation(this, R.anim.online_pulse));
+            } else if (!peerOnline) chatAvatarDot.clearAnimation();
+        }
         if (chatStatus == null) return;
-        if (peerTyping) { chatStatus.setText("печатает…"); chatStatus.setTextColor(Ui.BLUE); }
-        else if (peerOnline) { chatStatus.setText("в сети"); chatStatus.setTextColor(Ui.GREEN); }
-        else if (peerLastSeenVisible && peerLastSeen > 0) {
+        if (peerTyping) {
+            chatStatus.setText("печатает…");
+            chatStatus.setTextColor(ContextCompat.getColor(this, R.color.tsuyu_blue));
+        } else if (peerOnline) {
+            chatStatus.setText("в сети");
+            chatStatus.setTextColor(ContextCompat.getColor(this, R.color.tsuyu_green));
+        } else if (peerLastSeenVisible && peerLastSeen > 0) {
             String date = new SimpleDateFormat("HH:mm", Locale.getDefault()).format(new Date(peerLastSeen));
-            chatStatus.setText("был(а) в сети в " + date); chatStatus.setTextColor(Ui.SECONDARY);
-        } else { chatStatus.setText("не в сети"); chatStatus.setTextColor(Ui.SECONDARY); }
+            chatStatus.setText("был(а) в сети в " + date);
+            chatStatus.setTextColor(ContextCompat.getColor(this, R.color.tsuyu_secondary));
+        } else {
+            chatStatus.setText("не в сети");
+            chatStatus.setTextColor(ContextCompat.getColor(this, R.color.tsuyu_secondary));
+        }
     }
 
     private void attachReadReceiptListener(String chatId, String peerUid) {
@@ -880,10 +1017,12 @@ public final class MainActivity extends AppCompatActivity {
                 messageReactions.clear();
                 for (DataSnapshot message : snapshot.getChildren()) {
                     Set<String> users = new HashSet<>();
-                    for (DataSnapshot reaction : message.getChildren()) if ("heart".equals(reaction.getValue(String.class))) users.add(reaction.getKey());
+                    for (DataSnapshot reaction : message.getChildren()) {
+                        if ("heart".equals(reaction.getValue(String.class))) users.add(reaction.getKey());
+                    }
                     if (!users.isEmpty()) messageReactions.put(message.getKey(), users);
                 }
-                // Message rows redraw on the next RTDB message event; reactions are also toggled optimistically.
+                if (chatId.equals(activeChatId)) renderMessages(lastRemoteMessages, activePeerUid);
             }
             @Override public void onCancelled(DatabaseError error) { }
         };
@@ -891,159 +1030,76 @@ public final class MainActivity extends AppCompatActivity {
     }
 
     private void renderMessages(List<ChatMessage> messages, String peerUid) {
-        if (!"chat".equals(page) || messageColumn == null || activeChatId == null) return;
+        if (!"chat".equals(page) || messageList == null || messageListAdapter == null || activeChatId == null) return;
         final String renderChatId = activeChatId;
+        final boolean keepBottomPinned = messageListAdapter.getItemCount() == 0 || !messageList.canScrollVertically(1);
         final SignalE2ee activeCrypto = crypto;
         final LocalMessageCache activeCache = messageCache;
-        messageColumn.removeAllViews();
-        for (ChatMessage message : messages) {
-            String payload = activeCache == null || message.id == null ? null : activeCache.get(renderChatId, message.id);
-            final String key = renderChatId + ":" + message.id;
+        lastRemoteChatId = renderChatId;
+        lastRemoteMessages = new ArrayList<>(messages);
+
+        Set<String> serverClientIds = new HashSet<>();
+        for (ChatMessage message : lastRemoteMessages) {
+            if (message.clientId != null) {
+                serverClientIds.add(message.clientId);
+                reconcileOptimisticMessage(renderChatId, message);
+            }
+        }
+        List<ChatMessage> visible = new ArrayList<>(lastRemoteMessages);
+        for (ChatMessage local : optimisticMessages.values()) {
+            if (!renderChatId.equals(local.localChatId)) continue;
+            if (local.clientId != null && serverClientIds.contains(local.clientId)) continue;
+            visible.add(local);
+        }
+        visible.sort((first, second) -> {
+            int time = Long.compare(first.sentAt, second.sentAt);
+            if (time != 0) return time;
+            return String.valueOf(first.id).compareTo(String.valueOf(second.id));
+        });
+
+        List<MessageListAdapter.Row> rows = new ArrayList<>();
+        for (ChatMessage message : visible) {
+            String payload = message.localPayload;
+            if (payload == null && activeCache != null && message.id != null) payload = activeCache.get(renderChatId, message.id);
+            String key = renderChatId + ":" + message.id;
             if (payload == null && decryptFailures.contains(key)) payload = "{\"kind\":\"decrypt_error\"}";
-            if (payload == null && !uid.equals(message.senderUid) && message.cipher != null && decrypting.add(key)) {
+            if (payload == null && message.senderUid != null && !uid.equals(message.senderUid)
+                    && message.cipher != null && decrypting.add(key)) {
+                final String messageId = message.id;
                 cryptoQueue.execute(() -> {
                     try {
                         byte[] plain = activeCrypto.decrypt(peerUid, message.signalType, message.cipher);
-                        activeCache.put(renderChatId, message.id, new String(plain, StandardCharsets.UTF_8));
-                        runOnUiThread(() -> { if (renderChatId.equals(activeChatId)) renderMessages(messages, peerUid); });
-                    } catch (Exception e) {
+                        if (activeCache != null) activeCache.put(renderChatId, messageId, new String(plain, StandardCharsets.UTF_8));
+                        runOnUiThread(() -> {
+                            if (renderChatId.equals(activeChatId) && lastRemoteChatId.equals(renderChatId)) {
+                                renderMessages(lastRemoteMessages, peerUid);
+                            }
+                        });
+                    } catch (Exception error) {
                         decryptFailures.add(key);
-                        runOnUiThread(() -> { if (renderChatId.equals(activeChatId) && messageColumn != null) renderMessages(messages, peerUid); });
+                        runOnUiThread(() -> {
+                            if (renderChatId.equals(activeChatId) && lastRemoteChatId.equals(renderChatId)) {
+                                renderMessages(lastRemoteMessages, peerUid);
+                            }
+                        });
                     } finally { decrypting.remove(key); }
                 });
             }
-            messageColumn.addView(messageRow(message, payload));
-        }
-        ui.post(() -> { if (renderChatId.equals(activeChatId) && messageScroll != null) messageScroll.fullScroll(View.FOCUS_DOWN); });
-    }
-
-    private View messageRow(ChatMessage message, String payload) {
-        boolean outgoing = uid.equals(message.senderUid);
-        LinearLayout outer = horizontal(Ui.BLACK);
-        outer.setGravity(outgoing ? Gravity.RIGHT : Gravity.LEFT);
-        LinearLayout bubble = vertical(outgoing ? 0xff2c2c2e : 0xff1c1c1e);
-        bubble.setPadding(Ui.dp(this, 12), Ui.dp(this, 8), Ui.dp(this, 12), Ui.dp(this, 6));
-        GradientDrawable shape = Ui.shape(outgoing ? 0xff2c2c2e : 0xff1c1c1e, this, 18);
-        if (outgoing) shape.setCornerRadii(new float[]{18,18,18,18,4,4,18,18});
-        else shape.setCornerRadii(new float[]{18,18,18,18,18,18,4,4});
-        bubble.setBackground(shape);
-        JSONObject payloadObject = null;
-        String kind = "text";
-        if (payload != null) {
-            try { payloadObject = new JSONObject(payload); kind = payloadObject.optString("kind", "text"); }
-            catch (Exception ignored) { }
-        }
-        boolean media = payloadObject != null && ("image".equals(kind) || "collage".equals(kind) || "video".equals(kind) || "audio".equals(kind) || "voice".equals(kind));
-        String text = payload == null ? (decryptFailures.contains(activeChatId + ":" + message.id) ? "Не удалось расшифровать" : (outgoing ? "Вы отправили сообщение" : "Расшифровка…")) : textFromPayload(payload);
-        TextView body = Ui.text(this, text, textSize(), Ui.WHITE, isTextBold());
-        body.setTypeface(Typeface.create(Typeface.DEFAULT, textTypefaceStyle()));
-        body.setTextIsSelectable(true);
-        body.setMaxWidth(Ui.dp(this, 292));
-        if (media) body.setVisibility(View.GONE);
-        bubble.addView(body);
-        if (media) addMediaPreview(bubble, payloadObject, kind);
-        LinearLayout footer = horizontal(outgoing ? 0xff2c2c2e : 0xff1c1c1e);
-        footer.setGravity(Gravity.RIGHT | Gravity.CENTER_VERTICAL);
-        if (message.edited) {
-            TextView edited = Ui.text(this, "изменено", 10, Ui.SECONDARY, false);
-            LinearLayout.LayoutParams edLp = new LinearLayout.LayoutParams(-2, -2); edLp.rightMargin = Ui.dp(this, 4); footer.addView(edited, edLp);
-        }
-        TextView time = Ui.text(this, message.sentAt <= 0 ? "" : new SimpleDateFormat("HH:mm", Locale.getDefault()).format(new Date(message.sentAt)), 10, Ui.SECONDARY, false);
-        footer.addView(time);
-        if (outgoing) {
+            Set<String> reactions = messageReactions.get(message.id);
+            int reactionCount = reactions == null ? 0 : reactions.size();
             boolean read = message.sentAt > 0 && peerReadAt >= message.sentAt;
-            TextView check = Ui.text(this, read ? "  ✓✓" : "  ✓", 11, read ? Ui.BLUE : Ui.SECONDARY, true);
-            footer.addView(check);
+            rows.add(new MessageListAdapter.Row(message, payload, reactionCount, read));
         }
-        LinearLayout.LayoutParams footLp = new LinearLayout.LayoutParams(-1, -2); footLp.topMargin = Ui.dp(this, 4); bubble.addView(footer, footLp);
-        Set<String> reactions = messageReactions.get(message.id);
-        if (reactions != null && !reactions.isEmpty()) {
-            TextView heart = Ui.text(this, "❤️  " + reactions.size(), 11, Ui.WHITE, true);
-            heart.setPadding(Ui.dp(this, 7), Ui.dp(this, 3), Ui.dp(this, 7), Ui.dp(this, 3));
-            heart.setBackground(Ui.shape(0xff242426, this, 12));
-            LinearLayout.LayoutParams rp = wrap(); rp.topMargin = Ui.dp(this, 3); bubble.addView(heart, rp);
-        }
-        LinearLayout.LayoutParams bubbleLp = new LinearLayout.LayoutParams(-2, -2);
-        bubbleLp.gravity = outgoing ? Gravity.RIGHT : Gravity.LEFT;
-        bubbleLp.leftMargin = Ui.dp(this, outgoing ? 52 : 0);
-        bubbleLp.rightMargin = Ui.dp(this, outgoing ? 0 : 52);
-        bubble.setLayoutParams(bubbleLp);
-        outer.addView(bubble);
-        outer.setPadding(0, Ui.dp(this, 2), 0, Ui.dp(this, 2));
-        final long[] lastTap = {0};
-        bubble.setOnTouchListener((v, event) -> {
-            if (event.getAction() == android.view.MotionEvent.ACTION_UP) {
-                long now = android.os.SystemClock.elapsedRealtime();
-                if (now - lastTap[0] < 320) toggleHeart(message);
-                lastTap[0] = now;
+
+        messageListAdapter.setTextStyle(textSize(), isTextBold(),
+                getSharedPreferences("tsuyu_settings", MODE_PRIVATE).getBoolean("italic", false));
+        messageListAdapter.submit(rows);
+        if (chatEmptyState != null) chatEmptyState.setVisibility(rows.isEmpty() ? View.VISIBLE : View.GONE);
+        if (!rows.isEmpty() && keepBottomPinned) messageList.post(() -> {
+            if (renderChatId.equals(activeChatId) && messageListAdapter.getItemCount() > 0) {
+                messageList.scrollToPosition(messageListAdapter.getItemCount() - 1);
             }
-            return false;
         });
-        bubble.setOnLongClickListener(v -> { showMessageMenu(v, message, payload); return true; });
-        bubble.setOnClickListener(v -> openPayload(payload));
-        return outer;
-    }
-
-    private void addMediaPreview(LinearLayout bubble, JSONObject payload, String kind) {
-        if ("image".equals(kind)) {
-            addImageThumb(bubble, payload.optString("data", ""), 244, 190);
-        } else if ("collage".equals(kind)) {
-            org.json.JSONArray items = payload.optJSONArray("items");
-            if (items == null) return;
-            LinearLayout grid = vertical(0xff1c1c1e);
-            for (int i = 0; i < items.length(); i += 2) {
-                LinearLayout row = horizontal(0xff1c1c1e);
-                for (int j = i; j < Math.min(i + 2, items.length()); j++) {
-                    JSONObject item = items.optJSONObject(j);
-                    if (item == null) continue;
-                    ImageView image = makeThumb(item.optString("data", ""));
-                    LinearLayout.LayoutParams lp = new LinearLayout.LayoutParams(0, Ui.dp(this, 132), 1);
-                    lp.setMargins(Ui.dp(this, 2), Ui.dp(this, 2), Ui.dp(this, 2), Ui.dp(this, 2));
-                    row.addView(image, lp);
-                    String data = item.optString("data", "");
-                    image.setOnClickListener(v -> showImageDialog(data));
-                }
-                grid.addView(row, new LinearLayout.LayoutParams(-1, Ui.dp(this, 136)));
-            }
-            bubble.addView(grid, new LinearLayout.LayoutParams(Ui.dp(this, 252), -2));
-        } else if ("video".equals(kind)) {
-            TextView card = Ui.text(this, "▶   Видео · нажмите для просмотра", 14, Ui.WHITE, true);
-            card.setGravity(Gravity.CENTER);
-            card.setBackground(Ui.shape(0xff111113, this, 12));
-            bubble.addView(card, new LinearLayout.LayoutParams(Ui.dp(this, 244), Ui.dp(this, 150)));
-            card.setOnClickListener(v -> showVideoDialog(payload.optString("data", ""), payload.optString("mime", "video/mp4")));
-        } else if ("voice".equals(kind) || "audio".equals(kind)) {
-            LinearLayout player = horizontal(0xff242426);
-            player.setPadding(Ui.dp(this, 10), Ui.dp(this, 9), Ui.dp(this, 10), Ui.dp(this, 9));
-            TextView play = Ui.text(this, "▶", 19, Ui.BLUE, true); play.setGravity(Gravity.CENTER);
-            play.setBackground(Ui.shape(0xff303034, this, 22));
-            player.addView(play, new LinearLayout.LayoutParams(Ui.dp(this, 40), Ui.dp(this, 40)));
-            LinearLayout details = vertical(0xff242426);
-            TextView label = Ui.text(this, "voice".equals(kind) ? "Голосовое" : "Аудиофайл", 13, Ui.WHITE, true);
-            TextView track = Ui.text(this, "━━━━━━●━━━━━━", 11, Ui.BLUE, false);
-            details.addView(label); LinearLayout.LayoutParams trackLp = wrap(); trackLp.topMargin = Ui.dp(this, 5); details.addView(track, trackLp);
-            LinearLayout.LayoutParams detailLp = new LinearLayout.LayoutParams(0, -2, 1); detailLp.leftMargin = Ui.dp(this, 10); player.addView(details, detailLp);
-            bubble.addView(player, new LinearLayout.LayoutParams(Ui.dp(this, 250), -2));
-            player.setOnClickListener(v -> playAudio(payload.optString("data", ""), payload.optString("mime", "audio/mp4")));
-        }
-    }
-
-    private void addImageThumb(LinearLayout target, String encoded, int widthDp, int heightDp) {
-        ImageView image = makeThumb(encoded);
-        target.addView(image, new LinearLayout.LayoutParams(Ui.dp(this, widthDp), Ui.dp(this, heightDp)));
-        image.setOnClickListener(v -> showImageDialog(encoded));
-    }
-
-    private ImageView makeThumb(String encoded) {
-        ImageView image = new ImageView(this);
-        image.setScaleType(ImageView.ScaleType.CENTER_CROP);
-        image.setBackground(Ui.shape(0xff111113, this, 9));
-        try {
-            byte[] bytes = Base64.decode(encoded, Base64.NO_WRAP);
-            Bitmap bitmap = BitmapFactory.decodeByteArray(bytes, 0, bytes.length);
-            if (bitmap != null) image.setImageBitmap(bitmap);
-        } catch (Exception ignored) { }
-        return image;
     }
 
     private void openPayload(String payload) {
@@ -1055,8 +1111,11 @@ public final class MainActivity extends AppCompatActivity {
             else if ("video".equals(kind)) showVideoDialog(object.optString("data", ""), object.optString("mime", "video/mp4"));
             else if ("audio".equals(kind) || "voice".equals(kind)) playAudio(object.optString("data", ""), object.optString("mime", "audio/mp4"));
             else if ("collage".equals(kind)) {
-                org.json.JSONArray items = object.optJSONArray("items");
-                if (items != null && items.length() > 0) showImageDialog(items.optJSONObject(0).optString("data", ""));
+                JSONArray items = object.optJSONArray("items");
+                if (items != null && items.length() > 0) {
+                    JSONObject first = items.optJSONObject(0);
+                    if (first != null) showImageDialog(first.optString("data", ""));
+                }
             }
         } catch (Exception ignored) { }
     }
@@ -1068,18 +1127,22 @@ public final class MainActivity extends AppCompatActivity {
                 java.io.File file = new java.io.File(getCacheDir(), "tsuyu-video-" + System.currentTimeMillis() + (mime.contains("webm") ? ".webm" : ".mp4"));
                 try (java.io.FileOutputStream output = new java.io.FileOutputStream(file)) { output.write(bytes); }
                 runOnUiThread(() -> {
+                    View content = getLayoutInflater().inflate(R.layout.dialog_video_viewer, null, false);
+                    android.widget.VideoView video = content.findViewById(R.id.viewer_video);
+                    MaterialButton toggle = content.findViewById(R.id.viewer_video_toggle);
                     android.app.Dialog dialog = new android.app.Dialog(this, android.R.style.Theme_Black_NoTitleBar_Fullscreen);
-                    android.widget.FrameLayout frame = new android.widget.FrameLayout(this);
-                    frame.setBackgroundColor(Ui.BLACK);
-                    android.widget.VideoView video = new android.widget.VideoView(this);
-                    frame.addView(video, new android.widget.FrameLayout.LayoutParams(-1, -1, Gravity.CENTER));
-                    android.widget.MediaController controls = new android.widget.MediaController(this);
-                    controls.setAnchorView(video); video.setMediaController(controls); video.setVideoURI(Uri.fromFile(file));
-                    dialog.setContentView(frame); dialog.show();
+                    dialog.setContentView(content);
+                    dialog.setOnDismissListener(ignored -> { video.stopPlayback(); file.delete(); });
+                    dialog.show();
                     if (dialog.getWindow() != null) dialog.getWindow().setLayout(-1, -1);
-                    video.setOnPreparedListener(mp -> video.start());
+                    video.setVideoURI(Uri.fromFile(file));
+                    video.setOnPreparedListener(player -> { video.start(); toggle.setText("Ⅱ"); });
+                    toggle.setOnClickListener(v -> {
+                        if (video.isPlaying()) { video.pause(); toggle.setText("▶"); }
+                        else { video.start(); toggle.setText("Ⅱ"); }
+                    });
                 });
-            } catch (Exception e) { runOnUiThread(() -> toast("Не удалось открыть видео.")); }
+            } catch (Exception error) { runOnUiThread(() -> toast("Не удалось открыть видео.")); }
         });
     }
 
@@ -1108,23 +1171,28 @@ public final class MainActivity extends AppCompatActivity {
 
     private void showMessageMenu(View anchor, ChatMessage message, String payload) {
         PopupMenu popup = new PopupMenu(this, anchor);
-        MenuItem heart = popup.getMenu().add("❤️  Реакция");
-        MenuItem reply = popup.getMenu().add("Ответить");
-        MenuItem forward = popup.getMenu().add("Переслать");
-        MenuItem edit = null;
-        if (uid.equals(message.senderUid)) edit = popup.getMenu().add("Редактировать");
-        MenuItem delete = popup.getMenu().add("Удалить у всех");
-        MenuItem editItem = edit;
+        popup.inflate(R.menu.message_context);
+        MenuItem heart = popup.getMenu().findItem(R.id.message_react);
+        MenuItem reply = popup.getMenu().findItem(R.id.message_reply);
+        MenuItem forward = popup.getMenu().findItem(R.id.message_forward);
+        MenuItem edit = popup.getMenu().findItem(R.id.message_edit);
+        MenuItem delete = popup.getMenu().findItem(R.id.message_delete);
+        boolean persisted = message.id != null && !message.id.startsWith("local_") && !message.pending;
+        if (heart != null) heart.setVisible(persisted);
+        if (reply != null) reply.setVisible(persisted);
+        if (edit != null) edit.setVisible(persisted && uid.equals(message.senderUid));
+        if (delete != null) delete.setVisible(persisted);
         popup.setOnMenuItemClickListener(item -> {
-            if (item == heart) toggleHeart(message);
-            else if (item == reply) {
+            if (item.getItemId() == R.id.message_react) toggleHeart(message);
+            else if (item.getItemId() == R.id.message_reply) {
                 replyToId = message.id;
                 replyToText = payload == null ? "Сообщение" : textFromPayload(payload);
-                if (replyBanner != null) { replyBanner.setText("↪  " + replyToText); replyBanner.setVisibility(View.VISIBLE); }
+                if (replyBannerText != null) replyBannerText.setText("↪  " + replyToText);
+                if (replyBanner != null) replyBanner.setVisibility(View.VISIBLE);
                 if (composer != null) composer.requestFocus();
-            } else if (item == forward) forwardMessage(payload);
-            else if (item == editItem) editMessage(message, payload);
-            else if (item == delete) confirmDelete(message);
+            } else if (item.getItemId() == R.id.message_forward) forwardMessage(payload);
+            else if (item.getItemId() == R.id.message_edit) editMessage(message, payload);
+            else if (item.getItemId() == R.id.message_delete) confirmDelete(message);
             return true;
         });
         popup.show();
@@ -1148,8 +1216,10 @@ public final class MainActivity extends AppCompatActivity {
         if (payload == null) { toast("Сообщение ещё не расшифровано."); return; }
         String old;
         try { old = new JSONObject(payload).optString("text", ""); } catch (Exception e) { toast("Можно редактировать только текст."); return; }
-        EditText edit = new EditText(this); edit.setText(old); edit.setTextColor(Ui.WHITE); edit.setHintTextColor(Ui.SECONDARY); edit.setBackground(Ui.shape(Ui.INPUT, this, 12)); edit.setPadding(Ui.dp(this, 12), Ui.dp(this, 10), Ui.dp(this, 12), Ui.dp(this, 10));
-        new AlertDialog.Builder(this).setTitle("Редактировать сообщение").setView(edit)
+        View editor = getLayoutInflater().inflate(R.layout.dialog_edit_message, null, false);
+        TextInputEditText edit = editor.findViewById(R.id.edit_message_input);
+        edit.setText(old);
+        new AlertDialog.Builder(this).setTitle("Редактировать сообщение").setView(editor)
                 .setNegativeButton("Отмена", null).setPositiveButton("Сохранить", (dialog, which) -> {
                     String text = edit.getText().toString().trim(); if (text.isEmpty()) return;
                     chatRepository.editText(activeChatId, message.id, uid, activePeerUid, crypto, text, new ChatRepository.Result<Void>() {
@@ -1181,36 +1251,141 @@ public final class MainActivity extends AppCompatActivity {
 
     private void sendCurrentText() {
         if (composer == null || activeChatId == null || activePeerUid == null) return;
-        String text = composer.getText().toString().trim();
+        String text = composer.getText() == null ? "" : composer.getText().toString().trim();
         if (text.isEmpty()) return;
-        composer.setEnabled(false);
+        String chatId = activeChatId;
+        String peerUid = activePeerUid;
+        String senderUid = uid;
         String replyId = replyToId;
         try {
             JSONObject payload = new JSONObject().put("version", 1).put("kind", "text").put("text", text);
             if (replyId != null) payload.put("replyTo", replyId);
-            chatRepository.sendPayload(activeChatId, uid, activePeerUid, crypto,
-                    payload.toString().getBytes(StandardCharsets.UTF_8), new ChatRepository.Result<String>() {
-                        @Override public void success(String messageId) {
-                            if (composer != null) { composer.setText(""); composer.setEnabled(true); }
-                            if (messageCache != null) messageCache.put(activeChatId, messageId, payload.toString());
-                            replyToId = null; replyToText = null;
-                            if (replyBanner != null) replyBanner.setVisibility(View.GONE);
-                            chatRepository.setTyping(activeChatId, uid, false);
-                        }
-                        @Override public void error(String error) { if (composer != null) composer.setEnabled(true); toast(error); }
-                    });
-        } catch (Exception e) { composer.setEnabled(true); toast("Не удалось подготовить сообщение."); }
+            String payloadJson = payload.toString();
+            composer.setText("");
+            replyToId = null;
+            replyToText = null;
+            if (replyBanner != null) replyBanner.setVisibility(View.GONE);
+            chatRepository.setTyping(chatId, senderUid, false);
+            enqueueOptimisticMessage(chatId, peerUid, senderUid, payloadJson);
+        } catch (Exception error) {
+            toast("Не удалось подготовить сообщение.");
+        }
     }
+
+    /** Creates the XML-backed bubble before handing the payload to asynchronous encryption/RTDB. */
+    private ChatMessage enqueueOptimisticMessage(String chatId, String peerUid, String senderUid, String payloadJson) {
+        String clientId = UUID.randomUUID().toString();
+        ChatMessage local = new ChatMessage();
+        local.id = "local_" + clientId;
+        local.clientId = clientId;
+        local.senderUid = senderUid;
+        local.sentAt = System.currentTimeMillis();
+        local.pending = true;
+        local.localChatId = chatId;
+        local.localPayload = payloadJson;
+        optimisticMessages.put(clientId, local);
+        if (messageCache != null) messageCache.put(chatId, local.id, payloadJson);
+
+        ChatSummary summary = summaries.get(chatId);
+        if (summary == null) {
+            Profile peer = peerProfile != null && peerUid.equals(peerProfile.uid) ? peerProfile : new Profile();
+            peer.uid = peerUid;
+            if (peer.displayName == null) peer.displayName = "Собеседник";
+            summary = new ChatSummary(chatId, peerUid, peer, local.sentAt, null);
+            summaries.put(chatId, summary);
+        }
+        summary.lastAt = local.sentAt;
+        summary.lastMessage = local;
+        summary.encryptedPreview = null;
+        watchSummaryRealtime(chatId, peerUid);
+        renderChatList();
+        if (chatId.equals(activeChatId) && "chat".equals(page)) renderMessages(lastRemoteMessages, peerUid);
+        dispatchOptimisticMessage(local, peerUid);
+        return local;
+    }
+
+    private void dispatchOptimisticMessage(ChatMessage local, String peerUid) {
+        String chatId = local.localChatId;
+        String senderUid = local.senderUid;
+        if (chatId == null || peerUid == null || senderUid == null || crypto == null || local.localPayload == null) {
+            local.pending = false;
+            local.failed = true;
+            if (chatId != null && chatId.equals(activeChatId)) renderMessages(lastRemoteMessages, activePeerUid);
+            return;
+        }
+        SignalE2ee activeCrypto = crypto;
+        LocalMessageCache activeCache = messageCache;
+        try {
+            chatRepository.sendPayload(chatId, senderUid, peerUid, activeCrypto,
+                    local.localPayload.getBytes(StandardCharsets.UTF_8), local.clientId,
+                    new ChatRepository.Result<String>() {
+                        @Override public void success(String messageId) {
+                            if (activeCache != null) activeCache.put(chatId, messageId, local.localPayload);
+                            ChatMessage current = optimisticMessages.get(local.clientId);
+                            if (current != null) {
+                                current.id = messageId;
+                                current.pending = false;
+                                current.failed = false;
+                            }
+                            if (chatId.equals(activeChatId)) renderMessages(lastRemoteMessages, peerUid);
+                            ChatSummary summary = summaries.get(chatId);
+                            if (summary != null && summary.lastMessage != null
+                                    && local.clientId.equals(summary.lastMessage.clientId)) {
+                                summary.lastMessage.id = messageId;
+                                summary.lastMessage.pending = false;
+                                renderChatList();
+                            }
+                        }
+                        @Override public void error(String error) {
+                            ChatMessage current = optimisticMessages.get(local.clientId);
+                            if (current != null) {
+                                current.pending = false;
+                                current.failed = true;
+                            }
+                            if (chatId.equals(activeChatId)) renderMessages(lastRemoteMessages, peerUid);
+                            renderChatList();
+                            toast(error);
+                        }
+                    });
+        } catch (Exception error) {
+            local.pending = false;
+            local.failed = true;
+            if (chatId.equals(activeChatId)) renderMessages(lastRemoteMessages, peerUid);
+            toast("Не удалось отправить сообщение.");
+        }
+    }
+
+    private void retryMessage(ChatMessage failed) {
+        if (failed == null || !failed.failed || failed.localPayload == null || failed.localChatId == null) return;
+        if (!failed.localChatId.equals(activeChatId)) {
+            toast("Откройте этот чат, чтобы повторить отправку.");
+            return;
+        }
+        optimisticMessages.remove(failed.clientId, failed);
+        ChatMessage retry = new ChatMessage();
+        retry.clientId = UUID.randomUUID().toString();
+        retry.id = "local_" + retry.clientId;
+        retry.senderUid = uid;
+        retry.sentAt = System.currentTimeMillis();
+        retry.pending = true;
+        retry.localChatId = failed.localChatId;
+        retry.localPayload = failed.localPayload;
+        optimisticMessages.put(retry.clientId, retry);
+        if (messageCache != null) messageCache.put(retry.localChatId, retry.id, retry.localPayload);
+        ChatSummary summary = summaries.get(retry.localChatId);
+        if (summary != null) { summary.lastAt = retry.sentAt; summary.lastMessage = retry; renderChatList(); }
+        renderMessages(lastRemoteMessages, activePeerUid);
+        dispatchOptimisticMessage(retry, activePeerUid);
+    }
+
 
     private void showChatMenu(View anchor) {
         PopupMenu menu = new PopupMenu(this, anchor);
-        MenuItem profile = menu.getMenu().add("Профиль собеседника");
-        MenuItem export = menu.getMenu().add("Экспортировать текст переписки");
-        menu.getMenu().add("Управление ключами");
+        menu.inflate(R.menu.chat_context);
         menu.setOnMenuItemClickListener(item -> {
-            if (item == profile) showPeerProfile();
-            else if (item == export) exportCurrentChat();
-            else showSettings();
+            if (item.getItemId() == R.id.chat_menu_profile) showPeerProfile();
+            else if (item.getItemId() == R.id.chat_menu_export) exportCurrentChat();
+            else if (item.getItemId() == R.id.chat_menu_keys) showKeySettings();
             return true;
         });
         menu.show();
@@ -1218,13 +1393,23 @@ public final class MainActivity extends AppCompatActivity {
 
     private void showPeerProfile() {
         if (peerProfile == null) return;
-        LinearLayout content = vertical(Ui.SURFACE); content.setPadding(Ui.dp(this, 20), Ui.dp(this, 20), Ui.dp(this, 20), Ui.dp(this, 20));
-        ImageView image = avatar(peerProfile, 90); LinearLayout.LayoutParams imgLp = new LinearLayout.LayoutParams(Ui.dp(this, 90), Ui.dp(this, 90)); imgLp.gravity = Gravity.CENTER_HORIZONTAL; content.addView(image, imgLp);
-        TextView name = Ui.text(this, peerProfile.displayNameOrUsername(), 19, Ui.WHITE, true); name.setGravity(Gravity.CENTER); name.setPadding(0, Ui.dp(this, 14), 0, Ui.dp(this, 4)); content.addView(name, matchWrap());
-        TextView username = Ui.text(this, "@" + peerProfile.username, 13, Ui.BLUE, false); username.setGravity(Gravity.CENTER); content.addView(username, matchWrap());
-        TextView about = Ui.text(this, peerProfile.about == null || peerProfile.about.isEmpty() ? "Нет описания" : peerProfile.about, 14, 0xffcccccc, false); about.setGravity(Gravity.CENTER); about.setPadding(0, Ui.dp(this, 12), 0, 0); content.addView(about, matchWrap());
-        TextView fingerprint = Ui.text(this, "Отпечаток Signal: загружается…", 10, Ui.SECONDARY, false); fingerprint.setTextIsSelectable(true); fingerprint.setPadding(0, Ui.dp(this, 12), 0, 0); content.addView(fingerprint, matchWrap());
-        TextView trustKey = Ui.button(this, "Принять ключ после сверки", Ui.INPUT, Ui.WHITE, 12); LinearLayout.LayoutParams trustLp = new LinearLayout.LayoutParams(-1, Ui.dp(this, 44)); trustLp.topMargin = Ui.dp(this, 8); content.addView(trustKey, trustLp);
+        View content = getLayoutInflater().inflate(R.layout.dialog_peer_profile, null, false);
+        TextView name = content.findViewById(R.id.peer_profile_name);
+        TextView username = content.findViewById(R.id.peer_profile_username);
+        TextView about = content.findViewById(R.id.peer_profile_about);
+        TextView fingerprint = content.findViewById(R.id.peer_fingerprint);
+        ShapeableImageView avatar = content.findViewById(R.id.peer_avatar);
+        TextView avatarInitial = content.findViewById(R.id.peer_avatar_initial);
+        MaterialButton trustKey = content.findViewById(R.id.peer_trust_key);
+        MaterialButton contactButton = content.findViewById(R.id.peer_contact_button);
+        MaterialButton accessButton = content.findViewById(R.id.peer_access_button);
+
+        String peerName = peerProfile.displayNameOrUsername();
+        name.setText(peerName);
+        username.setText(peerProfile.username == null ? "" : "@" + peerProfile.username);
+        about.setText(peerProfile.about == null || peerProfile.about.isEmpty() ? "Нет описания" : peerProfile.about);
+        bindAvatar(avatar, avatarInitial, peerProfile, peerName, peerProfile.avatarBase64);
+
         final Map<String, Object>[] peerBundle = new Map[]{null};
         String profilePeerUid = peerProfile.uid;
         SignalE2ee accountCrypto = crypto;
@@ -1233,33 +1418,48 @@ public final class MainActivity extends AppCompatActivity {
                 @SuppressWarnings("unchecked") Map<String, Object> bundle = (Map<String, Object>) snapshot.getValue();
                 peerBundle[0] = bundle;
                 fingerprint.setText(bundle == null ? "У пользователя ещё нет публичного ключа" : SignalE2ee.identityFingerprint(bundle));
-            } catch (Exception e) { fingerprint.setText("Не удалось проверить отпечаток ключа"); }
+            } catch (Exception error) { fingerprint.setText("Не удалось проверить отпечаток ключа"); }
         });
         trustKey.setOnClickListener(v -> {
             if (peerBundle[0] == null || accountCrypto == null) { toast("Публичный ключ пока недоступен."); return; }
             String shownFingerprint;
             try { shownFingerprint = SignalE2ee.identityFingerprint(peerBundle[0]); }
-            catch (Exception e) { toast("Некорректный публичный ключ."); return; }
+            catch (Exception error) { toast("Некорректный публичный ключ."); return; }
             new AlertDialog.Builder(this).setTitle("Проверить ключ")
                     .setMessage("Сравните этот SHA-256 отпечаток с собеседником по независимому каналу:\n\n" + shownFingerprint + "\n\nДоверять ключу только после совпадения.")
                     .setNegativeButton("Отмена", null).setPositiveButton("Доверять", (dialog, which) -> cryptoQueue.execute(() -> {
-                        try { accountCrypto.trustRemoteIdentity(profilePeerUid, peerBundle[0]); runOnUiThread(() -> toast("Ключ принят, Ratchet-сеанс сброшен.")); }
-                        catch (Exception e) { runOnUiThread(() -> toast("Не удалось принять ключ.")); }
+                        try {
+                            accountCrypto.trustRemoteIdentity(profilePeerUid, peerBundle[0]);
+                            runOnUiThread(() -> toast("Ключ принят, Ratchet-сеанс сброшен."));
+                        } catch (Exception error) { runOnUiThread(() -> toast("Не удалось принять ключ.")); }
                     })).show();
         });
-        TextView contactButton = Ui.button(this, "Добавить в контакты", Ui.INPUT, Ui.WHITE, 13);
-        LinearLayout.LayoutParams contactLp = new LinearLayout.LayoutParams(-1, Ui.dp(this, 46)); contactLp.topMargin = Ui.dp(this, 16); content.addView(contactButton, contactLp);
-        TextView accessButton = Ui.button(this, "Разрешить доступ по списку", Ui.INPUT, Ui.WHITE, 13);
-        LinearLayout.LayoutParams accessLp = new LinearLayout.LayoutParams(-1, Ui.dp(this, 46)); accessLp.topMargin = Ui.dp(this, 8); content.addView(accessButton, accessLp);
-        final boolean[] isContact = {false}; final boolean[] isAllowed = {false};
-        DatabaseReference contactRef = database.getReference("users").child(uid).child("contacts").child(peerProfile.uid);
-        DatabaseReference allowRef = database.getReference("users").child(uid).child("publicSettings").child("allowList").child(peerProfile.uid);
-        contactRef.get().addOnSuccessListener(s -> { isContact[0] = Boolean.TRUE.equals(s.getValue(Boolean.class)); contactButton.setText(isContact[0] ? "Удалить из контактов" : "Добавить в контакты"); });
-        allowRef.get().addOnSuccessListener(s -> { isAllowed[0] = Boolean.TRUE.equals(s.getValue(Boolean.class)); accessButton.setText(isAllowed[0] ? "Отозвать доступ по списку" : "Разрешить доступ по списку"); });
-        contactButton.setOnClickListener(v -> contactRef.setValue(isContact[0] ? null : true).addOnSuccessListener(unused -> { isContact[0] = !isContact[0]; contactButton.setText(isContact[0] ? "Удалить из контактов" : "Добавить в контакты"); }).addOnFailureListener(e -> toast("Не удалось обновить контакты.")));
-        accessButton.setOnClickListener(v -> allowRef.setValue(isAllowed[0] ? null : true).addOnSuccessListener(unused -> { isAllowed[0] = !isAllowed[0]; accessButton.setText(isAllowed[0] ? "Отозвать доступ по списку" : "Разрешить доступ по списку"); }).addOnFailureListener(e -> toast("Не удалось обновить список доступа.")));
+
+        final boolean[] isContact = {false};
+        final boolean[] isAllowed = {false};
+        DatabaseReference contactRef = database.getReference("users").child(uid).child("contacts").child(profilePeerUid);
+        DatabaseReference allowRef = database.getReference("users").child(uid).child("publicSettings").child("allowList").child(profilePeerUid);
+        contactRef.get().addOnSuccessListener(snapshot -> {
+            isContact[0] = Boolean.TRUE.equals(snapshot.getValue(Boolean.class));
+            contactButton.setText(isContact[0] ? "Удалить из контактов" : "Добавить в контакты");
+        });
+        allowRef.get().addOnSuccessListener(snapshot -> {
+            isAllowed[0] = Boolean.TRUE.equals(snapshot.getValue(Boolean.class));
+            accessButton.setText(isAllowed[0] ? "Отозвать доступ по списку" : "Разрешить доступ по списку");
+        });
+        contactButton.setOnClickListener(v -> contactRef.setValue(isContact[0] ? null : true)
+                .addOnSuccessListener(unused -> {
+                    isContact[0] = !isContact[0];
+                    contactButton.setText(isContact[0] ? "Удалить из контактов" : "Добавить в контакты");
+                }).addOnFailureListener(error -> toast("Не удалось обновить контакты.")));
+        accessButton.setOnClickListener(v -> allowRef.setValue(isAllowed[0] ? null : true)
+                .addOnSuccessListener(unused -> {
+                    isAllowed[0] = !isAllowed[0];
+                    accessButton.setText(isAllowed[0] ? "Отозвать доступ по списку" : "Разрешить доступ по списку");
+                }).addOnFailureListener(error -> toast("Не удалось обновить список доступа.")));
         new AlertDialog.Builder(this).setView(content).setPositiveButton("Закрыть", null).show();
     }
+
 
     private void exportCurrentChat() {
         if (activeChatId == null) return;
@@ -1292,15 +1492,20 @@ public final class MainActivity extends AppCompatActivity {
         }
     }
 
-    private void showAttachmentMenu() {
-        new AlertDialog.Builder(this).setTitle("Прикрепить")
-                .setItems(new String[]{"Фото", "Несколько фото", "Видео", "Аудиофайл", "Записать голосовое"}, (dialog, which) -> {
-                    if (which == 0) { pendingMediaKind = "image"; avatarPicker.launch("image/*"); }
-                    else if (which == 1) multiPhotoPicker.launch(new androidx.activity.result.PickVisualMediaRequest.Builder().build());
-                    else if (which == 2) { pendingMediaKind = "video"; documentPicker.launch(new String[]{"video/*"}); }
-                    else if (which == 3) { pendingMediaKind = "audio"; documentPicker.launch(new String[]{"audio/*"}); }
-                    else toggleVoiceRecord();
-                }).show();
+    private void showAttachmentMenu(View anchor) {
+        PopupMenu menu = new PopupMenu(this, anchor);
+        menu.inflate(R.menu.attach_menu);
+        menu.setOnMenuItemClickListener(item -> {
+            int id = item.getItemId();
+            if (id == R.id.attach_image) { pendingMediaKind = "image"; avatarPicker.launch("image/*"); }
+            else if (id == R.id.attach_photos) multiPhotoPicker.launch(new androidx.activity.result.PickVisualMediaRequest.Builder().build());
+            else if (id == R.id.attach_video) { pendingMediaKind = "video"; documentPicker.launch(new String[]{"video/*"}); }
+            else if (id == R.id.attach_audio) { pendingMediaKind = "audio"; documentPicker.launch(new String[]{"audio/*"}); }
+            else if (id == R.id.attach_voice) toggleVoiceRecord();
+            else return false;
+            return true;
+        });
+        menu.show();
     }
 
     private void toggleVoiceRecord() {
@@ -1337,18 +1542,20 @@ public final class MainActivity extends AppCompatActivity {
 
     private void sendVoiceFile(java.io.File file) {
         if (activeChatId == null || activePeerUid == null) return;
-        String chatId = activeChatId; String peerUid = activePeerUid; String fromUid = uid;
-        SignalE2ee activeCrypto = crypto; LocalMessageCache activeCache = messageCache;
+        String chatId = activeChatId;
+        String peerUid = activePeerUid;
+        String senderUid = uid;
         dataQueue.execute(() -> {
             try {
                 byte[] bytes = java.nio.file.Files.readAllBytes(file.toPath());
                 String base64 = Base64.encodeToString(bytes, Base64.NO_WRAP);
-                JSONObject payload = new JSONObject().put("version", 1).put("kind", "voice").put("mime", "audio/mp4").put("data", base64);
-                chatRepository.sendPayload(chatId, fromUid, peerUid, activeCrypto, payload.toString().getBytes(StandardCharsets.UTF_8), new ChatRepository.Result<String>() {
-                    @Override public void success(String id) { if (activeCache != null) activeCache.put(chatId, id, payload.toString()); file.delete(); }
-                    @Override public void error(String error) { toast(error); }
-                });
-            } catch (Exception e) { runOnUiThread(() -> toast("Не удалось подготовить голосовое сообщение.")); }
+                String payload = new JSONObject().put("version", 1).put("kind", "voice")
+                        .put("mime", "audio/mp4").put("data", base64).toString();
+                file.delete();
+                runOnUiThread(() -> enqueueOptimisticMessage(chatId, peerUid, senderUid, payload));
+            } catch (Exception error) {
+                runOnUiThread(() -> toast("Не удалось подготовить голосовое сообщение."));
+            }
         });
     }
 
@@ -1361,27 +1568,28 @@ public final class MainActivity extends AppCompatActivity {
 
     private void sendPickedMedia(Uri uri, String kind) {
         if (activeChatId == null || activePeerUid == null) return;
-        String chatId = activeChatId; String peerUid = activePeerUid; String fromUid = uid;
-        SignalE2ee activeCrypto = crypto; LocalMessageCache activeCache = messageCache;
+        String chatId = activeChatId;
+        String peerUid = activePeerUid;
+        String senderUid = uid;
         dataQueue.execute(() -> {
             try {
-                String base64;
                 String mime = getContentResolver().getType(uri);
-                if ("image".equals(kind)) base64 = imageToBase64(uri, 1440, 950_000);
-                else base64 = readBase64(uri, 3_000_000);
-                JSONObject payload = new JSONObject().put("version", 1).put("kind", kind).put("mime", mime == null ? "application/octet-stream" : mime).put("data", base64);
-                chatRepository.sendPayload(chatId, fromUid, peerUid, activeCrypto, payload.toString().getBytes(StandardCharsets.UTF_8), new ChatRepository.Result<String>() {
-                    @Override public void success(String id) { if (activeCache != null) activeCache.put(chatId, id, payload.toString()); toast("Отправлено."); }
-                    @Override public void error(String error) { toast(error); }
-                });
-            } catch (Exception e) { runOnUiThread(() -> toast("Файл слишком большой или не читается.")); }
+                String base64 = "image".equals(kind) ? imageToBase64(uri, 1440, 950_000) : readBase64(uri, 3_000_000);
+                String payload = new JSONObject().put("version", 1).put("kind", kind)
+                        .put("mime", mime == null ? "application/octet-stream" : mime)
+                        .put("data", base64).toString();
+                runOnUiThread(() -> enqueueOptimisticMessage(chatId, peerUid, senderUid, payload));
+            } catch (Exception error) {
+                runOnUiThread(() -> toast("Файл слишком большой или не читается."));
+            }
         });
     }
 
     private void sendPickedPhotos(List<Uri> uris) {
-        if (activeChatId == null || uris.isEmpty()) return;
-        String chatId = activeChatId; String peerUid = activePeerUid; String fromUid = uid;
-        SignalE2ee activeCrypto = crypto; LocalMessageCache activeCache = messageCache;
+        if (activeChatId == null || activePeerUid == null || uris.isEmpty()) return;
+        String chatId = activeChatId;
+        String peerUid = activePeerUid;
+        String senderUid = uid;
         dataQueue.execute(() -> {
             try {
                 org.json.JSONArray items = new org.json.JSONArray();
@@ -1389,13 +1597,11 @@ public final class MainActivity extends AppCompatActivity {
                     String data = imageToBase64(uris.get(i), 1200, 360_000);
                     items.put(new JSONObject().put("data", data).put("mime", "image/jpeg"));
                 }
-                JSONObject payload = new JSONObject().put("version", 1).put("kind", "collage").put("items", items);
-                chatRepository.sendPayload(chatId, fromUid, peerUid, activeCrypto,
-                        payload.toString().getBytes(StandardCharsets.UTF_8), new ChatRepository.Result<String>() {
-                            @Override public void success(String id) { if (activeCache != null) activeCache.put(chatId, id, payload.toString()); }
-                            @Override public void error(String error) { toast(error); }
-                        });
-            } catch (Exception e) { runOnUiThread(() -> toast("Не удалось подготовить коллаж.")); }
+                String payload = new JSONObject().put("version", 1).put("kind", "collage").put("items", items).toString();
+                runOnUiThread(() -> enqueueOptimisticMessage(chatId, peerUid, senderUid, payload));
+            } catch (Exception error) {
+                runOnUiThread(() -> toast("Не удалось подготовить коллаж."));
+            }
         });
     }
 
@@ -1404,17 +1610,14 @@ public final class MainActivity extends AppCompatActivity {
             byte[] bytes = Base64.decode(imageBase64, Base64.NO_WRAP);
             Bitmap bitmap = BitmapFactory.decodeByteArray(bytes, 0, bytes.length);
             if (bitmap == null) return;
+            View content = getLayoutInflater().inflate(R.layout.dialog_image_viewer, null, false);
+            ZoomImageView image = content.findViewById(R.id.viewer_image);
+            image.setImageBitmap(bitmap);
             android.app.Dialog dialog = new android.app.Dialog(this, android.R.style.Theme_Black_NoTitleBar_Fullscreen);
-            FrameLayout frame = new FrameLayout(this); frame.setBackgroundColor(Ui.BLACK);
-            ZoomImageView image = new ZoomImageView(this); image.setImageBitmap(bitmap);
-            frame.addView(image, new FrameLayout.LayoutParams(-1, -1));
-            TextView close = Ui.iconButton(this, "×", Ui.WHITE);
-            FrameLayout.LayoutParams closeLp = new FrameLayout.LayoutParams(Ui.dp(this, 44), Ui.dp(this, 44), Gravity.TOP | Gravity.RIGHT);
-            closeLp.setMargins(0, Ui.dp(this, 18), Ui.dp(this, 16), 0); frame.addView(close, closeLp); close.setOnClickListener(v -> dialog.dismiss());
-            TextView download = Ui.button(this, "Скачать", 0xff1c1c1e, Ui.WHITE, 20);
-            FrameLayout.LayoutParams downloadLp = new FrameLayout.LayoutParams(-2, Ui.dp(this, 44), Gravity.BOTTOM | Gravity.CENTER_HORIZONTAL);
-            downloadLp.bottomMargin = Ui.dp(this, 26); frame.addView(download, downloadLp); download.setOnClickListener(v -> saveImage(bitmap));
-            dialog.setContentView(frame); dialog.show();
+            content.findViewById(R.id.viewer_close).setOnClickListener(v -> dialog.dismiss());
+            content.findViewById(R.id.viewer_download).setOnClickListener(v -> saveImage(bitmap));
+            dialog.setContentView(content);
+            dialog.show();
             if (dialog.getWindow() != null) dialog.getWindow().setLayout(-1, -1);
         } catch (Exception ignored) { toast("Не удалось открыть изображение."); }
     }
@@ -1436,30 +1639,51 @@ public final class MainActivity extends AppCompatActivity {
         if (uid == null) return;
         markNoActiveChat();
         page = "settings";
-        LinearLayout root = vertical(Ui.BLACK);
-        addTopBar(root, "Настройки", "‹", this::showHome, null, null);
-        ScrollView scroll = new ScrollView(this); LinearLayout body = vertical(Ui.BLACK); body.setPadding(Ui.dp(this, 14), Ui.dp(this, 12), Ui.dp(this, 14), Ui.dp(this, 24));
-        LinearLayout syncRow = horizontal(Ui.SURFACE); syncRow.setPadding(Ui.dp(this, 15), Ui.dp(this, 9), Ui.dp(this, 14), Ui.dp(this, 9)); syncRow.setBackground(Ui.bordered(Ui.SURFACE, 0xff1c1c1c, this, 14, 1));
-        LinearLayout syncText = vertical(Ui.SURFACE); syncText.addView(Ui.text(this, "Фоновое соединение", 15, Ui.WHITE, true)); TextView syncHint = Ui.text(this, "RTDB-уведомления при свёрнутом приложении", 11, Ui.SECONDARY, false); LinearLayout.LayoutParams syncHintLp = new LinearLayout.LayoutParams(-1, -2); syncHintLp.topMargin = Ui.dp(this, 4); syncText.addView(syncHint, syncHintLp); syncRow.addView(syncText, new LinearLayout.LayoutParams(0, -2, 1));
-        android.widget.Switch syncSwitch = new android.widget.Switch(this); syncSwitch.setChecked(getSharedPreferences("tsuyu_settings", MODE_PRIVATE).getBoolean("background_sync", true)); syncRow.addView(syncSwitch);
-        LinearLayout.LayoutParams syncRowLp = new LinearLayout.LayoutParams(-1, -2); syncRowLp.bottomMargin = Ui.dp(this, 9); body.addView(syncRow, syncRowLp);
-        syncSwitch.setOnCheckedChangeListener((button, checked) -> { getSharedPreferences("tsuyu_settings", MODE_PRIVATE).edit().putBoolean("background_sync", checked).apply(); if (checked) startBackgroundSync(); else stopBackgroundSync(); });
-        body.addView(settingRow("Профиль", "Имя, @юзернейм, описание и фото", () -> showProfileEditor(false)));
-        body.addView(settingRow("Конфиденциальность", "Время захода и отметки прочтения", this::showPrivacySettings));
-        body.addView(settingRow("Кастомизация", "Размер и начертание текста", this::showCustomization));
-        body.addView(settingRow("Уведомления", "Звук, вибрация и разрешение Android", this::showNotificationSettings));
-        body.addView(settingRow("Ключи шифрования", "Идентичность и публичные prekey", this::showKeySettings));
-        TextView logout = Ui.button(this, "Выйти из аккаунта", 0xff2c1616, Ui.RED, 14);
-        LinearLayout.LayoutParams logoutLp = new LinearLayout.LayoutParams(-1, Ui.dp(this, 50)); logoutLp.topMargin = Ui.dp(this, 18); body.addView(logout, logoutLp);
-        logout.setOnClickListener(v -> new AlertDialog.Builder(this).setTitle("Выйти?").setMessage("Локальная криптографическая идентичность сохранится на этом устройстве.").setNegativeButton("Отмена", null).setPositiveButton("Выйти", (d, w) -> { presenceManager.signOut(); auth.signOut(); }).show());
-        scroll.addView(body); root.addView(scroll, new LinearLayout.LayoutParams(-1, 0, 1)); root.addView(bottomBar("Настройки")); setContentView(root);
+        View root = showScreen(R.layout.screen_settings);
+        MaterialToolbar toolbar = root.findViewById(R.id.settings_toolbar);
+        toolbar.setNavigationOnClickListener(v -> showHome());
+        View profileCard = root.findViewById(R.id.settings_profile_card);
+        TextView profileName = root.findViewById(R.id.settings_profile_name);
+        TextView profileHandle = root.findViewById(R.id.settings_profile_handle);
+        ShapeableImageView avatar = root.findViewById(R.id.settings_avatar);
+        TextView initial = root.findViewById(R.id.settings_avatar_initial);
+        String displayName = myProfile == null ? "Мой профиль" : myProfile.displayNameOrUsername();
+        profileName.setText(displayName);
+        profileHandle.setText(myProfile == null || myProfile.username == null ? "" : "@" + myProfile.username);
+        bindAvatar(avatar, initial, myProfile, displayName, myProfile == null ? null : myProfile.avatarBase64);
+        profileCard.setOnClickListener(v -> showProfileEditor(false));
+
+        MaterialSwitch syncSwitch = root.findViewById(R.id.background_sync_switch);
+        syncSwitch.setChecked(getSharedPreferences("tsuyu_settings", MODE_PRIVATE).getBoolean("background_sync", true));
+        syncSwitch.setOnCheckedChangeListener((button, checked) -> {
+            getSharedPreferences("tsuyu_settings", MODE_PRIVATE).edit().putBoolean("background_sync", checked).apply();
+            if (checked) startBackgroundSync(); else stopBackgroundSync();
+        });
+        root.findViewById(R.id.setting_privacy).setOnClickListener(v -> showPrivacySettings());
+        root.findViewById(R.id.setting_customization).setOnClickListener(v -> showCustomization());
+        root.findViewById(R.id.setting_notifications).setOnClickListener(v -> showNotificationSettings());
+        root.findViewById(R.id.setting_keys).setOnClickListener(v -> showKeySettings());
+        root.findViewById(R.id.settings_logout).setOnClickListener(v -> new AlertDialog.Builder(this)
+                .setTitle("Выйти?")
+                .setMessage("Локальная криптографическая идентичность сохранится на этом устройстве.")
+                .setNegativeButton("Отмена", null)
+                .setPositiveButton("Выйти", (dialog, which) -> { presenceManager.signOut(); auth.signOut(); })
+                .show());
+        setupBottomNavigation(root, R.id.nav_settings);
     }
 
-    private View settingRow(String title, String description, Runnable action) {
-        LinearLayout row = vertical(Ui.SURFACE); row.setPadding(Ui.dp(this, 15), Ui.dp(this, 14), Ui.dp(this, 15), Ui.dp(this, 14)); row.setBackground(Ui.bordered(Ui.SURFACE, 0xff1c1c1c, this, 14, 1));
-        TextView main = Ui.text(this, title, 15, Ui.WHITE, true); row.addView(main);
-        TextView sub = Ui.text(this, description, 12, Ui.SECONDARY, false); LinearLayout.LayoutParams subLp = new LinearLayout.LayoutParams(-1, -2); subLp.topMargin = Ui.dp(this, 5); row.addView(sub, subLp);
-        LinearLayout.LayoutParams lp = new LinearLayout.LayoutParams(-1, -2); lp.bottomMargin = Ui.dp(this, 9); row.setLayoutParams(lp); row.setOnClickListener(v -> action.run()); return row;
+    private void setupBottomNavigation(View root, int selectedItem) {
+        BottomNavigationView navigation = root.findViewById(R.id.main_navigation);
+        if (navigation == null) return;
+        navigation.setSelectedItemId(selectedItem);
+        navigation.setOnItemSelectedListener(item -> {
+            int id = item.getItemId();
+            if (id == R.id.nav_chats) showHome();
+            else if (id == R.id.nav_search) showSearchScreen();
+            else if (id == R.id.nav_settings) showSettings();
+            else return false;
+            return true;
+        });
     }
 
     private void showPrivacySettings() {
@@ -1469,87 +1693,126 @@ public final class MainActivity extends AppCompatActivity {
         DatabaseReference settingsRef = database.getReference("users").child(uid).child("publicSettings");
         settingsRef.child("privacy").get().addOnSuccessListener(privacySnapshot -> {
             for (DataSnapshot child : privacySnapshot.getChildren()) {
-                String value = child.getValue(String.class); if (value != null) initial.put(child.getKey(), value);
+                String value = child.getValue(String.class);
+                if (value != null) initial.put(child.getKey(), value);
             }
             settingsRef.child("messages").get().addOnSuccessListener(messagesSnapshot -> {
-                String value = messagesSnapshot.getValue(String.class); if (value != null) initial.put("messages", value);
+                String value = messagesSnapshot.getValue(String.class);
+                if (value != null) initial.put("messages", value);
                 showPrivacySettingsLoaded(initial);
-            }).addOnFailureListener(e -> showPrivacySettingsLoaded(initial));
-        }).addOnFailureListener(e -> showPrivacySettingsLoaded(initial));
+            }).addOnFailureListener(error -> showPrivacySettingsLoaded(initial));
+        }).addOnFailureListener(error -> showPrivacySettingsLoaded(initial));
     }
 
     private void showPrivacySettingsLoaded(Map<String, String> initial) {
-        LinearLayout body = vertical(Ui.SURFACE); body.setPadding(Ui.dp(this, 18), Ui.dp(this, 18), Ui.dp(this, 18), Ui.dp(this, 18));
-        android.widget.Switch ghost = new android.widget.Switch(this); ghost.setText("Режим призрака"); ghost.setTextColor(Ui.WHITE); ghost.setChecked(presenceManager.isGhostMode()); body.addView(ghost, matchWrap());
-        TextView note = Ui.text(this, "Приватность полей профиля и времени захода проверяется правилами RTDB. Режим призрака не отправляет отметки прочтения.", 12, Ui.SECONDARY, false); note.setPadding(0, Ui.dp(this, 8), 0, Ui.dp(this, 14)); body.addView(note, matchWrap());
+        View body = getLayoutInflater().inflate(R.layout.dialog_privacy, null, false);
+        MaterialSwitch ghost = body.findViewById(R.id.privacy_ghost);
+        ghost.setChecked(presenceManager.isGhostMode());
         String[] keys = {"messages", "lastSeen", "photo", "about", "displayName"};
-        String[] labels = {"Кто может писать", "Кто видит время захода", "Кто видит фото", "Кто видит описание", "Кто видит имя"};
+        int[] spinnerIds = {R.id.privacy_messages, R.id.privacy_last_seen, R.id.privacy_photo, R.id.privacy_about, R.id.privacy_display_name};
         String[] choices = {"Все", "Только контакты", "Только @", "Никто"};
         Map<String, Object> privacy = new HashMap<>();
         for (int i = 0; i < keys.length; i++) {
-            final String key = keys[i];
-            android.widget.Spinner spinner = new android.widget.Spinner(this);
-            android.widget.ArrayAdapter<String> adapter = new android.widget.ArrayAdapter<>(this, android.R.layout.simple_spinner_item, choices);
-            adapter.setDropDownViewResource(android.R.layout.simple_spinner_dropdown_item); spinner.setAdapter(adapter);
+            String key = keys[i];
+            android.widget.Spinner spinner = body.findViewById(spinnerIds[i]);
+            android.widget.ArrayAdapter<String> adapter = new android.widget.ArrayAdapter<>(this,
+                    R.layout.row_spinner_item, choices);
+            adapter.setDropDownViewResource(R.layout.row_spinner_dropdown_item);
+            spinner.setAdapter(adapter);
             String saved = initial.getOrDefault(key, "Все");
-            int selected = java.util.Arrays.asList(choices).indexOf(saved); if (selected < 0) selected = 0;
-            spinner.setSelection(selected); privacy.put(key, choices[selected]);
+            int selected = java.util.Arrays.asList(choices).indexOf(saved);
+            if (selected < 0) selected = 0;
+            spinner.setSelection(selected);
+            privacy.put(key, choices[selected]);
+            String selectedKey = key;
             spinner.setOnItemSelectedListener(new android.widget.AdapterView.OnItemSelectedListener() {
-                @Override public void onItemSelected(android.widget.AdapterView<?> parent, View view, int position, long id) { privacy.put(key, choices[position]); }
+                @Override public void onItemSelected(android.widget.AdapterView<?> parent, View view, int position, long id) {
+                    privacy.put(selectedKey, choices[position]);
+                }
                 @Override public void onNothingSelected(android.widget.AdapterView<?> parent) { }
             });
-            TextView label = Ui.text(this, labels[i], 13, Ui.WHITE, false); LinearLayout.LayoutParams l = new LinearLayout.LayoutParams(-1, -2); l.topMargin = Ui.dp(this, 10); body.addView(label, l); body.addView(spinner, matchWrap());
         }
-        new AlertDialog.Builder(this).setTitle("Конфиденциальность").setView(body).setNegativeButton("Закрыть", null).setPositiveButton("Сохранить", (d, w) -> {
-            Map<String, Object> publicSettings = new HashMap<>();
-            for (Map.Entry<String, Object> entry : privacy.entrySet()) {
-                getSharedPreferences("tsuyu_settings", MODE_PRIVATE).edit().putString("privacy_" + entry.getKey(), String.valueOf(entry.getValue())).apply();
-                if ("messages".equals(entry.getKey())) publicSettings.put("messages", entry.getValue());
-                else publicSettings.put("privacy/" + entry.getKey(), entry.getValue());
-            }
-            Map<String, Object> changes = new HashMap<>();
-            for (Map.Entry<String, Object> entry : publicSettings.entrySet()) changes.put("users/" + uid + "/publicSettings/" + entry.getKey(), entry.getValue());
-            changes.put("users/" + uid + "/private/settings/ghost", ghost.isChecked());
-            database.getReference().updateChildren(changes).addOnSuccessListener(unused -> {
-                presenceManager.setGhostMode(uid, ghost.isChecked());
-                if (activeChatId != null && !ghost.isChecked()) chatRepository.markRead(activeChatId, uid);
-                toast("Настройки приватности сохранены.");
-            }).addOnFailureListener(e -> toast("Не удалось сохранить настройки RTDB."));
-        }).show();
+        new AlertDialog.Builder(this).setTitle("Конфиденциальность").setView(body)
+                .setNegativeButton("Закрыть", null)
+                .setPositiveButton("Сохранить", (dialog, which) -> {
+                    Map<String, Object> publicSettings = new HashMap<>();
+                    for (Map.Entry<String, Object> entry : privacy.entrySet()) {
+                        getSharedPreferences("tsuyu_settings", MODE_PRIVATE).edit()
+                                .putString("privacy_" + entry.getKey(), String.valueOf(entry.getValue())).apply();
+                        if ("messages".equals(entry.getKey())) publicSettings.put("messages", entry.getValue());
+                        else publicSettings.put("privacy/" + entry.getKey(), entry.getValue());
+                    }
+                    Map<String, Object> changes = new HashMap<>();
+                    for (Map.Entry<String, Object> entry : publicSettings.entrySet()) {
+                        changes.put("users/" + uid + "/publicSettings/" + entry.getKey(), entry.getValue());
+                    }
+                    changes.put("users/" + uid + "/private/settings/ghost", ghost.isChecked());
+                    database.getReference().updateChildren(changes).addOnSuccessListener(unused -> {
+                        presenceManager.setGhostMode(uid, ghost.isChecked());
+                        if (activeChatId != null && !ghost.isChecked()) chatRepository.markRead(activeChatId, uid);
+                        toast("Настройки приватности сохранены.");
+                    }).addOnFailureListener(error -> toast("Не удалось сохранить настройки RTDB."));
+                }).show();
     }
 
     private void showCustomization() {
-        LinearLayout body = vertical(Ui.SURFACE); body.setPadding(Ui.dp(this, 18), Ui.dp(this, 18), Ui.dp(this, 18), Ui.dp(this, 18));
-        TextView sizeLabel = Ui.text(this, "Размер текста", 14, Ui.WHITE, true); body.addView(sizeLabel);
-        SeekBar seek = new SeekBar(this); seek.setMax(10); int current = getSharedPreferences("tsuyu_settings", MODE_PRIVATE).getInt("text_size", 14); seek.setProgress(Math.max(0, Math.min(10, current - 12))); body.addView(seek, matchWrap());
-        android.widget.CheckBox bold = new android.widget.CheckBox(this); bold.setText("Жирный текст"); bold.setTextColor(Ui.WHITE); bold.setChecked(isTextBold()); body.addView(bold);
-        android.widget.CheckBox italic = new android.widget.CheckBox(this); italic.setText("Курсив"); italic.setTextColor(Ui.WHITE); italic.setChecked(getSharedPreferences("tsuyu_settings", MODE_PRIVATE).getBoolean("italic", false)); body.addView(italic);
-        new AlertDialog.Builder(this).setTitle("Кастомизация").setView(body).setNegativeButton("Отмена", null).setPositiveButton("Сохранить", (d, w) -> getSharedPreferences("tsuyu_settings", MODE_PRIVATE).edit().putInt("text_size", 12 + seek.getProgress()).putBoolean("bold", bold.isChecked()).putBoolean("italic", italic.isChecked()).apply()).show();
+        View body = getLayoutInflater().inflate(R.layout.dialog_customization, null, false);
+        Slider size = body.findViewById(R.id.customization_text_size);
+        int current = getSharedPreferences("tsuyu_settings", MODE_PRIVATE).getInt("text_size", 14);
+        size.setValue(Math.max(12, Math.min(22, current)));
+        MaterialCheckBox bold = body.findViewById(R.id.customization_bold);
+        MaterialCheckBox italic = body.findViewById(R.id.customization_italic);
+        bold.setChecked(isTextBold());
+        italic.setChecked(getSharedPreferences("tsuyu_settings", MODE_PRIVATE).getBoolean("italic", false));
+        new AlertDialog.Builder(this).setTitle("Кастомизация").setView(body)
+                .setNegativeButton("Отмена", null)
+                .setPositiveButton("Сохранить", (dialog, which) -> {
+                    getSharedPreferences("tsuyu_settings", MODE_PRIVATE).edit()
+                            .putInt("text_size", Math.round(size.getValue()))
+                            .putBoolean("bold", bold.isChecked())
+                            .putBoolean("italic", italic.isChecked()).apply();
+                    if (messageListAdapter != null && messageList != null && "chat".equals(page)) {
+                        renderMessages(lastRemoteMessages, activePeerUid);
+                    }
+                }).show();
     }
 
     private void showNotificationSettings() {
-        LinearLayout body = vertical(Ui.SURFACE); body.setPadding(Ui.dp(this, 18), Ui.dp(this, 18), Ui.dp(this, 18), Ui.dp(this, 18));
-        android.widget.Switch sound = new android.widget.Switch(this); sound.setText("Звук уведомлений"); sound.setTextColor(Ui.WHITE); sound.setChecked(NotificationSounds.isEnabled(this)); body.addView(sound, matchWrap());
+        View body = getLayoutInflater().inflate(R.layout.dialog_notifications, null, false);
+        MaterialSwitch sound = body.findViewById(R.id.notifications_sound_switch);
+        MaterialButton choose = body.findViewById(R.id.notifications_choose_sound);
+        sound.setChecked(NotificationSounds.isEnabled(this));
         sound.setOnCheckedChangeListener((button, checked) -> NotificationSounds.setEnabled(this, checked));
-        TextView choose = Ui.button(this, "Выбрать звук из файлов", Ui.INPUT, Ui.WHITE, 12); LinearLayout.LayoutParams p = new LinearLayout.LayoutParams(-1, Ui.dp(this, 48)); p.topMargin = Ui.dp(this, 12); body.addView(choose, p);
-        choose.setOnClickListener(v -> { try { pendingMediaKind = "sound"; documentPicker.launch(new String[]{"audio/mpeg", "audio/*"}); } catch (Exception e) { toast("Не удалось открыть выбор файла."); } });
+        choose.setOnClickListener(v -> {
+            try { pendingMediaKind = "sound"; documentPicker.launch(new String[]{"audio/mpeg", "audio/*"}); }
+            catch (Exception error) { toast("Не удалось открыть выбор файла."); }
+        });
         new AlertDialog.Builder(this).setTitle("Уведомления").setView(body).setNegativeButton("Закрыть", null).show();
     }
 
     private void showKeySettings() {
-        LinearLayout body = vertical(Ui.SURFACE); body.setPadding(Ui.dp(this, 18), Ui.dp(this, 18), Ui.dp(this, 18), Ui.dp(this, 18));
-        body.addView(Ui.text(this, "Signal Protocol · PQXDH + Double Ratchet", 14, Ui.WHITE, true), matchWrap());
-        TextView info = Ui.text(this, "Приватная идентичность зашифрована Android Keystore и не отправляется в RTDB. Сверяйте отпечатки собеседников вне чата. Смена ключа сбросит локальные сессии; старые сообщения после этого могут стать недоступны.", 12, Ui.SECONDARY, false); info.setPadding(0, Ui.dp(this, 10), 0, Ui.dp(this, 14)); body.addView(info, matchWrap());
+        View body = getLayoutInflater().inflate(R.layout.dialog_key_settings, null, false);
+        TextView fingerprint = body.findViewById(R.id.key_fingerprint);
+        MaterialButton copyPublic = body.findViewById(R.id.key_copy_bundle);
+        MaterialButton rotate = body.findViewById(R.id.key_rotate);
         try {
             Map<String, Object> ownBundle = crypto.publicKeyBundle();
-            TextView fingerprint = Ui.text(this, SignalE2ee.identityFingerprint(ownBundle), 11, Ui.WHITE, false); fingerprint.setTextIsSelectable(true); body.addView(fingerprint, matchWrap());
-            TextView copyPublic = Ui.button(this, "Скопировать публичный prekey bundle", Ui.INPUT, Ui.WHITE, 12);
-            LinearLayout.LayoutParams copyLp = new LinearLayout.LayoutParams(-1, Ui.dp(this, 46)); copyLp.topMargin = Ui.dp(this, 8); body.addView(copyPublic, copyLp);
-            copyPublic.setOnClickListener(v -> { ((ClipboardManager) getSystemService(CLIPBOARD_SERVICE)).setPrimaryClip(ClipData.newPlainText("Tsuyu public key bundle", new JSONObject(ownBundle).toString())); toast("Публичный bundle скопирован."); });
-        } catch (Exception e) { body.addView(Ui.text(this, "Не удалось подготовить отпечаток ключа.", 12, Ui.RED, false), matchWrap()); }
-        TextView rotate = Ui.button(this, "Создать новую идентичность", Ui.INPUT, Ui.WHITE, 12); LinearLayout.LayoutParams rotateLp = new LinearLayout.LayoutParams(-1, Ui.dp(this, 48)); rotateLp.topMargin = Ui.dp(this, 8); body.addView(rotate, rotateLp);
-        rotate.setOnClickListener(v -> new AlertDialog.Builder(this).setTitle("Сменить ключ?").setMessage("Текущие локальные Ratchet-сессии будут удалены. Продолжить?").setNegativeButton("Отмена", null).setPositiveButton("Сменить", (d, w) -> rotateIdentity()).show());
-        new AlertDialog.Builder(this).setTitle("Ключи шифрования").setView(body).setPositiveButton("Закрыть", null).show();
+            fingerprint.setText(SignalE2ee.identityFingerprint(ownBundle));
+            copyPublic.setOnClickListener(v -> {
+                ((ClipboardManager) getSystemService(CLIPBOARD_SERVICE)).setPrimaryClip(
+                        ClipData.newPlainText("Tsuyu public key bundle", new JSONObject(ownBundle).toString()));
+                toast("Публичный bundle скопирован.");
+            });
+        } catch (Exception error) {
+            fingerprint.setText("Не удалось подготовить отпечаток ключа.");
+            copyPublic.setEnabled(false);
+        }
+        rotate.setOnClickListener(v -> new AlertDialog.Builder(this).setTitle("Сменить ключ?")
+                .setMessage("Текущие локальные Ratchet-сессии будут удалены. Продолжить?")
+                .setNegativeButton("Отмена", null)
+                .setPositiveButton("Сменить", (dialog, which) -> rotateIdentity()).show());
+        new AlertDialog.Builder(this).setTitle("Ключи шифрования").setView(body)
+                .setPositiveButton("Закрыть", null).show();
     }
 
     private void rotateIdentity() {
@@ -1559,48 +1822,67 @@ public final class MainActivity extends AppCompatActivity {
                 Map<String, Object> bundle = crypto.publicKeyBundle();
                 Tasks.await(database.getReference("users").child(uid).child("keys").child("1").setValue(bundle));
                 runOnUiThread(() -> toast("Новый ключ опубликован. Попросите собеседника начать новый сеанс."));
-            } catch (Exception e) { runOnUiThread(() -> toast("Не удалось сменить ключ.")); }
+            } catch (Exception error) { runOnUiThread(() -> toast("Не удалось сменить ключ.")); }
         });
     }
 
-    private LinearLayout bottomBar(String selected) {
-        LinearLayout bar = horizontal(Ui.HEADER); bar.setGravity(Gravity.CENTER); bar.setPadding(0, Ui.dp(this, 3), 0, Ui.dp(this, 3));
-        for (String label : new String[]{"Диалоги", "Поиск", "Настройки"}) {
-            TextView item = Ui.text(this, label, 11, selected.equals(label) ? Ui.WHITE : 0xff666666, selected.equals(label)); item.setGravity(Gravity.CENTER); item.setClickable(true);
-            LinearLayout.LayoutParams lp = new LinearLayout.LayoutParams(0, -1, 1); bar.addView(item, lp);
-            item.setOnClickListener(v -> { if ("Диалоги".equals(label)) showHome(); else if ("Поиск".equals(label)) showSearchScreen(); else showSettings(); });
+    private View showScreen(int layoutResource) {
+        if (screenHost == null) {
+            setContentView(R.layout.activity_main);
+            screenHost = findViewById(R.id.screen_host);
         }
-        bar.setLayoutParams(new LinearLayout.LayoutParams(-1, Ui.dp(this, 50))); bar.setBackgroundColor(Ui.HEADER); bar.setElevation(Ui.dp(this, 3)); return bar;
-    }
-
-    private void addTopBar(LinearLayout root, String title, String icon, Runnable back, String actionText, Runnable action) {
-        LinearLayout bar = horizontal(Ui.HEADER); bar.setPadding(Ui.dp(this, 10), 0, Ui.dp(this, 12), 0);
-        TextView backButton = Ui.iconButton(this, icon, Ui.WHITE); bar.addView(backButton, new LinearLayout.LayoutParams(Ui.dp(this, 40), Ui.dp(this, 40))); backButton.setOnClickListener(v -> back.run());
-        TextView label = Ui.text(this, title, 18, Ui.WHITE, true); LinearLayout.LayoutParams labelLp = new LinearLayout.LayoutParams(0, -2, 1); labelLp.leftMargin = Ui.dp(this, 10); bar.addView(label, labelLp);
-        if (actionText != null) { TextView a = Ui.text(this, actionText, 13, Ui.BLUE, true); bar.addView(a); a.setOnClickListener(v -> action.run()); }
-        root.addView(bar, new LinearLayout.LayoutParams(-1, Ui.dp(this, 56))); root.addView(Ui.divider(this));
-    }
-
-    private ImageView avatar(Profile profile, int sizeDp) {
-        ImageView image = new ImageView(this); image.setScaleType(ImageView.ScaleType.CENTER_CROP); image.setBackground(Ui.shape(Ui.INPUT, this, sizeDp / 2f)); setAvatar(image, profile, sizeDp); return image;
-    }
-
-    private void setAvatar(ImageView image, Profile profile, int sizeDp) {
-        if (profile != null && profile.avatarBase64 != null && !profile.avatarBase64.isEmpty()) {
-            try {
-                byte[] bytes = Base64.decode(profile.avatarBase64, Base64.NO_WRAP);
-                Bitmap bitmap = BitmapFactory.decodeByteArray(bytes, 0, bytes.length);
-                if (bitmap != null) {
-                    RoundedBitmapDrawable rounded = RoundedBitmapDrawableFactory.create(getResources(), bitmap);
-                    rounded.setCircular(true); image.setImageDrawable(rounded); return;
-                }
-            } catch (Exception ignored) { }
+        View next = getLayoutInflater().inflate(layoutResource, screenHost, false);
+        if (screenHost.getChildCount() > 0) {
+            MaterialFadeThrough transition = new MaterialFadeThrough();
+            transition.setDuration(220L);
+            TransitionManager.beginDelayedTransition(screenHost, transition);
+            screenHost.removeAllViews();
         }
-        TextView placeholder = new TextView(this);
-        String first = profile == null ? "T" : profile.displayNameOrUsername().substring(0, 1).toUpperCase(Locale.ROOT);
-        image.setImageDrawable(null); image.setBackground(Ui.shape(0xff252528, this, sizeDp / 2f));
-        image.setContentDescription(first);
+        screenHost.addView(next);
+        next.startAnimation(AnimationUtils.loadAnimation(this, R.anim.screen_enter));
+        currentScreen = next;
+        return next;
     }
+
+    private void bindAvatar(ShapeableImageView image, TextView fallback, Profile profile,
+                            String displayName, String encoded) {
+        String label = profile == null ? null : profile.displayName;
+        if (label == null || label.trim().isEmpty()) label = profile == null ? null : profile.username;
+        if (label == null || label.trim().isEmpty()) label = displayName;
+        label = label == null ? "T" : label.trim().replaceFirst("^@", "");
+        fallback.setText(label.isEmpty() ? "T" : label.substring(0, 1).toUpperCase(Locale.ROOT));
+        if (encoded == null || encoded.isEmpty()) {
+            image.setImageDrawable(null);
+            image.setVisibility(View.GONE);
+            fallback.setVisibility(View.VISIBLE);
+            return;
+        }
+        try {
+            byte[] bytes = Base64.decode(encoded, Base64.NO_WRAP);
+            Bitmap bitmap = BitmapFactory.decodeByteArray(bytes, 0, bytes.length);
+            if (bitmap == null) throw new IllegalArgumentException("Invalid avatar data");
+            image.setImageBitmap(bitmap);
+            image.setVisibility(View.VISIBLE);
+            fallback.setVisibility(View.GONE);
+        } catch (Exception error) {
+            image.setImageDrawable(null);
+            image.setVisibility(View.GONE);
+            fallback.setVisibility(View.VISIBLE);
+        }
+    }
+
+    private void updateDraftAvatarPreview() {
+        if (!"profile_edit".equals(page) || currentScreen == null) return;
+        ShapeableImageView image = currentScreen.findViewById(R.id.profile_avatar);
+        TextView initial = currentScreen.findViewById(R.id.profile_avatar_initial);
+        TextInputEditText name = currentScreen.findViewById(R.id.profile_name);
+        Profile draft = new Profile();
+        draft.uid = uid;
+        draft.displayName = name == null || name.getText() == null ? null : name.getText().toString();
+        draft.username = myProfile == null ? null : myProfile.username;
+        bindAvatar(image, initial, draft, draft.displayName, draftAvatarBase64);
+    }
+
 
     private String imageToBase64(Uri uri, int maxDimension, int maxBytes) throws Exception {
         BitmapFactory.Options bounds = new BitmapFactory.Options(); bounds.inJustDecodeBounds = true;
@@ -1677,18 +1959,14 @@ public final class MainActivity extends AppCompatActivity {
         messagesListener = null; typingListener = null; reactionsListener = null; peerPresenceListener = null; peerPresenceRef = null;
         peerLastSeenListener = null; peerLastSeenRef = null; receiptListener = null; receiptRef = null; peerReadAt = 0;
         peerTyping = false; peerOnline = false; peerLastSeenVisible = false; peerLastSeen = 0;
-        messageColumn = null; messageScroll = null; composer = null; replyBanner = null; chatStatus = null;
+        messageList = null; messageListAdapter = null; chatEmptyState = null;
+        composer = null; replyBanner = null; replyBannerText = null; chatStatus = null; chatAvatarDot = null;
         ui.removeCallbacks(clearTyping);
         messageReactions.clear();
     }
 
     private int textSize() { return getSharedPreferences("tsuyu_settings", MODE_PRIVATE).getInt("text_size", 14); }
     private boolean isTextBold() { return getSharedPreferences("tsuyu_settings", MODE_PRIVATE).getBoolean("bold", false); }
-    private int textTypefaceStyle() {
-        int style = isTextBold() ? Typeface.BOLD : Typeface.NORMAL;
-        if (getSharedPreferences("tsuyu_settings", MODE_PRIVATE).getBoolean("italic", false)) style |= Typeface.ITALIC;
-        return style;
-    }
     private void markNoActiveChat() { getSharedPreferences("tsuyu_settings", MODE_PRIVATE).edit().remove("active_chat").apply(); }
     private void startBackgroundSync() {
         android.content.SharedPreferences prefs = getSharedPreferences("tsuyu_settings", MODE_PRIVATE);
@@ -1709,16 +1987,15 @@ public final class MainActivity extends AppCompatActivity {
     private void toast(String text) { if (Looper.myLooper() == Looper.getMainLooper()) Toast.makeText(this, text, Toast.LENGTH_SHORT).show(); else runOnUiThread(() -> Toast.makeText(this, text, Toast.LENGTH_SHORT).show()); }
     private String authError(Exception e) { String message = e.getLocalizedMessage(); return message == null ? "Не удалось войти. Проверьте почту и пароль." : message; }
     private static long number(Object value) { return value instanceof Number ? ((Number) value).longValue() : 0L; }
-    private LinearLayout vertical(int color) { LinearLayout layout = new LinearLayout(this); layout.setOrientation(LinearLayout.VERTICAL); layout.setBackgroundColor(color); return layout; }
-    private LinearLayout horizontal(int color) { LinearLayout layout = new LinearLayout(this); layout.setOrientation(LinearLayout.HORIZONTAL); layout.setGravity(Gravity.CENTER_VERTICAL); layout.setBackgroundColor(color); return layout; }
-    private LinearLayout.LayoutParams matchWrap() { return new LinearLayout.LayoutParams(-1, -2); }
-    private LinearLayout.LayoutParams wrap() { return new LinearLayout.LayoutParams(-2, -2); }
-    private LinearLayout.LayoutParams fieldParams() { LinearLayout.LayoutParams lp = new LinearLayout.LayoutParams(-1, Ui.dp(this, 50)); lp.bottomMargin = Ui.dp(this, 11); return lp; }
 
     @Override
     public void onBackPressed() {
         if ("chat".equals(page)) { detachChatListeners(); showHome(); return; }
-        if ("search".equals(page) || "settings".equals(page) || "profile_edit".equals(page)) { showHome(); return; }
+        if ("profile_edit".equals(page)) {
+            if (isNewProfile) auth.signOut(); else showHome();
+            return;
+        }
+        if ("search".equals(page) || "settings".equals(page)) { showHome(); return; }
         super.onBackPressed();
     }
 }

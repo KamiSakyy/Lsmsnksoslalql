@@ -126,6 +126,12 @@ public final class ChatRepository {
 
     public void sendPayload(String chatId, String senderUid, String recipientUid,
                             SignalE2ee crypto, byte[] payload, Result<String> result) {
+        sendPayload(chatId, senderUid, recipientUid, crypto, payload, null, result);
+    }
+
+    /** Encrypts first, then atomically writes ciphertext and optional opaque client reconciliation id. */
+    public void sendPayload(String chatId, String senderUid, String recipientUid,
+                            SignalE2ee crypto, byte[] payload, String clientId, Result<String> result) {
         cryptoExecutor.execute(() -> {
             try {
                 ensurePeerMapping(chatId, senderUid, recipientUid);
@@ -143,6 +149,7 @@ public final class ChatRepository {
                 envelope.put("signalType", encrypted.signalType);
                 envelope.put("sentAt", ServerValue.TIMESTAMP);
                 envelope.put("edited", false);
+                if (clientId != null && !clientId.isEmpty()) envelope.put("clientId", clientId);
                 Map<String, Object> changes = new HashMap<>();
                 changes.put("chats/" + chatId + "/messages/" + messageId, envelope);
                 changes.put("chats/" + chatId + "/meta/lastMessage", envelope);

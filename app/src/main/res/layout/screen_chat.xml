@@ -1,0 +1,216 @@
+<?xml version="1.0" encoding="utf-8"?>
+<LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:app="http://schemas.android.com/apk/res-auto"
+    android:id="@+id/chat_root"
+    android:layout_width="match_parent"
+    android:layout_height="match_parent"
+    android:background="@color/tsuyu_black"
+    android:orientation="vertical">
+
+    <com.google.android.material.appbar.MaterialToolbar
+        android:id="@+id/chat_toolbar"
+        android:layout_width="match_parent"
+        android:layout_height="68dp"
+        android:background="@color/tsuyu_header"
+        app:menu="@menu/chat_toolbar"
+        app:navigationIcon="@drawable/ic_arrow_back"
+        app:title=""
+        app:titleTextColor="@color/tsuyu_white">
+        <FrameLayout
+            android:id="@+id/chat_peer_avatar_frame"
+            android:layout_width="42dp"
+            android:layout_height="42dp"
+            android:layout_gravity="start|center_vertical"
+            android:layout_marginStart="52dp"
+            android:clickable="true"
+            android:focusable="true">
+            <TextView
+                android:id="@+id/chat_peer_initial"
+                android:layout_width="match_parent"
+                android:layout_height="match_parent"
+                android:background="@drawable/bg_avatar_fallback"
+                android:gravity="center"
+                android:textColor="@color/tsuyu_white"
+                android:textSize="17sp"
+                android:textStyle="bold" />
+            <com.google.android.material.imageview.ShapeableImageView
+                android:id="@+id/chat_peer_avatar"
+                android:layout_width="match_parent"
+                android:layout_height="match_parent"
+                android:scaleType="centerCrop"
+                android:visibility="gone"
+                app:shapeAppearanceOverlay="@style/ShapeAppearanceOverlay.Tsuyu.Circle" />
+            <View
+                android:id="@+id/chat_peer_online_dot"
+                android:layout_width="13dp"
+                android:layout_height="13dp"
+                android:layout_gravity="bottom|end"
+                android:background="@drawable/bg_online_dot"
+                android:visibility="gone" />
+        </FrameLayout>
+        <LinearLayout
+            android:id="@+id/chat_peer_header_text"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:layout_gravity="start|center_vertical"
+            android:layout_marginStart="102dp"
+            android:orientation="vertical">
+            <TextView
+                android:id="@+id/chat_peer_name"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:ellipsize="end"
+                android:maxWidth="190dp"
+                android:maxLines="1"
+                android:text="Собеседник"
+                android:textColor="@color/tsuyu_white"
+                android:textSize="15sp"
+                android:textStyle="bold" />
+            <TextView
+                android:id="@+id/chat_peer_status"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:layout_marginTop="3dp"
+                android:text="Сквозное шифрование"
+                android:textColor="@color/tsuyu_secondary"
+                android:textSize="11sp" />
+        </LinearLayout>
+    </com.google.android.material.appbar.MaterialToolbar>
+
+    <FrameLayout
+        android:layout_width="match_parent"
+        android:layout_height="0dp"
+        android:layout_weight="1">
+        <androidx.recyclerview.widget.RecyclerView
+            android:id="@+id/message_list"
+            android:layout_width="match_parent"
+            android:layout_height="match_parent"
+            android:clipToPadding="false"
+            android:paddingStart="8dp"
+            android:paddingTop="12dp"
+            android:paddingEnd="8dp"
+            android:paddingBottom="12dp"
+            android:scrollbars="none" />
+        <LinearLayout
+            android:id="@+id/chat_empty_state"
+            android:layout_width="match_parent"
+            android:layout_height="match_parent"
+            android:gravity="center"
+            android:orientation="vertical"
+            android:padding="28dp"
+            android:visibility="gone">
+            <ImageView android:layout_width="44dp" android:layout_height="44dp" android:background="@drawable/bg_security_pill" android:padding="11dp" android:src="@drawable/ic_lock" app:tint="@color/tsuyu_green" />
+            <TextView android:layout_width="match_parent" android:layout_height="wrap_content" android:layout_marginTop="12dp" android:gravity="center" android:text="Сообщения защищены сквозным шифрованием" android:textColor="@color/tsuyu_secondary" android:textSize="13sp" />
+        </LinearLayout>
+    </FrameLayout>
+
+    <com.google.android.material.card.MaterialCardView
+        android:id="@+id/reply_banner"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:layout_marginStart="10dp"
+        android:layout_marginEnd="10dp"
+        android:visibility="gone"
+        app:cardBackgroundColor="@color/tsuyu_surface"
+        app:cardCornerRadius="14dp"
+        app:cardElevation="0dp">
+        <LinearLayout
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:gravity="center_vertical"
+            android:orientation="horizontal"
+            android:paddingStart="14dp"
+            android:paddingTop="3dp"
+            android:paddingEnd="6dp"
+            android:paddingBottom="3dp">
+            <TextView
+                android:id="@+id/reply_banner_text"
+                android:layout_width="0dp"
+                android:layout_height="wrap_content"
+                android:layout_weight="1"
+                android:maxLines="2"
+                android:ellipsize="end"
+                android:paddingTop="6dp"
+                android:paddingBottom="6dp"
+                android:textColor="@color/tsuyu_blue"
+                android:textSize="12sp" />
+            <com.google.android.material.button.MaterialButton
+                android:id="@+id/reply_cancel"
+                android:layout_width="36dp"
+                android:layout_height="36dp"
+                android:contentDescription="Отменить ответ"
+                android:minWidth="0dp"
+                android:text="×"
+                android:textColor="@color/tsuyu_secondary"
+                android:textSize="20sp"
+                app:backgroundTint="@color/tsuyu_surface"
+                app:cornerRadius="18dp" />
+        </LinearLayout>
+    </com.google.android.material.card.MaterialCardView>
+
+    <LinearLayout
+        android:id="@+id/composer_panel"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:background="@color/tsuyu_header"
+        android:gravity="center_vertical"
+        android:orientation="horizontal"
+        android:paddingStart="8dp"
+        android:paddingTop="8dp"
+        android:paddingEnd="8dp"
+        android:paddingBottom="8dp">
+        <com.google.android.material.button.MaterialButton
+            android:id="@+id/chat_attach"
+            android:layout_width="44dp"
+            android:layout_height="44dp"
+            android:contentDescription="Прикрепить"
+            android:minWidth="0dp"
+            android:text=""
+            app:backgroundTint="@color/tsuyu_surface"
+            app:cornerRadius="22dp"
+            app:icon="@drawable/ic_add"
+            app:iconTint="@color/tsuyu_secondary"
+            app:iconSize="23dp" />
+        <com.google.android.material.textfield.TextInputLayout
+            android:id="@+id/composer_layout"
+            android:layout_width="0dp"
+            android:layout_height="wrap_content"
+            android:layout_marginStart="7dp"
+            android:layout_marginEnd="7dp"
+            android:layout_weight="1"
+            android:hint="@string/chat_message_hint"
+            app:boxBackgroundColor="@color/tsuyu_input"
+            app:boxBackgroundMode="outline"
+            app:boxCornerRadiusBottomEnd="22dp"
+            app:boxCornerRadiusBottomStart="22dp"
+            app:boxCornerRadiusTopEnd="22dp"
+            app:boxCornerRadiusTopStart="22dp"
+            app:boxStrokeColor="@color/tsuyu_blue"
+            app:hintTextColor="@color/tsuyu_secondary">
+            <com.google.android.material.textfield.TextInputEditText
+                android:id="@+id/chat_composer"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:imeOptions="actionSend"
+                android:inputType="textCapSentences|textMultiLine"
+                android:maxLines="4"
+                android:minHeight="48dp"
+                android:paddingStart="14dp"
+                android:paddingEnd="14dp"
+                android:textColor="@color/tsuyu_white"
+                android:textSize="14sp" />
+        </com.google.android.material.textfield.TextInputLayout>
+        <com.google.android.material.button.MaterialButton
+            android:id="@+id/chat_send"
+            android:layout_width="48dp"
+            android:layout_height="48dp"
+            android:contentDescription="Отправить сообщение"
+            android:minWidth="0dp"
+            android:text=""
+            app:backgroundTint="@color/tsuyu_blue"
+            app:cornerRadius="24dp"
+            app:icon="@drawable/ic_send"
+            app:iconSize="21dp"
+            app:iconTint="@color/tsuyu_white" />
+    </LinearLayout>
+</LinearLayout>

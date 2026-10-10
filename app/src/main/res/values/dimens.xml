@@ -1,0 +1,8 @@
+<resources>
+    <dimen name="screen_horizontal_padding">20dp</dimen>
+    <dimen name="screen_vertical_padding">16dp</dimen>
+    <dimen name="corner_card">20dp</dimen>
+    <dimen name="corner_input">16dp</dimen>
+    <dimen name="avatar_chat">54dp</dimen>
+    <dimen name="toolbar_height">64dp</dimen>
+</resources>

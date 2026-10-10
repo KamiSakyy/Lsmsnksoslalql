@@ -1,0 +1,15 @@
+<?xml version="1.0" encoding="utf-8"?>
+<LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:app="http://schemas.android.com/apk/res-auto"
+    android:layout_width="match_parent"
+    android:layout_height="wrap_content"
+    android:orientation="vertical"
+    android:padding="20dp">
+    <TextView android:layout_width="match_parent" android:layout_height="wrap_content" android:text="Signal Protocol · PQXDH + Double Ratchet" android:textColor="@color/tsuyu_white" android:textSize="15sp" android:textStyle="bold" />
+    <TextView android:layout_width="match_parent" android:layout_height="wrap_content" android:layout_marginTop="9dp" android:text="Приватная идентичность зашифрована Android Keystore и не отправляется в RTDB. Сверяйте отпечатки собеседников вне чата. Смена ключа сбросит локальные сессии; старые сообщения могут стать недоступны." android:textColor="@color/tsuyu_secondary" android:textSize="12sp" />
+    <com.google.android.material.card.MaterialCardView android:layout_width="match_parent" android:layout_height="wrap_content" android:layout_marginTop="14dp" app:cardBackgroundColor="@color/tsuyu_header" app:cardCornerRadius="14dp" app:cardElevation="0dp">
+        <TextView android:id="@+id/key_fingerprint" android:layout_width="match_parent" android:layout_height="wrap_content" android:padding="12dp" android:textColor="@color/tsuyu_white" android:textIsSelectable="true" android:textSize="11sp" />
+    </com.google.android.material.card.MaterialCardView>
+    <com.google.android.material.button.MaterialButton android:id="@+id/key_copy_bundle" android:layout_width="match_parent" android:layout_height="48dp" android:layout_marginTop="9dp" android:text="Скопировать публичный prekey bundle" app:backgroundTint="@color/tsuyu_input" app:cornerRadius="15dp" />
+    <com.google.android.material.button.MaterialButton android:id="@+id/key_rotate" android:layout_width="match_parent" android:layout_height="48dp" android:layout_marginTop="9dp" android:text="Создать новую идентичность" app:backgroundTint="@color/tsuyu_input" app:cornerRadius="15dp" />
+</LinearLayout>

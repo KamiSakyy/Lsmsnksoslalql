@@ -3,11 +3,13 @@ package com.tsuyu.messenger.ui;
 import android.content.Context;
 import android.graphics.Matrix;
 import android.graphics.drawable.Drawable;
+import android.util.AttributeSet;
 import android.view.MotionEvent;
 import android.view.ScaleGestureDetector;
 
 import androidx.appcompat.widget.AppCompatImageView;
 
+/** XML-inflatable image viewer supporting fit, pinch zoom, and drag. */
 public final class ZoomImageView extends AppCompatImageView {
     private final Matrix matrix = new Matrix();
     private final ScaleGestureDetector scaleDetector;
@@ -17,8 +19,12 @@ public final class ZoomImageView extends AppCompatImageView {
     private float scale = 1f;
     private float fitScale = 1f;
 
-    public ZoomImageView(Context context) {
-        super(context);
+    public ZoomImageView(Context context) { this(context, null); }
+
+    public ZoomImageView(Context context, AttributeSet attrs) { this(context, attrs, 0); }
+
+    public ZoomImageView(Context context, AttributeSet attrs, int defStyleAttr) {
+        super(context, attrs, defStyleAttr);
         setScaleType(ScaleType.MATRIX);
         setImageMatrix(matrix);
         scaleDetector = new ScaleGestureDetector(context, new ScaleGestureDetector.SimpleOnScaleGestureListener() {
@@ -62,18 +68,24 @@ public final class ZoomImageView extends AppCompatImageView {
         scaleDetector.onTouchEvent(event);
         switch (event.getActionMasked()) {
             case MotionEvent.ACTION_DOWN:
-                lastX = event.getX(); lastY = event.getY(); dragging = true; return true;
+                lastX = event.getX();
+                lastY = event.getY();
+                dragging = true;
+                return true;
             case MotionEvent.ACTION_MOVE:
                 if (dragging && scale > fitScale * 1.01f && event.getPointerCount() == 1) {
                     matrix.postTranslate(event.getX() - lastX, event.getY() - lastY);
                     setImageMatrix(matrix);
-                    lastX = event.getX(); lastY = event.getY();
+                    lastX = event.getX();
+                    lastY = event.getY();
                 }
                 return true;
             case MotionEvent.ACTION_UP:
             case MotionEvent.ACTION_CANCEL:
-                dragging = false; return true;
-            default: return true;
+                dragging = false;
+                return true;
+            default:
+                return true;
         }
     }
 }

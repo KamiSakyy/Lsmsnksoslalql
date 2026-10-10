@@ -1,9 +1,13 @@
 <resources>
-    <style name="Theme.Tsuyu" parent="Theme.MaterialComponents.DayNight.NoActionBar">
+    <style name="Theme.Tsuyu" parent="Theme.Material3.Dark.NoActionBar">
         <item name="colorPrimary">@color/tsuyu_blue</item>
-        <item name="colorPrimaryVariant">@color/tsuyu_blue</item>
         <item name="colorOnPrimary">@color/tsuyu_white</item>
         <item name="colorSecondary">@color/tsuyu_green</item>
+        <item name="colorOnSecondary">@color/tsuyu_black</item>
+        <item name="colorSurface">@color/tsuyu_surface</item>
+        <item name="colorOnSurface">@color/tsuyu_white</item>
+        <item name="colorError">@color/tsuyu_red</item>
+        <item name="colorOutline">@color/tsuyu_border</item>
         <item name="android:colorAccent">@color/tsuyu_blue</item>
         <item name="android:windowLightStatusBar">false</item>
         <item name="android:statusBarColor">@color/tsuyu_black</item>
@@ -11,5 +15,30 @@
         <item name="android:windowBackground">@color/tsuyu_black</item>
         <item name="android:windowActionModeOverlay">true</item>
         <item name="android:fontFamily">sans</item>
+        <item name="materialButtonStyle">@style/Widget.Tsuyu.Button</item>
+    </style>
+
+    <style name="Widget.Tsuyu.Button" parent="Widget.Material3.Button">
+        <item name="cornerRadius">18dp</item>
+        <item name="android:textAllCaps">false</item>
+        <item name="android:minHeight">48dp</item>
+        <item name="rippleColor">#33FFFFFF</item>
+    </style>
+
+    <style name="ShapeAppearanceOverlay.Tsuyu.Circle">
+        <item name="cornerFamily">rounded</item>
+        <item name="cornerSize">50%</item>
+    </style>
+
+    <style name="ShapeAppearanceOverlay.Tsuyu.MessageIncoming">
+        <item name="cornerFamily">rounded</item>
+        <item name="cornerSize">18dp</item>
+        <item name="cornerSizeBottomRight">5dp</item>
+    </style>
+
+    <style name="ShapeAppearanceOverlay.Tsuyu.MessageOutgoing">
+        <item name="cornerFamily">rounded</item>
+        <item name="cornerSize">18dp</item>
+        <item name="cornerSizeBottomLeft">5dp</item>
     </style>
 </resources>

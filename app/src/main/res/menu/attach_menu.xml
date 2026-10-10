@@ -1,0 +1,7 @@
+<menu xmlns:android="http://schemas.android.com/apk/res/android">
+    <item android:id="@+id/attach_image" android:title="Фото" />
+    <item android:id="@+id/attach_photos" android:title="Несколько фото" />
+    <item android:id="@+id/attach_video" android:title="Видео" />
+    <item android:id="@+id/attach_audio" android:title="Аудиофайл" />
+    <item android:id="@+id/attach_voice" android:title="Записать голосовое" />
+</menu>

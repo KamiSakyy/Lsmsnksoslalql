@@ -1,0 +1,16 @@
+<?xml version="1.0" encoding="utf-8"?>
+<com.google.android.material.textfield.TextInputLayout xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:app="http://schemas.android.com/apk/res-auto"
+    android:layout_width="match_parent"
+    android:layout_height="wrap_content"
+    android:layout_margin="20dp"
+    android:hint="Текст сообщения"
+    app:boxBackgroundColor="@color/tsuyu_input"
+    app:boxBackgroundMode="outline"
+    app:boxCornerRadiusBottomEnd="16dp"
+    app:boxCornerRadiusBottomStart="16dp"
+    app:boxCornerRadiusTopEnd="16dp"
+    app:boxCornerRadiusTopStart="16dp"
+    app:boxStrokeColor="@color/tsuyu_blue">
+    <com.google.android.material.textfield.TextInputEditText android:id="@+id/edit_message_input" android:layout_width="match_parent" android:layout_height="wrap_content" android:gravity="top|start" android:inputType="textCapSentences|textMultiLine" android:minLines="3" android:textColor="@color/tsuyu_white" />
+</com.google.android.material.textfield.TextInputLayout>
