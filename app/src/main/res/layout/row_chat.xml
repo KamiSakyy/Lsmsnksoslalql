@@ -43,7 +43,7 @@
                 android:layout_height="match_parent"
                 android:scaleType="centerCrop"
                 android:visibility="gone"
-                app:shapeAppearanceOverlay="@style/ShapeAppearanceOverlay.Tsuyu.Circle" />
+                app:shapeAppearanceOverlay="@style/TsuyuCircleShape" />
             <View
                 android:id="@+id/chat_online_dot"
                 android:layout_width="14dp"

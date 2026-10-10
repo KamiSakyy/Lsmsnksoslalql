@@ -25,18 +25,18 @@
         <item name="rippleColor">#33FFFFFF</item>
     </style>
 
-    <style name="ShapeAppearanceOverlay.Tsuyu.Circle">
+    <style name="TsuyuCircleShape">
         <item name="cornerFamily">rounded</item>
         <item name="cornerSize">50%</item>
     </style>
 
-    <style name="ShapeAppearanceOverlay.Tsuyu.MessageIncoming">
+    <style name="TsuyuMessageIncomingShape">
         <item name="cornerFamily">rounded</item>
         <item name="cornerSize">18dp</item>
         <item name="cornerSizeBottomRight">5dp</item>
     </style>
 
-    <style name="ShapeAppearanceOverlay.Tsuyu.MessageOutgoing">
+    <style name="TsuyuMessageOutgoingShape">
         <item name="cornerFamily">rounded</item>
         <item name="cornerSize">18dp</item>
         <item name="cornerSizeBottomLeft">5dp</item>

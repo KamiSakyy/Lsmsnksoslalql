@@ -38,7 +38,7 @@
                 android:layout_height="match_parent"
                 android:scaleType="centerCrop"
                 android:visibility="gone"
-                app:shapeAppearanceOverlay="@style/ShapeAppearanceOverlay.Tsuyu.Circle" />
+                app:shapeAppearanceOverlay="@style/TsuyuCircleShape" />
         </FrameLayout>
         <LinearLayout
             android:layout_width="0dp"

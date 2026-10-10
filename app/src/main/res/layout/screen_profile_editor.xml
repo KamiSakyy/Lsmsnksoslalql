@@ -85,7 +85,7 @@
                         android:layout_height="match_parent"
                         android:scaleType="centerCrop"
                         android:visibility="gone"
-                        app:shapeAppearanceOverlay="@style/ShapeAppearanceOverlay.Tsuyu.Circle" />
+                        app:shapeAppearanceOverlay="@style/TsuyuCircleShape" />
                     <com.google.android.material.floatingactionbutton.FloatingActionButton
                         android:id="@+id/profile_pick_photo"
                         android:layout_width="42dp"
