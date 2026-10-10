@@ -12,6 +12,7 @@ from pathlib import Path, PurePosixPath
 
 import numpy as np
 from scipy.sparse import coo_matrix, diags
+from scipy.sparse.csgraph import dijkstra
 from scipy.spatial import cKDTree
 
 
@@ -136,7 +137,34 @@ def segment_distances(vertices: np.ndarray, bones: list[Bone]) -> np.ndarray:
     return distances
 
 
-def capsule_weights(vertices: np.ndarray, bones: list[Bone], colors: np.ndarray | None) -> np.ndarray:
+def surface_distances(vertices: np.ndarray, triangles: np.ndarray, bones: list[Bone]) -> np.ndarray:
+    """Geodesic distances prevent spatially close, unconnected limbs/cloth bleeding.
+
+    Multiple surface anchors follow each bone. Each bone is solved independently:
+    virtual zero-cost bone nodes would create shortcuts through other limbs.
+    """
+    edges = np.concatenate([triangles[:, [0, 1]], triangles[:, [1, 2]], triangles[:, [2, 0]]])
+    edges = np.unique(np.sort(edges, axis=1), axis=0)
+    lengths = np.linalg.norm(vertices[edges[:, 0]] - vertices[edges[:, 1]], axis=1)
+    rows = np.concatenate([edges[:, 0], edges[:, 1]])
+    columns = np.concatenate([edges[:, 1], edges[:, 0]])
+    graph = coo_matrix((np.tile(np.maximum(lengths, 1e-8), 2), (rows, columns)),
+                      shape=(len(vertices), len(vertices))).tocsr()
+    tree = cKDTree(vertices)
+    result = np.full((len(vertices), len(bones)), np.inf, dtype=np.float32)
+    for index, bone in enumerate(bones):
+        if bone.category == 'root':
+            continue
+        points = bone.head + np.linspace(0.15, 0.85, 5)[:, None] * (bone.tail - bone.head)
+        _, anchors = tree.query(points)
+        anchors = np.unique(anchors)
+        distances = dijkstra(graph, directed=False, indices=anchors, limit=0.45)
+        result[:, index] = distances.min(axis=0)
+    return result
+
+
+def capsule_weights(vertices: np.ndarray, bones: list[Bone], colors: np.ndarray | None,
+                    geodesic: np.ndarray | None = None) -> np.ndarray:
     """Anatomical capsule binding with separate hair, coat and skirt envelopes.
 
     Coordinates are height-normalized glTF coordinates (Y up, +Z forward).
@@ -144,7 +172,10 @@ def capsule_weights(vertices: np.ndarray, bones: list[Bone], colors: np.ndarray 
     """
     distances = segment_distances(vertices, bones)
     radii = np.asarray([b.radius for b in bones], dtype=np.float32)
-    scores = (radii[None, :] / (distances + radii[None, :] * 0.22)) ** 6
+    euclidean_scores = (radii[None, :] / (distances + radii[None, :] * 0.22)) ** 6
+    scores = euclidean_scores
+    if geodesic is not None:
+        scores = (radii[None, :] / (geodesic + distances * 0.35 + radii[None, :] * 0.22)) ** 4
     x, height, depth = vertices.T
     absolute_x = np.abs(x)
     groups = {name: np.asarray([i for i, b in enumerate(bones) if b.category == name])
@@ -153,7 +184,10 @@ def capsule_weights(vertices: np.ndarray, bones: list[Bone], colors: np.ndarray 
     def normalized(category: str) -> np.ndarray:
         indexes = groups[category]
         result = np.zeros_like(scores)
-        values = scores[:, indexes]
+        values = scores[:, indexes].copy()
+        # A detached AI-generated button/hair island may have no geodesic anchor.
+        missing = values.sum(axis=1) <= 1e-30
+        values[missing] = euclidean_scores[missing][:, indexes]
         values /= np.maximum(values.sum(axis=1, keepdims=True), 1e-30)
         result[:, indexes] = values
         return result
@@ -193,6 +227,17 @@ def capsule_weights(vertices: np.ndarray, bones: list[Bone], colors: np.ndarray 
                + coat * coat_amount[:, None] + skirt * skirt_amount[:, None])
     weights /= np.maximum(weights.sum(axis=1, keepdims=True), 1e-30)
     return weights
+
+
+def surface_topology(vertices: np.ndarray, triangles: np.ndarray) -> dict:
+    """Count physical boundaries independent of UV/normal vertex splits."""
+    unique, remap = np.unique(np.rint(vertices * 1e7).astype(np.int64), axis=0, return_inverse=True)
+    faces = remap[triangles]
+    edges = np.concatenate([faces[:, [0, 1]], faces[:, [1, 2]], faces[:, [2, 0]]])
+    edges.sort(axis=1)
+    _, counts = np.unique(edges, axis=0, return_counts=True)
+    return {'geometric_vertices': len(unique), 'boundary_edges': int(np.sum(counts == 1)),
+            'nonmanifold_edges': int(np.sum(counts > 2))}
 
 
 def smooth_weights(vertices: np.ndarray, triangles: np.ndarray, weights: np.ndarray,
@@ -351,18 +396,29 @@ def make_full_resolution(source_path: Path, runtime_path: Path, output_path: Pat
         raise ValueError('Full-resolution assembly expects this source model\'s one-mesh layout')
     binary = bytearray(original_binary)
     binary += b'\0' * (-len(binary) % 4)
-    runtime_offset = len(binary)
-    binary.extend(runtime_binary)
-    view_offset = len(document['bufferViews'])
-    accessor_offset = len(document['accessors'])
-    for view in runtime['bufferViews']:
-        copied = copy.deepcopy(view)
-        copied['byteOffset'] = copied.get('byteOffset', 0) + runtime_offset
-        document['bufferViews'].append(copied)
-    for accessor in runtime['accessors']:
-        copied = copy.deepcopy(accessor)
-        copied['bufferView'] += view_offset
-        document['accessors'].append(copied)
+    # Copy only the inverse-bind and animation accessors. The runtime's own
+    # simplified geometry and textures do not belong in the full-resolution file.
+    view_mapping, accessor_mapping = {}, {}
+
+    def copy_accessor(index):
+        if index in accessor_mapping:
+            return accessor_mapping[index]
+        accessor = copy.deepcopy(runtime['accessors'][index])
+        old_view = accessor['bufferView']
+        if old_view not in view_mapping:
+            view = copy.deepcopy(runtime['bufferViews'][old_view])
+            source_offset = view.get('byteOffset', 0)
+            raw = runtime_binary[source_offset:source_offset + view['byteLength']]
+            binary.extend(b'\0' * (-len(binary) % 4))
+            view['byteOffset'] = len(binary)
+            binary.extend(raw)
+            view_mapping[old_view] = len(document['bufferViews'])
+            document['bufferViews'].append(view)
+        accessor['bufferView'] = view_mapping[old_view]
+        accessor_mapping[index] = len(document['accessors'])
+        document['accessors'].append(accessor)
+        return accessor_mapping[index]
+
     mapping = {}
     for index, node in enumerate(runtime['nodes']):
         if 'mesh' not in node:
@@ -378,7 +434,7 @@ def make_full_resolution(source_path: Path, runtime_path: Path, output_path: Pat
     skin['joints'] = [mapping[i] for i in skin['joints']]
     if 'skeleton' in skin:
         skin['skeleton'] = mapping[skin['skeleton']]
-    skin['inverseBindMatrices'] += accessor_offset
+    skin['inverseBindMatrices'] = copy_accessor(skin['inverseBindMatrices'])
     document['skins'] = [skin]
     document['nodes'][0]['skin'] = 0
     mesh_transform = node_matrix(document['nodes'][0])
@@ -392,6 +448,7 @@ def make_full_resolution(source_path: Path, runtime_path: Path, output_path: Pat
     runtime_names = {runtime['nodes'][node]['name']: i for i, node in enumerate(runtime['skins'][0]['joints'])}
     remap = np.asarray([runtime_names[name] for name in bone_names], dtype=np.uint8)
     full_joints = remap[joint_indexes]
+    full_joints[quantized_weights == 0] = 0  # Canonical empty slots; no validator warning flood.
 
     def append_attribute(array: np.ndarray, component: int, normalized: bool) -> int:
         binary.extend(b'\0' * (-len(binary) % 4))
@@ -414,8 +471,8 @@ def make_full_resolution(source_path: Path, runtime_path: Path, output_path: Pat
     for original in runtime['animations']:
         animation = copy.deepcopy(original)
         for sampler in animation['samplers']:
-            sampler['input'] += accessor_offset
-            sampler['output'] += accessor_offset
+            sampler['input'] = copy_accessor(sampler['input'])
+            sampler['output'] = copy_accessor(sampler['output'])
         for channel in animation['channels']:
             channel['target']['node'] = mapping[channel['target']['node']]
         document['animations'].append(animation)

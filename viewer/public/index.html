@@ -1,0 +1,48 @@
+<!doctype html>
+<html lang="ru">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="theme-color" content="#12151d">
+  <title>Девушка · скелет и анимации</title>
+  <link rel="stylesheet" href="/style.css">
+  <script type="importmap">{"imports":{"three":"/vendor/three.module.js","three/addons/":"/vendor/addons/"}}</script>
+</head>
+<body>
+  <header>
+    <a class="brand" href="/" aria-label="Character Lab"><span class="brand-icon">✧</span> CHARACTER <strong>LAB</strong></a>
+    <div class="header-status"><span class="status-dot"></span> Модель с анимациями</div>
+    <a class="download" href="/model.glb?download=1" download="anime-girl-rigged.glb">Скачать GLB <span>↗</span></a>
+  </header>
+  <main>
+    <section class="stage" aria-label="Интерактивный просмотр 3D-модели">
+      <div class="stage-heading"><span class="eyebrow">TRIPO · AUTO RIG</span><h1>Она оживает.</h1><p>Исходная девушка. Настоящий скелет. Пять движений.</p></div>
+      <div id="canvas-host"></div>
+      <div id="loading" role="status"><span class="spinner"></span><span id="loading-text">Загружаем модель…</span></div>
+      <div class="stage-bottom"><span class="live-tag"><i></i> <span id="clip-tag">IDLE</span></span><span>Вращение — мышью · масштаб — колесом</span><button id="reset-camera" title="Вернуть камеру">⌖</button></div>
+    </section>
+    <aside>
+      <div class="panel-title"><span class="eyebrow">ПАНЕЛЬ УПРАВЛЕНИЯ</span><h2>Анимации и скелет</h2><p>Выберите движение и посмотрите, как работает модель.</p></div>
+      <div class="metrics"><div><strong id="bone-count">48</strong><span>костей</span></div><div><strong>5</strong><span>анимаций</span></div><div><strong id="triangle-count">160k</strong><span>треугольников</span></div></div>
+      <div class="section-label">ДВИЖЕНИЕ <span>01—05</span></div>
+      <div class="clip-list" id="clip-list">
+        <button class="clip selected" data-clip="Idle"><span class="clip-number">01</span><span class="clip-title">Ожидание<small>Дыхание и мягкое движение</small></span><span class="duration">4.0 s</span></button>
+        <button class="clip" data-clip="Walk_InPlace"><span class="clip-number">02</span><span class="clip-title">Ходьба<small>Цикл на месте · двухзвенный IK</small></span><span class="duration">1.2 s</span></button>
+        <button class="clip" data-clip="Run_InPlace"><span class="clip-number">03</span><span class="clip-title">Бег<small>Быстрый цикл на месте</small></span><span class="duration">0.8 s</span></button>
+        <button class="clip" data-clip="Wave"><span class="clip-number">04</span><span class="clip-title">Приветствие<small>Взмах свободной рукой</small></span><span class="duration">3.0 s</span></button>
+        <button class="clip" data-clip="Dance"><span class="clip-number">05</span><span class="clip-title">Танец<small>Покачивание и вторичное движение</small></span><span class="duration">4.0 s</span></button>
+      </div>
+      <div class="transport"><button id="play" aria-label="Пауза">Ⅱ</button><input id="seek" type="range" min="0" max="4" step="0.01" value="0" aria-label="Позиция анимации"><span id="time">0.0 / 4.0</span></div>
+      <div class="speed-control"><label for="speed">Скорость</label><select id="speed"><option value="0.5">0.5×</option><option value="1" selected>1×</option><option value="1.5">1.5×</option><option value="2">2×</option></select></div>
+      <div class="divider"></div>
+      <div class="section-label">ПРОВЕРКА РИГА</div>
+      <label class="toggle-row" for="skeleton"><span>Показать кости<small>Скелет поверх модели</small></span><input type="checkbox" id="skeleton"><span class="switch"></span></label>
+      <button id="rest" class="rest-button">Исходная поза <span>↺</span></button>
+      <div class="note"><span>✓</span><p>Процедурный FK-риг: тело, волосы и одежда. Без мимики, отдельных пальцев и физической симуляции ткани.</p></div>
+      <a class="report-link" href="/report.json" target="_blank" rel="noopener">Технический отчёт <span>↗</span></a>
+    </aside>
+  </main>
+  <footer><span>BLENDER 4.2 LTS + SCIPY</span><span>Исходный архив сохранён · оригинальная геометрия доступна в полном наборе Actions</span></footer>
+  <script type="module" src="/app.js"></script>
+</body>
+</html>

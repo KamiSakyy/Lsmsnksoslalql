@@ -61,23 +61,6 @@ jobs:
             --target-triangles 160000 \
             --render 2>&1 | tee build/rigging.log
 
-      - name: Preserve build diagnostics if Blender fails
-        if: failure()
-        shell: bash
-        run: |
-          set -euo pipefail
-          mkdir -p handoff/rigging-diagnostics
-          if test -f build/rigging.log; then
-            tail -n 300 build/rigging.log > handoff/rigging-diagnostics/last-run.log
-          fi
-          printf 'Run: %s/%s/actions/runs/%s\n' "$GITHUB_SERVER_URL" "$GITHUB_REPOSITORY" "$GITHUB_RUN_ID" > handoff/rigging-diagnostics/run.txt
-          find build/rigged -maxdepth 1 -type f -printf '%f %s bytes\n' >> handoff/rigging-diagnostics/run.txt 2>/dev/null || true
-          git config user.name "github-actions[bot]"
-          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-          git add -- handoff/rigging-diagnostics
-          git commit -m "Save rigging failure diagnostics for this working branch"
-          git push origin HEAD:arena/1e52fcec-lsmsnksoslalql
-
       - name: Set up Node for official Khronos glTF validation
         uses: actions/setup-node@v4
         with:
@@ -133,3 +116,20 @@ jobs:
             echo '- Проверены bind-матрицы, веса, деформации и оба GLB валидатором Khronos.'
             echo '- Это автоматический стартовый FK-риг: без мимики, отдельных пальцев и физической ткани.'
           } >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Preserve diagnostics if any build or validation step fails
+        if: failure()
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p handoff/rigging-diagnostics
+          if test -f build/rigging.log; then
+            tail -n 300 build/rigging.log > handoff/rigging-diagnostics/last-run.log
+          fi
+          printf 'Run: %s/%s/actions/runs/%s\n' "$GITHUB_SERVER_URL" "$GITHUB_REPOSITORY" "$GITHUB_RUN_ID" > handoff/rigging-diagnostics/run.txt
+          find build/rigged -maxdepth 1 -type f -printf '%f %s bytes\n' >> handoff/rigging-diagnostics/run.txt 2>/dev/null || true
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add -- handoff/rigging-diagnostics
+          git commit -m "Save rigging failure diagnostics for this working branch"
+          git push origin HEAD:arena/1e52fcec-lsmsnksoslalql

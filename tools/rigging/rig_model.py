@@ -21,7 +21,7 @@ from PIL import Image, ImageDraw, ImageFont
 
 from core import (capsule_weights, extract_glb, load_profile, make_full_resolution,
                   pack_four_weights, read_accessor, read_glb, sha256, smooth_weights,
-                  transfer_weights, two_bone_ik, validate_skin)
+                  surface_distances, surface_topology, transfer_weights, two_bone_ik, validate_skin)
 
 CLIPS = {'Idle': 4.0, 'Walk_InPlace': 1.2, 'Run_InPlace': 0.8, 'Wave': 3.0, 'Dance': 4.0}
 FPS = 30
@@ -62,6 +62,48 @@ def point_in_blender(point, origin, height):
     return Vector(origin + np.array([point[0], -point[2], point[1]]) * height)
 
 
+def weld_runtime_surface(obj, height):
+    """Weld positional duplicates, NOT merely equal normals, before decimation.
+
+    Tripo stores differing normals at coincident vertices. The glTF importer's
+    normal-aware merge leaves seams disconnected; decimating those independently
+    creates cracks. UVs remain per-corner, so welding does not erase UV islands.
+    The untouched source object is not modified.
+    """
+    mesh = obj.data
+    vertices = mesh_vertices(obj)
+    _, first, inverse = np.unique(np.rint(vertices / height * 1e7).astype(np.int64),
+                                  axis=0, return_index=True, return_inverse=True)
+    corner_vertices = np.empty(len(mesh.loops), dtype=np.int32)
+    mesh.loops.foreach_get('vertex_index', corner_vertices)
+    starts = np.empty(len(mesh.polygons), dtype=np.int32)
+    counts = np.empty(len(mesh.polygons), dtype=np.int32)
+    materials = np.empty(len(mesh.polygons), dtype=np.int32)
+    mesh.polygons.foreach_get('loop_start', starts)
+    mesh.polygons.foreach_get('loop_total', counts)
+    mesh.polygons.foreach_get('material_index', materials)
+    replacement = bpy.data.meshes.new('AnimeGirl_Welded_Runtime_Surface')
+    replacement.vertices.add(len(first))
+    replacement.vertices.foreach_set('co', vertices[first].ravel())
+    replacement.loops.add(len(mesh.loops))
+    replacement.loops.foreach_set('vertex_index', inverse[corner_vertices].astype(np.int32))
+    replacement.polygons.add(len(mesh.polygons))
+    replacement.polygons.foreach_set('loop_start', starts)
+    replacement.polygons.foreach_set('loop_total', counts)
+    replacement.polygons.foreach_set('material_index', materials)
+    replacement.polygons.foreach_set('use_smooth', np.ones(len(mesh.polygons), dtype=bool))
+    for layer in mesh.uv_layers:
+        uv = np.empty(len(mesh.loops) * 2, dtype=np.float32)
+        layer.data.foreach_get('uv', uv)
+        replacement.uv_layers.new(name=layer.name).data.foreach_set('uv', uv)
+    for material in mesh.materials:
+        replacement.materials.append(material)
+    replacement.update(calc_edges=True)
+    obj.data = replacement
+    bpy.data.meshes.remove(mesh)
+    log(f'Welded runtime topology: {len(vertices):,} → {len(first):,} vertices; UV corners preserved')
+
+
 def import_and_simplify(source, triangle_budget):
     bpy.ops.wm.read_factory_settings(use_empty=True)
     bpy.ops.import_scene.gltf(filepath=str(source), merge_vertices=True)
@@ -85,6 +127,7 @@ def import_and_simplify(source, triangle_budget):
     bpy.context.collection.objects.link(runtime)
     runtime.name = 'AnimeGirl_Animated'
     activate(runtime)
+    weld_runtime_surface(runtime, height)
     faces_before = len(runtime.data.polygons)
     if faces_before > triangle_budget:
         modifier = runtime.modifiers.new('Texture-preserving runtime simplification', 'DECIMATE')
@@ -151,7 +194,7 @@ def make_armature(bones, origin, height):
                                               'hair': 'THEME03', 'coat': 'THEME02',
                                               'skirt': 'THEME02'}[spec.category]
         rig.pose.bones[spec.name].rotation_mode = 'QUATERNION'
-    rig['rigging_method'] = 'Anatomical capsule envelopes + surface diffusion + 4-influence normalization'
+    rig['rigging_method'] = 'Surface-geodesic anatomical binding + hair/cloth envelopes + diffusion + 4-influence normalization'
     rig['source_pose'] = 'Original asymmetric pose preserved as the bind/rest pose'
     rig['limitations'] = 'FK body rig; no facial blendshapes or individual finger articulation; procedural secondary motion'
     return rig
@@ -325,7 +368,7 @@ def export_models(runtime, rig, output):
         export_animations=True, export_animation_mode='ACTIONS', export_anim_single_armature=True,
         export_force_sampling=True, export_frame_step=1, export_frame_range=False,
         export_anim_slide_to_zero=True, export_rest_position_armature=True, export_def_bones=False,
-        export_skins=True, export_materials='EXPORT', export_cameras=False, export_lights=False,
+        export_skins=True, export_tangents=True, export_materials='EXPORT', export_cameras=False, export_lights=False,
         export_optimize_animation_size=False)
     log('Exporting FBX with actions (no extra leaf bones)')
     bpy.ops.export_scene.fbx(
@@ -338,9 +381,15 @@ def export_models(runtime, rig, output):
 
 def pose_quality_checks(runtime, rig, actions, height):
     results = {}
+    rest_positions = mesh_vertices(runtime)
+    triangles = mesh_triangles(runtime)
+    edges = np.concatenate([triangles[:, [0, 1]], triangles[:, [1, 2]], triangles[:, [2, 0]]])
+    lengths = np.linalg.norm(rest_positions[edges[:, 0]] - rest_positions[edges[:, 1]], axis=1)
+    valid = lengths > height * 1e-4
+    edges, lengths = edges[valid], lengths[valid]
     for name, action in actions.items():
         rig.animation_data.action = action
-        maximum = 0.
+        maximum, stretch = 0., 0.
         for frame in np.linspace(action.frame_range[0], action.frame_range[1], 5):
             bpy.context.scene.frame_set(int(frame))
             depsgraph = bpy.context.evaluated_depsgraph_get()
@@ -352,11 +401,17 @@ def pose_quality_checks(runtime, rig, actions, height):
             if not np.all(np.isfinite(positions)):
                 raise ValueError(f'Non-finite deformation in {name}')
             extent = positions.max(axis=0) - positions.min(axis=0)
+            deformed_lengths = np.linalg.norm(positions[edges[:, 0]] - positions[edges[:, 1]], axis=1)
+            stretch = max(stretch, float(np.percentile(deformed_lengths / lengths, 99.5)))
             evaluated.to_mesh_clear()
             maximum = max(maximum, float(extent.max() / height))
             if maximum > 1.6:
                 raise ValueError(f'Exploding mesh in {name}: {maximum} model heights')
-        results[name] = {'sampled_frames': 5, 'maximum_extent_in_model_heights': maximum}
+        log(f'Pose QA {name}: extent={maximum:.3f} H, 99.5-percentile edge stretch={stretch:.3f}')
+        if stretch > 12:
+            raise ValueError(f'Severe skin stretching in {name}: {stretch}')
+        results[name] = {'sampled_frames': 5, 'maximum_extent_in_model_heights': maximum,
+                         'edge_stretch_p99_5': stretch}
     rig.animation_data.action = None
     return results
 
@@ -500,7 +555,7 @@ def write_readme(output, report):
 
 ## Как устроено
 
-Профиль `tools/rigging/model_profile.json` подобран **именно для этой модели** по её геометрии и виду спереди/сбоку. Скрипт масштабирует анатомические ориентиры по фактическим размерам меша, строит иерархию, вычисляет капсульные веса, отдельно учитывает волосы/подол, сглаживает веса по графу поверхности и оставляет не более четырёх влияний на вершину. Непривязанных вершин: **{report['runtime']['skin']['unweighted_vertices']}**. Веса облегчённой версии переносятся обратно на оригинал.
+Профиль `tools/rigging/model_profile.json` подобран **именно для этой модели** по её геометрии и виду спереди/сбоку. Скрипт масштабирует анатомические ориентиры по фактическим размерам меша, строит иерархию, вычисляет геодезические расстояния по связности поверхности вместе с анатомическими капсульными весами (чтобы близкие, но несвязанные руки и одежда не тянулись друг за другом), отдельно учитывает волосы/подол, сглаживает веса по графу поверхности и оставляет не более четырёх влияний на вершину. Непривязанных вершин: **{report['runtime']['skin']['unweighted_vertices']}**. Веса облегчённой версии переносятся обратно на оригинал.
 
 Это стартовый автоматический **FK-риг**, а не ручной production-риг: нет мимики, лицевых blendshape, отдельных костей пальцев или физической симуляции ткани/волос. Волосы и одежда имеют кости с процедурным движением. Для крупных/экстремальных движений у плеч, локтей, юбки и касания руки с волосами могут понадобиться ручная коррекция весов/позы и корректирующие формы. У AI-меша из одной поверхности нет скрытой анатомии под одеждой; скелет её не создаёт.
 
@@ -540,9 +595,16 @@ def main():
     rig = make_armature(bones, origin, height)
     positions = mesh_vertices(runtime)
     triangles = mesh_triangles(runtime)
+    topology = surface_topology(positions / height, triangles)
+    log(f'Runtime surface topology: {topology}')
+    if topology['boundary_edges'] > 1000:
+        raise ValueError('Runtime simplification introduced too many physical mesh cracks')
     colors = vertex_colors(runtime, document, binary)
+    log('Solving surface-geodesic distances to avoid hand/coat/hair cross-binding')
+    normalized_positions = normalized_gltf(positions, origin, height)
+    geodesic = surface_distances(normalized_positions, triangles, bones)
     log('Solving pose-aware body / hair / clothing skin weights')
-    weights = capsule_weights(normalized_gltf(positions, origin, height), bones, colors)
+    weights = capsule_weights(normalized_positions, bones, colors, geodesic)
     weights = smooth_weights(positions / height, triangles, weights)
     indexes, quantized = pack_four_weights(weights)
     # Transfer the actual, quantized skin that the runtime export will use.
@@ -578,7 +640,7 @@ def main():
                    'vertices': source_vertices, 'triangles': source_triangles,
                    'original_skins': len(document.get('skins', [])), 'original_animations': len(document.get('animations', []))},
         'runtime': {'file': 'anime-girl-rigged.glb', 'vertices': len(positions), 'triangles': len(triangles),
-                    'skin': runtime_skin, 'bytes': (output / 'anime-girl-rigged.glb').stat().st_size},
+                    'skin': runtime_skin, 'topology': topology, 'bytes': (output / 'anime-girl-rigged.glb').stat().st_size},
         'full_resolution': {'file': 'anime-girl-full.glb', 'geometry_and_textures_preserved': True,
                             'skin': full_skin, 'bytes': (output / 'anime-girl-full.glb').stat().st_size},
         'bones': [{'name': b.name, 'parent': b.parent, 'category': b.category} for b in bones],
