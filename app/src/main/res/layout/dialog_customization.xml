@@ -12,12 +12,12 @@
         android:layout_height="wrap_content"
         android:contentDescription="Размер текста сообщений"
         android:value="14"
-        app:stepSize="1"
+        android:stepSize="1"
         app:thumbColor="@color/tsuyu_blue"
         app:trackColorActive="@color/tsuyu_blue"
         app:trackColorInactive="@color/tsuyu_border"
-        app:valueFrom="12"
-        app:valueTo="22" />
+        android:valueFrom="12"
+        android:valueTo="22" />
     <com.google.android.material.checkbox.MaterialCheckBox android:id="@+id/customization_bold" android:layout_width="match_parent" android:layout_height="wrap_content" android:text="Жирный текст" android:textColor="@color/tsuyu_white" app:buttonTint="@color/tsuyu_blue" />
     <com.google.android.material.checkbox.MaterialCheckBox android:id="@+id/customization_italic" android:layout_width="match_parent" android:layout_height="wrap_content" android:text="Курсив" android:textColor="@color/tsuyu_white" app:buttonTint="@color/tsuyu_blue" />
 </LinearLayout>
