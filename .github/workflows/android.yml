@@ -62,7 +62,7 @@ jobs:
             exit 0
           else
             result=$?
-            DETAILS="$(tail -n 35 apk-preparation.log | sed -e 's/%/%25/g' -e ':a' -e 'N' -e '$!ba' -e 's/\\r/%0D/g' -e 's/\\n/%0A/g')"
+            DETAILS="$(tail -n 25 apk-preparation.log | tr '\r\n' '  ' | cut -c1-6000 | sed 's/%/%25/g')"
             echo "::error title=APK preparation failed::$DETAILS"
             exit "$result"
           fi
