@@ -609,3 +609,11 @@ def main():
 
 if __name__ == '__main__':
     main()
+    # bpy embeds Blender's native runtime in CPython. Do not tear its worker
+    # threads down a second time during CPython finalization. This is reached
+    # only after every export, skin check, render and save completed normally;
+    # exceptions/crashes in main still fail the job, and Khronos checks follow.
+    import sys
+    sys.stdout.flush()
+    sys.stderr.flush()
+    os._exit(0)
