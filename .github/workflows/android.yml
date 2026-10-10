@@ -63,6 +63,8 @@ jobs:
               tail -n 100 gradle-build.log
               echo '```'
             } >> "$GITHUB_STEP_SUMMARY"
+            DETAILS="$(tail -n 60 gradle-build.log | sed -e 's/%/%25/g' -e ':a' -e 'N' -e '$!ba' -e 's/\r/%0D/g' -e 's/\n/%0A/g')"
+            echo "::notice title=Gradle failure details::$DETAILS"
           fi
 
       - name: Run Signal ratchet round-trip on Android 16 emulator
