@@ -36,7 +36,7 @@ jobs:
         uses: android-actions/setup-android@v4.0.4
 
       - name: Install SDK packages
-        run: sdkmanager "platform-tools" "platforms;android-${ANDROID_API}" "build-tools;36.0.0"
+        run: sdkmanager "platform-tools" "platforms;android-${ANDROID_API}" "build-tools;36.0.0" "ndk;27.2.12479018"
 
       - name: Set monotonic APK version code
         run: echo "TSUYU_VERSION_CODE=$((10000 + GITHUB_RUN_NUMBER))" >> "$GITHUB_ENV"
@@ -49,12 +49,37 @@ jobs:
           fi
 
       - name: Build installable APKs
+        id: build_apks
         run: |
           set -o pipefail
           gradle --no-daemon --console=plain --stacktrace :app:assembleDebug :app:assembleRelease 2>&1 | tee gradle-build.log
 
+      - name: Strip native debug data and enforce 30 MB APK limit
+        id: prepare_apk
+        run: |
+          set -o pipefail
+          python3 tools/prepare_release_apk.py \
+            app/build/outputs/apk/release/app-release.apk \
+            --sdk "${ANDROID_HOME}" \
+            --build-tools 36.0.0 \
+            --ndk 27.2.12479018 \
+            --keystore signing/tsuyu-release.p12 \
+            --signing-properties signing/keystore.properties 2>&1 | tee apk-preparation.log
+
+      - name: Publish concise APK preparation diagnostics
+        if: steps.prepare_apk.outcome == 'failure'
+        run: |
+          if [ -f apk-preparation.log ]; then
+            {
+              echo '## APK size preparation diagnostics'
+              echo '```text'
+              tail -n 100 apk-preparation.log
+              echo '```'
+            } >> "$GITHUB_STEP_SUMMARY"
+          fi
+
       - name: Publish concise Gradle failure details
-        if: failure()
+        if: steps.build_apks.outcome == 'failure'
         run: |
           if [ -f gradle-build.log ]; then
             {
@@ -72,7 +97,7 @@ jobs:
           mkdir -p handoff
           zip -r "handoff/tsuyu-android-source-${GITHUB_RUN_NUMBER}.zip" \
             .github/workflows/android.yml \
-            app/src app/build.gradle app/proguard-rules.pro \
+            app/src app/build.gradle app/proguard-rules.pro tools/prepare_release_apk.py \
             ANDROID_README.md .gitignore build.gradle gradle.properties settings.gradle \
             database.rules.json firebase.json signing/keystore.properties signing/tsuyu-release.p12
 
