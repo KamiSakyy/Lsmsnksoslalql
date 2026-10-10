@@ -7,7 +7,7 @@ on:
   workflow_dispatch:
 
 permissions:
-  contents: read
+  contents: write
 
 env:
   JAVA_VERSION: '21'
@@ -89,3 +89,19 @@ jobs:
           name: Tsuyu-source-${{ github.run_number }}
           if-no-files-found: error
           path: handoff/tsuyu-android-source-${{ github.run_number }}.zip
+
+      - name: Publish direct APK and source download links
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          tag="v1.0.${TSUYU_VERSION_CODE}"
+          apk="app/build/outputs/apk/release/app-release.apk"
+          source="handoff/tsuyu-android-source-${GITHUB_RUN_NUMBER}.zip"
+          if gh release view "$tag" >/dev/null 2>&1; then
+            gh release upload "$tag" "$apk" "$source" --clobber
+          else
+            gh release create "$tag" "$apk" "$source" \
+              --target "$GITHUB_SHA" \
+              --title "Tsuyu ${tag}" \
+              --notes "Signed Android arm64-v8a APK and standalone source archive. Android emulator tests are not run by this workflow."
+          fi
