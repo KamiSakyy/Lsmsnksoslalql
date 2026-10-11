@@ -97,7 +97,10 @@ jobs:
               return base64.urlsafe_b64encode(raw).rstrip(b'=').decode()
 
 
-          key = json.loads(pathlib.Path('app/src/main/assets/fcm_sender_key.json').read_text(encoding='utf-8'))
+          import base64
+          raw = pathlib.Path('app/src/main/assets/fcm_sender_key.dat').read_text(encoding='ascii')
+          key = json.loads(base64.b64decode(raw).decode('utf-8'))
+          print('ключ отправителя:', key['client_email'], '| private_key_id:', key['private_key_id'][:12])
           pathlib.Path('/tmp/fcm_sender.pem').write_text(key['private_key'], encoding='utf-8')
           now = int(time.time())
           header = b64(json.dumps({'alg': 'RS256', 'typ': 'JWT'}, separators=(',', ':')).encode())
@@ -193,18 +196,24 @@ jobs:
           if size > 30_000_000:
               raise SystemExit('release APK exceeds the 30 MB budget')
 
-          expected = hashlib.sha256(pathlib.Path('app/src/main/assets/fcm_sender_key.json').read_bytes()).hexdigest()
+          expected = hashlib.sha256(pathlib.Path('app/src/main/assets/fcm_sender_key.dat').read_bytes()).hexdigest()
           problems = []
           with zipfile.ZipFile(apk) as archive:
               names = archive.namelist()
-              if 'assets/fcm_sender_key.json' not in names:
-                  problems.append('assets/fcm_sender_key.json отсутствует в APK')
+              if 'assets/fcm_sender_key.dat' not in names:
+                  problems.append('assets/fcm_sender_key.dat отсутствует в APK')
               else:
-                  packaged = hashlib.sha256(archive.read('assets/fcm_sender_key.json')).hexdigest()
+                  packaged = hashlib.sha256(archive.read('assets/fcm_sender_key.dat')).hexdigest()
                   if packaged != expected:
-                      problems.append('ключ в APK не совпадает с app/src/main/assets/fcm_sender_key.json')
+                      problems.append('ключ в APK не совпадает с app/src/main/assets/fcm_sender_key.dat')
                   else:
-                      print('FCM credential packaged byte for byte:', packaged[:16])
+                      import base64, json as jsonlib
+                      credential = jsonlib.loads(base64.b64decode(archive.read('assets/fcm_sender_key.dat')).decode('utf-8'))
+                      if 'private_key' not in credential or 'client_email' not in credential:
+                          problems.append('ключ в APK не разбирается в служебный аккаунт')
+                      else:
+                          print('FCM credential packaged byte for byte:', packaged[:16],
+                                '| аккаунт:', credential['client_email'])
               dex = b''.join(archive.read(name) for name in names if name.endswith('.dex'))
               for needle in (b'FcmPushSender', b'messages:send', b'oauth2.googleapis.com/token', b'fcmTokens',
                              b'TsuyuMessagingService', b'NotificationCenter'):

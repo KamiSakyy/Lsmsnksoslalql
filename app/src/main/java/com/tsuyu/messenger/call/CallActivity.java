@@ -67,6 +67,8 @@ public final class CallActivity extends Activity implements CallEngine.Listener 
     private boolean incoming;
     private boolean answered;
     private boolean renderersReady;
+    /** Разговор уже состоялся: переключение сети не должно сбивать счётчик времени. */
+    private boolean gotConnected;
 
     private CallEngine engine;
 
@@ -124,7 +126,8 @@ public final class CallActivity extends Activity implements CallEngine.Listener 
                 peerName == null || peerName.trim().isEmpty() ? getString(R.string.call_unknown) : peerName);
         initialView.setText(initialOf(peerName));
         TextView badge = findViewById(R.id.call_relay_badge);
-        badge.setText(getString(R.string.call_p2p_badge, engine.relayCount()));
+        badge.setText(getString(R.string.call_p2p_badge_net, engine.relayCount(),
+                NetworkPriority.label(this)));
 
         findViewById(R.id.call_end).setOnClickListener(v -> hangup());
         incomingActions.findViewById(R.id.call_decline).setOnClickListener(v -> decline());
@@ -143,6 +146,7 @@ public final class CallActivity extends Activity implements CallEngine.Listener 
         });
         switchButton.setOnClickListener(v -> engine.switchCamera());
 
+        NetworkPriority.refresh(this);
         incoming = isIncomingCall();
         if (incoming && !answered) {
             incomingActions.setVisibility(View.VISIBLE);
@@ -336,11 +340,25 @@ public final class CallActivity extends Activity implements CallEngine.Listener 
             return;
         }
         if ("connecting".equals(state)) {
-            statusView.setText(getString(R.string.call_connecting));
+            if ("switch_mobile".equals(detail)) {
+                statusView.setText(getString(R.string.call_switching_mobile));
+            } else if ("switch_wifi".equals(detail)) {
+                statusView.setText(getString(R.string.call_switching_wifi));
+            } else if ("restart".equals(detail)) {
+                statusView.setText(getString(R.string.call_connecting));
+            } else {
+                statusView.setText(getString(R.string.call_connecting));
+            }
             return;
         }
         if ("active".equals(state)) {
             answered = true;
+            gotConnected = true;
+            TextView badgeView = findViewById(R.id.call_relay_badge);
+            if (badgeView != null) {
+                badgeView.setText(getString(R.string.call_p2p_badge_net, engine.relayCount(),
+                        NetworkPriority.label(this)));
+            }
             incomingActions.setVisibility(View.GONE);
             showActiveControls(true);
             attachRenderersIfNeeded();

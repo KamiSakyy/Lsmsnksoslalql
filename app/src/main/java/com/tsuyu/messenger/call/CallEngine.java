@@ -194,6 +194,8 @@ public final class CallEngine {
         iceRef = callRef.child("ice").child(myUid);
         notifyState("ringing", null);
         CallService.start(this.context);
+        // Приоритет мобильного трафика: звонок идёт через сотовую сеть, а не через Wi-Fi.
+        NetworkPriority.refresh(this.context);
         CallSignal.announce(this.context, chatId, callId, myUid, peerUid, video);
         armRingTimeout();
         createPeerConnection();
@@ -218,7 +220,9 @@ public final class CallEngine {
         iceRef = callRef.child("ice").child(myUid);
         listenToCall();
         notifyState("ringing", null);
+        NetworkPriority.refresh(this.context);
         CallService.start(this.context);
+        armRingTimeout();
         createPeerConnection();
         listenToRemoteIce();
         listenToOffer();
@@ -328,6 +332,8 @@ public final class CallEngine {
         if (factory != null) { factory.dispose(); factory = null; }
         CallNotifier.clear(context);
         CallService.stop(context);
+        // Возвращаем выбранный режим сети: после разговора снова мобильный приоритет.
+        NetworkPriority.refresh(context);
     }
 
     private void reset() {
@@ -556,8 +562,18 @@ public final class CallEngine {
                 // спасает звонок вместо разрыва.
                 if (!iceRestarted && peerConnection != null) {
                     iceRestarted = true;
+                    if (NetworkPriority.usingCellular(context)) {
+                        // На мобильной сети не сложилось — падаем на Wi-Fi.
+                        NetworkPriority.release(context);
+                        notifyState("connecting", "switch_wifi");
+                    } else if (NetworkPriority.enabled(context) && NetworkPriority.mobileAvailable(context)) {
+                        // На Wi-Fi не сложилось — уходим на мобильный интернет.
+                        NetworkPriority.refresh(context);
+                        notifyState("connecting", "switch_mobile");
+                    } else {
+                        notifyState("connecting", "restart");
+                    }
                     try { peerConnection.restartIce(); } catch (Exception ignored) { }
-                    notifyState("connecting", "restart");
                 } else {
                     notifyState("failed", null);
                     main.post(() -> { if (!finished) finish(); });

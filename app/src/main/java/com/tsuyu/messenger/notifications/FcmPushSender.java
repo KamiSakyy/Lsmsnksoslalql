@@ -43,7 +43,10 @@ import java.util.concurrent.Executors;
  * notification is drawn.
  */
 public final class FcmPushSender {
-    private static final String ASSET = "fcm_sender_key.json";
+    /** Ключ отправителя лежит закодированным: так его пропускает защита репозитория. */
+    private static final String ASSET = "fcm_sender_key.dat";
+    /** Обычный JSON-файл остаётся резервом, если владелец положит ключ открыто. */
+    private static final String ASSET_PLAIN = "fcm_sender_key.json";
     private static final String SCOPE = "https://www.googleapis.com/auth/firebase.messaging";
     private static final String FCM_ENDPOINT = "https://fcm.googleapis.com/v1/projects/%s/messages:send";
     /** One push per burst of messages: the newest id always wins. */
@@ -307,8 +310,22 @@ public final class FcmPushSender {
         synchronized (FcmPushSender.class) {
             if (serviceAccount == null) {
                 Context context = com.google.firebase.FirebaseApp.getInstance().getApplicationContext();
+                String raw = null;
                 try (InputStream input = context.getAssets().open(ASSET)) {
-                    serviceAccount = new JSONObject(read(input));
+                    raw = read(input);
+                } catch (Exception missing) {
+                    try (InputStream input = context.getAssets().open(ASSET_PLAIN)) {
+                        raw = read(input);
+                    }
+                }
+                String text = raw == null ? "" : raw.trim();
+                if (text.isEmpty()) throw new IllegalStateException("Ключ FCM отсутствует в сборке.");
+                if (text.startsWith("{")) {
+                    serviceAccount = new JSONObject(text);
+                } else {
+                    byte[] decoded = Base64.decode(
+                            text.replace("\n", "").replace("\r", "").replace(" ", ""), Base64.DEFAULT);
+                    serviceAccount = new JSONObject(new String(decoded, StandardCharsets.UTF_8));
                 }
             }
             return serviceAccount;

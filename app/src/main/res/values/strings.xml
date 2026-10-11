@@ -264,4 +264,22 @@
     <string name="sticker_threshold">Порог фона</string>
     <string name="sticker_send">Отправить стикер</string>
     <string name="wallpaper_section">Оформление</string>
+
+    <!-- Приоритет мобильного трафика: приложение и звонки идут через сотовую сеть -->
+    <string name="net_mobile">мобильный интернет</string>
+    <string name="net_wifi">Wi-Fi</string>
+    <string name="net_ethernet">Ethernet</string>
+    <string name="net_vpn">VPN</string>
+    <string name="net_other">сеть</string>
+    <string name="network_section">Сеть</string>
+    <string name="mobile_priority_title">Мобильный трафик в приоритете</string>
+    <string name="mobile_priority_subtitle">Звонки и сообщения идут через обычный мобильный интернет, даже когда есть Wi-Fi</string>
+    <string name="mobile_priority_on">Мобильный трафик в приоритете</string>
+    <string name="mobile_priority_off">Приоритет снова у Wi-Fi</string>
+    <string name="mobile_priority_active">мобильный трафик</string>
+    <string name="mobile_priority_idle">Wi-Fi</string>
+    <string name="mobile_priority_no_mobile">мобильной сети нет</string>
+    <string name="call_p2p_badge_net">P2P · релеев: %1$d · %2$s</string>
+    <string name="call_switching_mobile">Переключаю на мобильный интернет…</string>
+    <string name="call_switching_wifi">Переключаю на Wi-Fi…</string>
 </resources>

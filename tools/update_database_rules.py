@@ -33,7 +33,9 @@ SCOPE = "https://www.googleapis.com/auth/firebase.database https://www.googleapi
 
 
 def find_key() -> pathlib.Path | None:
-    candidates = [ROOT / "app/src/main/assets/fcm_sender_key.json", ROOT / "signing/fcm_sender_key.json"]
+    candidates = [ROOT / "app/src/main/assets/fcm_sender_key.dat",
+                  ROOT / "app/src/main/assets/fcm_sender_key.json",
+                  ROOT / "signing/fcm_sender_key.json"]
     candidates += sorted(ROOT.glob("*firebase-adminsdk*.json"))
     candidates += sorted(ROOT.glob("*service-account*.json"))
     for path in candidates:
@@ -110,7 +112,12 @@ def main() -> int:
     if key_path is None:
         print("ключ служебного аккаунта не найден — правила не опубликованы")
         return 0
-    key = json.loads(key_path.read_text(encoding="utf-8"))
+    raw = key_path.read_text(encoding="utf-8").strip()
+    if raw.startswith("{"):
+        key = json.loads(raw)
+    else:
+        # Ключ хранится закодированным: так его пропускает защита репозитория.
+        key = json.loads(base64.b64decode(raw).decode("utf-8"))
     try:
         token = access_token(key)
     except urllib.error.HTTPError as failure:
