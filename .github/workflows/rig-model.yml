@@ -1,4 +1,4 @@
-name: Rig and animate the 3D girl
+name: Restore original detail and correct the girl rig
 
 on:
   push:
@@ -64,7 +64,7 @@ jobs:
       - name: Install the official Khronos validator
         run: npm ci --prefix tools/rigging --no-audit --no-fund
 
-      - name: Test ZIP safety, skinning and inverse kinematics
+      - name: Test source fitting, bounded weights, face transfer and original buffers
         run: python -m unittest discover -s tests/rigging -v
 
       - name: Build the actual skeleton, skin and animation assets on CPU
@@ -79,7 +79,7 @@ jobs:
             --archive "$SOURCE_ARCHIVE" \
             --output build/rigged \
             --target-triangles 160000 \
-            --validate-gltf "${preview_args[@]}" 2>&1 | tee build/rigging.log
+            --validate-gltf --quality-renders "${preview_args[@]}" 2>&1 | tee build/rigging.log
 
       - name: Upload complete editable and full-resolution results
         uses: actions/upload-artifact@v7.0.2
@@ -89,20 +89,26 @@ jobs:
           compression-level: 6
           if-no-files-found: error
           path: |
-            build/rigged/*.glb
+            build/rigged/anime-girl-rigged.glb
             build/rigged/*.fbx
             build/rigged/*.blend
             build/rigged/*.json
             build/rigged/*.png
             build/rigged/*.gif
             build/rigged/README_RU.md
+            build/rigged/quality/*.png
 
-      - name: Save the runtime model and previews in handoff on this branch
+      - name: Save the FULL original-resolution model as the main download in Git
         shell: bash
         run: |
           set -euo pipefail
           mkdir -p handoff/rigged
-          cp build/rigged/anime-girl-rigged.glb build/rigged/anime-girl-rigged.fbx handoff/rigged/
+          cp build/rigged/anime-girl-rigged.glb handoff/rigged/
+          # High-poly FBX/Blender live in the Actions package; do not leave the rejected LOD FBX.
+          rm -f -- handoff/rigged/anime-girl-rigged.fbx
+          cp build/rigged/joint-fitting.json handoff/rigged/
+          mkdir -p handoff/rigged/quality
+          cp build/rigged/quality/*.png handoff/rigged/quality/
           cp build/rigged/rig-report.json build/rigged/khronos-validation.json handoff/rigged/
           # Never publish outdated renders as if they belonged to the new model.
           for preview in rest-pose.png skeleton.png animation-preview.gif; do
@@ -121,16 +127,17 @@ jobs:
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
           git add -- handoff/rigged handoff/rigging-diagnostics
           if ! git diff --cached --quiet; then
-            git commit -m "Save verified girl GLB, FBX and five animation clips"
-            git push origin HEAD:arena/1e52fcec-lsmsnksoslalql
+            git commit -m "Save full original-detail GLB with corrected fitted rig and deformation checks"
+            git push origin arena/1e52fcec-lsmsnksoslalql
           fi
           {
             echo '## Модель со скелетом и анимациями готова'
             echo '- 48 костей: тело, волосы, пальто, юбка; не более 4 влияний на вершину.'
             echo '- 5 процедурных клипов: Idle, Walk_InPlace, Run_InPlace, Wave, Dance.'
-            echo '- GLB, FBX и проверки сохранены в handoff/rigged этой ветки. Эмулятор не нужен.'
-            echo '- Полный GLB без упрощения, Blender и FBX: артефакт anime-girl-rigged (90 дней).'
-            echo '- Проверены bind-матрицы, веса, деформации и оба GLB валидатором Khronos.'
+            echo '- ОСНОВНОЙ GLB — исходные 1 159 795 вершин / 1 981 742 треугольника; прямо в handoff/rigged. Эмулятор не нужен.'
+            echo '- Внутренняя расчётная поверхность НЕ является выдаваемой моделью. Полноразмерные FBX/Blender: артефакт anime-girl-rigged (90 дней).'
+            echo '- Побайтно проверена сохранность исходных геометрии/UV/текстур; исправлена глубина рук/ног; 16-битные веса; 21 время каждого клипа на полном GLB.'
+            echo '- Проверка Khronos дополнена проверкой настоящих деформаций и офлайн-рендерами полной модели.'
             echo '- Это автоматический стартовый FK-риг: без мимики, отдельных пальцев и физической ткани.'
           } >> "$GITHUB_STEP_SUMMARY"
 
@@ -155,7 +162,7 @@ jobs:
           git add -- handoff/rigging-diagnostics
           if ! git diff --cached --quiet; then
             git commit -m "Save rigging failure diagnostics for this working branch"
-            git push origin HEAD:arena/1e52fcec-lsmsnksoslalql
+            git push origin arena/1e52fcec-lsmsnksoslalql
           fi
 
       - name: Upload diagnostic reports and logs even if validation fails

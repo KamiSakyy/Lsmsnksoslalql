@@ -466,7 +466,8 @@ def make_full_resolution(source_path: Path, runtime_path: Path, output_path: Pat
 
     attrs = document['meshes'][0]['primitives'][0]['attributes']
     attrs['JOINTS_0'] = append_attribute(full_joints, 5121, False)
-    attrs['WEIGHTS_0'] = append_attribute(quantized_weights, 5121, True)
+    weight_component = 5123 if quantized_weights.dtype == np.uint16 else 5121
+    attrs['WEIGHTS_0'] = append_attribute(quantized_weights, weight_component, True)
     document['animations'] = []
     for original in runtime['animations']:
         animation = copy.deepcopy(original)
@@ -476,7 +477,7 @@ def make_full_resolution(source_path: Path, runtime_path: Path, output_path: Pat
         for channel in animation['channels']:
             channel['target']['node'] = mapping[channel['target']['node']]
         document['animations'].append(animation)
-    document['asset']['generator'] = 'Blender 4.2 LTS + SciPy; original Tripo mesh preserved'
+    document['asset']['generator'] = 'Blender 4.2 LTS + libigl BBW; original Tripo mesh and textures byte-preserved'
     write_glb(output_path, document, binary)
 
 
@@ -544,3 +545,30 @@ def repair_runtime_tangents(path: Path) -> dict:
     if corrected:
         write_glb(path, document, binary)
     return {'corrected_vertices': corrected, 'method': 'orthonormal fallback for degenerate UV tangents'}
+
+
+def pack_skin_weights(weights: np.ndarray) -> tuple[np.ndarray, np.ndarray]:
+    """Four influences with exact 16-bit normalization (65535, not 255).
+
+    Keep the ordinary four-influence glTF layout compatible with common engines,
+    without the visible stepping of 8-bit weights on the high-resolution mesh.
+    """
+    weights = np.asarray(weights, dtype=np.float64)
+    if weights.ndim != 2 or weights.shape[1] < 4 or np.any(weights < 0) or not np.all(np.isfinite(weights)):
+        raise ValueError('Invalid skin weight matrix')
+    indexes = np.argsort(weights, axis=1)[:, -4:][:, ::-1]
+    chosen = np.take_along_axis(weights, indexes, axis=1)
+    sums = chosen.sum(axis=1, keepdims=True)
+    if np.any(sums <= 0):
+        raise ValueError('Unweighted vertex')
+    scaled = chosen / sums * 65535
+    quantized = np.floor(scaled).astype(np.int64)
+    remainder = 65535 - quantized.sum(axis=1)
+    order = np.argsort(scaled-quantized, axis=1)[:, ::-1]
+    for rank in range(4):
+        rows = np.flatnonzero(remainder > rank)
+        quantized[rows, order[rows, rank]] += 1
+    if not np.all(quantized.sum(axis=1) == 65535):
+        raise ValueError('16-bit weight normalization failed')
+    indexes[quantized == 0] = 0
+    return indexes.astype(np.uint16), quantized.astype(np.uint16)

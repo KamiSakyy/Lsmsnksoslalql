@@ -20,13 +20,14 @@ from bpy_extras.object_utils import world_to_camera_view
 from mathutils import Matrix, Quaternion, Vector
 from PIL import Image, ImageDraw, ImageFont
 
-from core import (capsule_weights, extract_glb, load_profile, make_full_resolution,
-                  pack_four_weights, read_accessor, read_glb, repair_runtime_tangents, sha256, smooth_weights,
-                  surface_distances, surface_topology, transfer_weights, two_bone_ik, validate_skin)
+from core import (extract_glb, load_profile, make_full_resolution, pack_skin_weights,
+                  read_accessor, read_glb, repair_runtime_tangents, sha256,
+                  surface_topology, validate_skin)
+from binding import solve_bbw, localize_fields, transfer_surface_weights
+from fit import fit_bones
+from motion import CLIPS, FPS, PREFIX, BLENDER_TO_GLTF, clip_deltas
+from quality import SkinEvaluator, assert_geometry_preserved
 
-CLIPS = {'Idle': 4.0, 'Walk_InPlace': 1.2, 'Run_InPlace': 0.8, 'Wave': 3.0, 'Dance': 4.0}
-FPS = 30
-PREFIX = 'mixamorig:'
 START = time.monotonic()
 
 
@@ -195,7 +196,7 @@ def make_armature(bones, origin, height):
                                               'hair': 'THEME03', 'coat': 'THEME02',
                                               'skirt': 'THEME02'}[spec.category]
         rig.pose.bones[spec.name].rotation_mode = 'QUATERNION'
-    rig['rigging_method'] = 'Surface-geodesic anatomical binding + hair/cloth envelopes + diffusion + 4-influence normalization'
+    rig['rigging_method'] = 'Source-fitted 3D joints + libigl bounded biharmonic weights + compact arm/strand envelopes + barycentric surface transfer + 16-bit weights'
     rig['source_pose'] = 'Original asymmetric pose preserved as the bind/rest pose'
     rig['limitations'] = 'FK body rig; no facial blendshapes or individual finger articulation; procedural secondary motion'
     return rig
@@ -210,9 +211,16 @@ def bind_mesh(obj, rig, bones, indexes, quantized):
         group = obj.vertex_groups.new(name=spec.name)
         rows, slot = np.where(indexes == index)
         amounts = quantized[rows, slot]
-        for amount in np.unique(amounts):
+        if not len(amounts):
+            continue
+        order = np.argsort(amounts)
+        sorted_rows, sorted_amounts = rows[order], amounts[order]
+        boundaries = np.r_[0, np.flatnonzero(np.diff(sorted_amounts.astype(np.int64)))+1, len(order)]
+        divisor = np.iinfo(quantized.dtype).max
+        for start, stop in zip(boundaries[:-1], boundaries[1:]):
+            amount = int(sorted_amounts[start])
             if amount:
-                group.add(rows[amounts == amount].tolist(), int(amount) / 255, 'REPLACE')
+                group.add(sorted_rows[start:stop].tolist(), amount / divisor, 'REPLACE')
     obj.parent = rig
     modifier = obj.modifiers.new('Skeletal deformation', 'ARMATURE')
     modifier.object = rig
@@ -221,137 +229,47 @@ def bind_mesh(obj, rig, bones, indexes, quantized):
     modifier.use_bone_envelopes = False
 
 
-def rotation(axis, degrees):
-    return Quaternion(Vector(axis), math.radians(degrees))
-
-
 def create_animations(rig, bones, height):
     scene = bpy.context.scene
     scene.render.fps = FPS
-    scene.frame_start = 1
-    scene.frame_end = 121
+    scene.frame_start, scene.frame_end = 1, 121
     rig.animation_data_create()
-    identity = Quaternion((1, 0, 0, 0))
-    rest = {b.name: rig.data.bones[b.name].matrix_local.to_quaternion() for b in bones}
-    heads = {b.name: rig.data.bones[b.name].head_local.copy() for b in bones}
-    tails = {b.name: rig.data.bones[b.name].tail_local.copy() for b in bones}
-    hips_name = PREFIX + 'Hips'
+    rest = {b.name: BLENDER_TO_GLTF @ np.asarray(rig.data.bones[b.name].matrix_local.to_3x3()) for b in bones}
     actions = {}
     for name, duration in CLIPS.items():
         action = bpy.data.actions.new(name)
         action.use_fake_user = True
         rig.animation_data.action = action
-        last_frame = int(round(duration * FPS)) + 1
-        log(f'Generating {name}: {last_frame} keyframes')
-        for frame in range(1, last_frame + 1):
-            phase = (frame - 1) / (last_frame - 1)
-            t = 2 * math.pi * phase
-            deltas = {b.name: identity.copy() for b in bones}
-            location = Vector((0, 0, 0))
-            sin, cos = math.sin(t), math.cos(t)
-            if name == 'Idle':
-                location.z = 0.0018 * height * sin
-                deltas[hips_name] = rotation((0, 0, 1), 0.8 * sin)
-                deltas[PREFIX + 'Spine'] = rotation((1, 0, 0), 0.65 * sin)
-                deltas[PREFIX + 'Spine1'] = rotation((1, 0, 0), 1.1 * sin)
-                deltas[PREFIX + 'Spine2'] = rotation((1, 0, 0), 1.4 * sin)
-                deltas[PREFIX + 'Neck'] = rotation((0, 0, 1), 1.6 * cos)
-                deltas[PREFIX + 'Head'] = rotation((0, 0, 1), 2.2 * cos) @ rotation((1, 0, 0), 0.8 * sin)
-            elif name in ('Walk_InPlace', 'Run_InPlace', 'Dance'):
-                running = name == 'Run_InPlace'
-                dancing = name == 'Dance'
-                location.z = height * (-0.009 + 0.002 * math.cos(2*t))
-                if running:
-                    location.z = height * (-0.014 + 0.007 * math.cos(2*t))
-                if dancing:
-                    location.x = height * 0.014 * sin
-                    location.z = height * (-0.018 + 0.004 * math.cos(2*t))
-                yaw = (7 if dancing else 4 if running else 2.5) * sin
-                deltas[hips_name] = rotation((0, 0, 1), yaw)
-                if running:
-                    deltas[hips_name] = rotation((1, 0, 0), 6) @ deltas[hips_name]
-                deltas[PREFIX + 'Spine'] = rotation((0, 0, 1), -yaw * 0.4)
-                deltas[PREFIX + 'Spine1'] = rotation((0, 0, 1), -yaw * 0.6)
-                deltas[PREFIX + 'Spine2'] = rotation((0, 0, 1), -yaw * 0.8)
-                deltas[PREFIX + 'Head'] = rotation((0, 0, 1), -yaw * 0.4)
-                if dancing:
-                    deltas[hips_name] = rotation((0, 1, 0), 3 * sin) @ deltas[hips_name]
-                for side, offset in [('Left', 0), ('Right', math.pi)]:
-                    s = math.sin(t + offset)
-                    c = math.cos(t + offset)
-                    upper_name, lower_name = PREFIX + side + 'UpLeg', PREFIX + side + 'Leg'
-                    hip_rest = heads[upper_name]
-                    hip = heads[hips_name] + deltas[hips_name] @ (hip_rest - heads[hips_name]) + location
-                    # Align both feet for locomotion despite the source's bent-back right leg.
-                    foot = tails[lower_name].copy()
-                    foot.y = -0.006 * height
-                    foot.y += height * (0.078 if running else 0.038 if not dancing else 0.012) * c
-                    foot.z = tails[lower_name].z + height * (0.045 if running else 0.025 if not dancing else 0.009) * max(0, s)
-                    upper_length = (tails[upper_name] - heads[upper_name]).length
-                    lower_length = (tails[lower_name] - heads[lower_name]).length
-                    knee, reachable = two_bone_ik(np.asarray(hip), np.asarray(foot), upper_length,
-                                                 lower_length, np.array([0., -1., 0.]))
-                    knee, reachable = Vector(knee), Vector(reachable)
-                    deltas[upper_name] = (tails[upper_name] - heads[upper_name]).normalized().rotation_difference((knee - hip).normalized())
-                    deltas[lower_name] = (tails[lower_name] - heads[lower_name]).normalized().rotation_difference((reachable - knee).normalized())
-                    deltas[PREFIX + side + 'Foot'] = rotation((1, 0, 0), -7 * max(0, s) if running else -3 * max(0, s))
-                    deltas[PREFIX + side + 'ToeBase'] = identity.copy()
-                amplitude = 11 if not running else 22
-                if dancing:
-                    amplitude = 15
-                deltas[PREFIX + 'RightArm'] = rotation((1, 0, 0), amplitude * sin)
-                deltas[PREFIX + 'RightForeArm'] = rotation((1, 0, 0), amplitude * sin + (5 if running else 0))
-                deltas[PREFIX + 'RightHand'] = deltas[PREFIX + 'RightForeArm'].copy()
-                # Preserve the raised, hair-holding arm rather than tearing that contact apart.
-                for part in ('Arm', 'ForeArm', 'Hand'):
-                    deltas[PREFIX + 'Left' + part] = rotation((1, 0, 0), 1.7 * sin)
-            elif name == 'Wave':
-                envelope = min(1., phase / 0.20, (1-phase) / 0.20)
-                envelope = envelope * envelope * (3 - 2 * envelope)
-                upper = PREFIX + 'RightArm'
-                lower = PREFIX + 'RightForeArm'
-                hand = PREFIX + 'RightHand'
-                target_upper = Vector((-0.12, -0.025, -0.03)).normalized()
-                target_lower = Vector((-0.015, -0.040, 0.145)).normalized()
-                arm_delta = (tails[upper] - heads[upper]).normalized().rotation_difference(target_upper)
-                lower_delta = (tails[lower] - heads[lower]).normalized().rotation_difference(target_lower)
-                deltas[upper] = identity.slerp(arm_delta, envelope)
-                deltas[lower] = identity.slerp(lower_delta, envelope)
-                deltas[hand] = rotation((0, 1, 0), 13 * math.sin(6*t) * envelope) @ deltas[lower]
-                deltas[PREFIX + 'Head'] = rotation((0, 0, 1), 4 * envelope)
-            # Secondary animation is relative to its parent, not independent world space.
-            for index, spec in enumerate(bones):
-                if spec.category in ('hair', 'coat', 'skirt'):
-                    parent_delta = deltas[spec.parent]
-                    amplitude = {'Idle': 0.8, 'Walk_InPlace': 2.0, 'Run_InPlace': 3.3,
-                                 'Wave': 1.0, 'Dance': 3.0}[name]
-                    amplitude *= 1.0 if spec.category == 'hair' else 0.65
-                    if '.Held.' in spec.name:
-                        amplitude *= 0.20
-                    sway = rotation((0, 1, 0), amplitude * math.sin(t + index * 0.3))
-                    deltas[spec.name] = parent_delta @ sway
-            for spec in bones:
-                parent_delta = deltas[spec.parent] if spec.parent else identity
-                local = rest[spec.name].inverted() @ parent_delta.inverted() @ deltas[spec.name] @ rest[spec.name]
-                pose = rig.pose.bones[spec.name]
-                pose.rotation_quaternion = local
+        last = int(round(duration*FPS))+1
+        log(f'Generating {name}: {last} keyframes on the fitted skeleton')
+        for frame in range(1, last+1):
+            deltas, location = clip_deltas(bones, name, (frame-1)/(last-1))
+            for bone in bones:
+                parent = deltas[bone.parent] if bone.parent else np.eye(3)
+                local = rest[bone.name].T @ parent.T @ deltas[bone.name] @ rest[bone.name]
+                pose = rig.pose.bones[bone.name]
+                pose.rotation_quaternion = Matrix(local.tolist()).to_quaternion()
                 pose.location = (0, 0, 0)
-                if spec.name == hips_name:
-                    pose.location = rest[spec.name].inverted() @ location
-                pose.keyframe_insert(data_path='rotation_quaternion', frame=frame, group=spec.name)
-                if spec.name == hips_name:
-                    pose.keyframe_insert(data_path='location', frame=frame, group=spec.name)
+                if bone.name == PREFIX+'Hips':
+                    pose.location = Vector((rest[bone.name].T @ (location*height)).tolist())
+                pose.keyframe_insert(data_path='rotation_quaternion', frame=frame, group=bone.name)
+                if bone.name == PREFIX+'Hips':
+                    pose.keyframe_insert(data_path='location', frame=frame, group=bone.name)
             scene.frame_set(frame)
         for curve in action.fcurves:
             for key in curve.keyframe_points:
                 key.interpolation = 'LINEAR'
         actions[name] = action
+    reset_rest_pose(rig)
+    return actions
+
+
+def reset_rest_pose(rig):
     rig.animation_data.action = None
     for pose in rig.pose.bones:
-        pose.rotation_quaternion = identity
+        pose.rotation_quaternion = Quaternion((1, 0, 0, 0))
         pose.location = (0, 0, 0)
-    scene.frame_set(0)
-    return actions
+    bpy.context.scene.frame_set(0)
 
 
 def select_export(runtime, rig):
@@ -363,58 +281,26 @@ def select_export(runtime, rig):
 
 def export_models(runtime, rig, output):
     select_export(runtime, rig)
-    log('Exporting runtime GLB with five separate animation clips')
+    log('Exporting the INTERNAL solver cage and sampled animation carriers; not the delivered model')
     bpy.ops.export_scene.gltf(
-        filepath=str(output / 'anime-girl-rigged.glb'), export_format='GLB', use_selection=True,
+        filepath=str(output / 'solver-cage.glb'), export_format='GLB', use_selection=True,
         export_animations=True, export_animation_mode='ACTIONS', export_anim_single_armature=True,
         export_force_sampling=True, export_frame_step=1, export_frame_range=False,
         export_anim_slide_to_zero=True, export_rest_position_armature=True, export_def_bones=False,
         export_skins=True, export_tangents=True, export_materials='EXPORT', export_cameras=False, export_lights=False,
         export_optimize_animation_size=False)
-    log('Exporting FBX with actions (no extra leaf bones)')
+
+
+def export_high_fbx(original, rig, output):
+    original.hide_set(False)
+    select_export(original, rig)
+    log('Exporting FULL-resolution FBX with sampled clips, not an optimized replacement')
     bpy.ops.export_scene.fbx(
         filepath=str(output / 'anime-girl-rigged.fbx'), use_selection=True,
         object_types={'MESH', 'ARMATURE'}, add_leaf_bones=False, bake_anim=True,
         bake_anim_use_nla_strips=False, bake_anim_use_all_actions=True,
         bake_anim_simplify_factor=0.0, axis_forward='-Z', axis_up='Y',
         path_mode='COPY', embed_textures=True)
-
-
-def pose_quality_checks(runtime, rig, actions, height):
-    results = {}
-    rest_positions = mesh_vertices(runtime)
-    triangles = mesh_triangles(runtime)
-    edges = np.concatenate([triangles[:, [0, 1]], triangles[:, [1, 2]], triangles[:, [2, 0]]])
-    lengths = np.linalg.norm(rest_positions[edges[:, 0]] - rest_positions[edges[:, 1]], axis=1)
-    valid = lengths > height * 1e-4
-    edges, lengths = edges[valid], lengths[valid]
-    for name, action in actions.items():
-        rig.animation_data.action = action
-        maximum, stretch = 0., 0.
-        for frame in np.linspace(action.frame_range[0], action.frame_range[1], 5):
-            bpy.context.scene.frame_set(int(frame))
-            depsgraph = bpy.context.evaluated_depsgraph_get()
-            evaluated = runtime.evaluated_get(depsgraph)
-            mesh = evaluated.to_mesh()
-            positions = np.empty(len(mesh.vertices) * 3, dtype=np.float32)
-            mesh.vertices.foreach_get('co', positions)
-            positions = positions.reshape(-1, 3)
-            if not np.all(np.isfinite(positions)):
-                raise ValueError(f'Non-finite deformation in {name}')
-            extent = positions.max(axis=0) - positions.min(axis=0)
-            deformed_lengths = np.linalg.norm(positions[edges[:, 0]] - positions[edges[:, 1]], axis=1)
-            stretch = max(stretch, float(np.percentile(deformed_lengths / lengths, 99.5)))
-            evaluated.to_mesh_clear()
-            maximum = max(maximum, float(extent.max() / height))
-            if maximum > 1.6:
-                raise ValueError(f'Exploding mesh in {name}: {maximum} model heights')
-        log(f'Pose QA {name}: extent={maximum:.3f} H, 99.5-percentile edge stretch={stretch:.3f}')
-        if stretch > 12:
-            raise ValueError(f'Severe skin stretching in {name}: {stretch}')
-        results[name] = {'sampled_frames': 5, 'maximum_extent_in_model_heights': maximum,
-                         'edge_stretch_p99_5': stretch}
-    rig.animation_data.action = None
-    return results
 
 
 def add_studio(height, origin):
@@ -525,167 +411,249 @@ def render_previews(rig, bones, actions, camera, output):
     scene.render.resolution_x, scene.render.resolution_y = 600, 900
 
 
+def render_quality_proof(original, runtime, rig, actions, report, height, origin, output):
+    """Render the actual high-poly original and its actual skin, not the cage."""
+    camera = add_studio(height, origin)
+    scene = bpy.context.scene
+    scene.cycles.samples = 16
+    scene.cycles.seed = 42
+    runtime.hide_render = True
+    runtime.hide_set(True)
+    original.hide_render = False
+    original.hide_set(False)
+    folder = output / 'quality'
+    folder.mkdir(exist_ok=True)
+    reset_rest_pose(rig)
+    modifier = next(m for m in original.modifiers if m.type == 'ARMATURE')
+    modifier.show_render = False
+    scene.render.filepath = str(folder / 'source-rest.png')
+    log('Quality render: untouched high-poly source at rest')
+    bpy.ops.render.render(write_still=True)
+    modifier.show_render = True
+    scene.render.filepath = str(folder / 'rigged-rest.png')
+    log('Quality render: the same high-poly geometry with its real skin at rest')
+    bpy.ops.render.render(write_still=True)
+    time = report['pose_checks']['Wave'].get('worst_time', 1.5)
+    rig.animation_data.action = actions['Wave']
+    scene.frame_set(int(round(time*FPS))+1)
+    scene.render.filepath = str(folder / 'wave-check.png')
+    log(f'Quality render: full high-poly Wave at the audited worst time {time:.3f}s')
+    bpy.ops.render.render(write_still=True)
+    before = np.asarray(Image.open(folder/'source-rest.png').convert('RGB'), dtype=np.float32)
+    after = np.asarray(Image.open(folder/'rigged-rest.png').convert('RGB'), dtype=np.float32)
+    report['render_checks'] = {'full_resolution_mesh': True, 'source_and_bound_rest_mean_pixel_difference': float(np.abs(before-after).mean()/255),
+                              'wave_time_seconds': time, 'source_triangles': report['source']['triangles']}
+    reset_rest_pose(rig)
+    return camera
+
+
 def write_readme(output, report):
-    run_url = os.environ.get('GITHUB_SERVER_URL', 'https://github.com') + '/' + os.environ.get('GITHUB_REPOSITORY', 'KamiSakyy/Lsmsnksoslalql') + '/actions/runs/' + os.environ.get('GITHUB_RUN_ID', '')
-    preview_note = ('- **skeleton.png**, **rest-pose.png**, **animation-preview.gif** — настоящий рендер и демонстрация движений.\n'
-                    if report.get('previews_generated') else '')
-    content = f'''# Девушка Tripo: скелет и анимации
+    run_url = f"{os.environ.get('GITHUB_SERVER_URL', 'https://github.com')}/{os.environ.get('GITHUB_REPOSITORY', 'KamiSakyy/Lsmsnksoslalql')}/actions/runs/{os.environ.get('GITHUB_RUN_ID', '')}"
+    primary = report['primary']
+    checks = report['pose_checks']
+    rows = '\n'.join(f"| {name} | {item['sampled_frames']} | {item['edge_stretch_p99_5']:.3f} | {item['edge_stretch_p99_9']:.3f} |" for name, item in checks.items())
+    content = f'''# Полноразмерная девушка Tripo — исправленная привязка
 
-Модель из исходного ZIP обработана автоматически в GitHub Actions с помощью **Blender {bpy.app.version_string}, NumPy и SciPy**, без аккаунта Mixamo и без GPU.
+## Основной файл — НЕ упрощённая модель
 
-## Результат
+**anime-girl-rigged.glb** — {primary['bytes']:,} байт ({primary['bytes']/1e6:.2f} МБ),
+исходные **{report['source']['vertices']:,} вершин и {report['source']['triangles']:,} треугольников**.
+Исходные POSITION, NORMAL, UV, индексы и все текстуры сохранены **побайтно**;
+проверка исходного бинарного буфера и структуры выполняется до публикации.
+Добавлены только скелет, привязка и анимации. GLB хранится непосредственно в этой ветке Git,
+а не только во временном артефакте. Никакой сайт или эмулятор не нужен.
 
-- **anime-girl-rigged.glb** — версия для просмотра/игрового движка: {report['runtime']['triangles']:,} треугольников, текстуры, 48 костей, 5 отдельных клипов.
-- **anime-girl-full.glb** — исходные {report['source']['vertices']:,} вершин и {report['source']['triangles']:,} треугольников, исходные текстуры и геометрия **без упрощения**, тот же скелет и анимации. В полном артефакте Actions, не дублируется в Git.
-- **anime-girl-rigged.blend** — редактируемая сцена Blender. Объект `AnimeGirl_Animated` видим; оригинал `AnimeGirl_Original_HighDetail` тоже имеет веса и Armature, но скрыт, чтобы не рисовать две поверхности одновременно. Снимите скрытие оригинала и скройте облегчённую копию для полной детализации.
-- **anime-girl-rigged.fbx** — облегчённая модель со скелетом, текстурами и клипами для Blender/Unity/Unreal.
-{preview_note}- **rig-report.json**, **khronos-validation.json** — машинные проверки.
+Прежняя копия на 18 МБ заменена полноразмерной. `solver-cage.glb` — только внутренняя
+расчётная поверхность; она не выдаётся за основную модель и не сохраняется в handoff.
 
-[Запуск и полный артефакт GitHub Actions]({run_url}) → раздел **Artifacts** → `anime-girl-rigged`.
+## Что исправлено
 
-## Анимации
+- Суставы ног и рук подогнаны по **сечениям исходной 3D-геометрии**. Учитывается реальная
+  нога, отведённая назад, и глубина свободной руки: её кости больше не стоят в юбке.
+- Привязка вычисляется **libigl / bounded biharmonic weights**, с плавным ограничением
+  дальних влияний рук и передних прядей; нет привязки по случайному цвету текстуры.
+- Перенос на полный меш — **барицентрическая интерполяция ближайшего треугольника**,
+  вместо смешивания трёх вершин, которые могут принадлежать разным поверхностям.
+- Веса имеют **16-битную точность**, а не 8-битную; не более четырёх влияний на вершину
+  для совместимости с обычными glTF-движками. Непривязанных вершин: **{primary['skin']['unweighted_vertices']}**.
+- Проверяются деформации именно **экспортированного полноразмерного GLB**,
+  {next(iter(checks.values()))['sampled_frames']} точка времени для каждого из пяти клипов.
 
-| Клип | Длительность | Что делает |
-|---|---:|---|
-| Idle | 4,0 с | Дыхание, небольшие движения корпуса/головы, вторичные движения волос |
-| Walk_InPlace | 1,2 с | Цикл ходьбы на месте; ноги решаются двухзвенным IK |
-| Run_InPlace | 0,8 с | Цикл бега на месте |
-| Wave | 3,0 с | Подъём свободной правой руки, приветствие, возврат |
-| Dance | 4,0 с | Мягкий танцевальный цикл |
+## Проверка растяжения
 
-Это **процедурные** движения, а не motion capture Mixamo. Первоначальная асимметричная поза является bind/rest pose; поднятая рука у волос в основном сохраняется. Анимации можно заменять/ретаргетировать: основные кости имеют имена `mixamorig:*`, дополнительные `Hair.*`, `Coat.*`, `Skirt.*`. Совпадение основных имён облегчает настройку ретаргетинга, но не делает исходную позу стандартной T-позой.
+Отношение длины ребра в движении к длине в исходной позе. Учитываются физические рёбра,
+не повторения UV-швов; порог очень маленьких рёбер — 0,0001 высоты модели.
+Это количественная проверка деформации, а не обещание отсутствия всех визуальных дефектов.
 
-## Как устроено
+| Клип | Проверенных времён | Растяжение, 99,5-й процентиль | 99,9-й процентиль |
+|---|---:|---:|---:|
+{rows}
 
-Профиль `tools/rigging/model_profile.json` подобран **именно для этой модели** по её геометрии и виду спереди/сбоку. Скрипт масштабирует анатомические ориентиры по фактическим размерам меша, строит иерархию, вычисляет геодезические расстояния по связности поверхности вместе с анатомическими капсульными весами (чтобы близкие, но несвязанные руки и одежда не тянулись друг за другом), отдельно учитывает волосы/подол, сглаживает веса по графу поверхности и оставляет не более четырёх влияний на вершину. Непривязанных вершин: **{report['runtime']['skin']['unweighted_vertices']}**. Веса облегчённой версии переносятся обратно на оригинал.
+Результаты, максимальные значения и компрессия: `rig-report.json`.
+Официальная проверка формата — `khronos-validation.json`; она **не заменяет** проверку качества привязки.
 
-Это стартовый автоматический **FK-риг**, а не ручной production-риг: нет мимики, лицевых blendshape, отдельных костей пальцев или физической симуляции ткани/волос. Волосы и одежда имеют кости с процедурным движением. Для крупных/экстремальных движений у плеч, локтей, юбки и касания руки с волосами могут понадобиться ручная коррекция весов/позы и корректирующие формы. У AI-меша из одной поверхности нет скрытой анатомии под одеждой; скелет её не создаёт.
+## Кости, анимации и редактирование
 
-## Повторный запуск
+48 костей тела, волос и одежды. Клип `Idle` (4 с), `Walk_InPlace` (1,2 с),
+`Run_InPlace` (0,8 с), `Wave` (3 с), `Dance` (4 с). Это процедурные движения, не motion capture Mixamo.
 
-Workflow: `.github/workflows/rig-model.yml`, только ветка `arena/1e52fcec-lsmsnksoslalql`. Запускается при изменении скриптов/профиля; также есть `workflow_dispatch`. На Linux с Python 3.11 и системными библиотеками Blender:
+`anime-girl-rigged.blend` и `anime-girl-rigged.fbx` в [пакете Actions]({run_url}) →
+**Artifacts / anime-girl-rigged** содержат высокодетализированную модель, не замену на 160 000 треугольников.
+В Blender видим и выбран объект `AnimeGirl_Original_HighDetail`; служебная поверхность скрыта.
+Артефакт хранится 90 дней; основной GLB в Git не имеет этого срока хранения.
 
-```sh
-python -m pip install -r tools/rigging/requirements.txt
-python tools/rigging/rig_model.py --archive handoff/d247d7c3_46ba_414e_b821_b731d4b67026_ab2fefced0df785fa9f396410d0b5905.zip --output build/rigged --render
-```
+`quality/source-rest.png`, `quality/rigged-rest.png`, `quality/wave-check.png` — офлайн-рендеры
+самого высокодетализированного меша, не эмулятор и не изображение костей поверх неподвижной модели.
 
-Исходный ZIP не изменяется, секреты и сервер приложения не используются. Большие `.blend` и полный GLB хранятся в Actions artifact (90 дней); скачайте их для долговременного хранения. Облегчённый GLB, FBX, отчёт и инструкция сохранены в этой ветке Git. Для этой сборки не требуется эмулятор или сайт.
+Риг модель-специфичный, FK; без мимики, отдельных костей пальцев, скрытой анатомии под одеждой
+и физической симуляции ткани. Очень сильные изгибы и контакт руки с волосами могут требовать
+ручных корректирующих форм. Автоматическая проверка не делает его ручным production-ригом.
+
+Исходный ZIP не изменён. Сервер приложения и его конфигурация не используются.
+Workflow `.github/workflows/rig-model.yml` работает только в `arena/1e52fcec-lsmsnksoslalql`.
 '''
-    (output / 'README_RU.md').write_text(content)
+    (output/'README_RU.md').write_text(content)
 
 
 def main():
     parser = argparse.ArgumentParser()
     parser.add_argument('--archive', type=Path, required=True)
     parser.add_argument('--output', type=Path, default=Path('build/rigged'))
-    parser.add_argument('--target-triangles', type=int, default=160000)
+    parser.add_argument('--target-triangles', type=int, default=160000,
+                        help='INTERNAL solver cage budget; the delivered mesh is never simplified')
     parser.add_argument('--render', action='store_true')
-    parser.add_argument('--validate-gltf', action='store_true',
-                        help='Require Khronos validation before rendering or saving the final scene')
+    parser.add_argument('--quality-renders', action='store_true')
+    parser.add_argument('--validate-gltf', action='store_true')
     args = parser.parse_args()
     if not 10000 <= args.target_triangles <= 500000:
-        parser.error('triangle budget must be 10000..500000')
+        parser.error('internal cage budget must be 10000..500000')
     output = args.output.resolve()
     output.mkdir(parents=True, exist_ok=True)
-    log(f'Blender {bpy.app.version_string}; source archive SHA-256 {sha256(args.archive)}')
-    source = extract_glb(args.archive.resolve(), output.parent / 'source')
+    log(f'Blender {bpy.app.version_string}; archive SHA-256 {sha256(args.archive)}')
+    source = extract_glb(args.archive.resolve(), output.parent/'source')
+    if sha256(source) != 'c185de86a14426dd0ff7627c7f3f5d1409b48e4c7fa5ac674193b124f65f3eec':
+        raise ValueError('This fitting profile is specific to the supplied source model; source hash differs')
     document, binary = read_glb(source)
     primitive = document['meshes'][0]['primitives'][0]
     source_vertices = document['accessors'][primitive['attributes']['POSITION']]['count']
-    source_triangles = document['accessors'][primitive['indices']]['count'] // 3
-    bones = load_profile(Path(__file__).with_name('model_profile.json'))
+    source_triangles = document['accessors'][primitive['indices']]['count']//3
+    source_positions = read_accessor(document, binary, primitive['attributes']['POSITION']).astype(np.float64)
+    source_height = float(np.ptp(source_positions[:, 1]))
+    source_origin = (source_positions.max(axis=0)+source_positions.min(axis=0))/2
+    source_origin[1] = source_positions[:, 1].min()
+    bones, fitting = fit_bones((source_positions-source_origin)/source_height,
+                               load_profile(Path(__file__).with_name('model_profile.json')))
+    (output/'joint-fitting.json').write_text(json.dumps(fitting, indent=2)+'\n')
+    log('Joint depths fitted to the actual source: free hand, raised arm, backward leg and both ankles')
     original, runtime, origin, height = import_and_simplify(source, args.target_triangles)
     rig = make_armature(bones, origin, height)
     positions = mesh_vertices(runtime)
     triangles = mesh_triangles(runtime)
-    topology = surface_topology(positions / height, triangles)
-    log(f'Runtime surface topology: {topology}')
+    topology = surface_topology(positions/height, triangles)
     if topology['boundary_edges'] > 1000:
-        raise ValueError('Runtime simplification introduced too many physical mesh cracks')
-    colors = vertex_colors(runtime, document, binary)
-    log('Solving surface-geodesic distances to avoid hand/coat/hair cross-binding')
-    normalized_positions = normalized_gltf(positions, origin, height)
-    geodesic = surface_distances(normalized_positions, triangles, bones)
-    log('Solving pose-aware body / hair / clothing skin weights')
-    weights = capsule_weights(normalized_positions, bones, colors, geodesic)
-    weights = smooth_weights(positions / height, triangles, weights)
-    indexes, quantized = pack_four_weights(weights)
-    # Transfer the actual, quantized skin that the runtime export will use.
-    weights[:] = 0
-    np.put_along_axis(weights, indexes, quantized.astype(np.float32) / 255, axis=1)
+        raise ValueError('Internal cage introduced excessive cracks')
+    normalized = normalized_gltf(positions, origin, height)
+    weights, solver_report = solve_bbw(normalized, triangles, bones, log=log)
+    weights = localize_fields(normalized, weights, bones).astype(np.float64)**1.5
+    weights /= weights.sum(axis=1, keepdims=True)
+    solver_report['locality_power'] = 1.5
+    solver_report['tail_suppression'] = 'compact moving-arm/front-strand envelopes and smooth torso partition'
+    indexes, quantized = pack_skin_weights(weights)
+    weights = np.zeros_like(weights, dtype=np.float32)
+    np.put_along_axis(weights, indexes, quantized.astype(np.float32)/65535, axis=1)
     bind_mesh(runtime, rig, bones, indexes, quantized)
     actions = create_animations(rig, bones, height)
-    pose_checks = pose_quality_checks(runtime, rig, actions, height)
-    rig.animation_data.action = None
-    for pose in rig.pose.bones:
-        pose.rotation_quaternion = Quaternion((1, 0, 0, 0))
-        pose.location = (0, 0, 0)
-    bpy.context.scene.frame_set(0)
+    reset_rest_pose(rig)
     export_models(runtime, rig, output)
-    tangent_repairs = repair_runtime_tangents(output / 'anime-girl-rigged.glb')
-    log(f'Exported tangent frames repaired: {tangent_repairs}')
-    runtime_skin = validate_skin(output / 'anime-girl-rigged.glb', set(CLIPS))
-    log(f'Runtime GLB skin validated: {runtime_skin}')
-    log('Transferring skin weights to the original high-detail Blender mesh')
-    original_indexes, original_quantized = transfer_weights(positions, mesh_vertices(original), weights)
+    repairs = repair_runtime_tangents(output/'solver-cage.glb')
+    validate_skin(output/'solver-cage.glb', set(CLIPS))
+    log('Transferring skin to full-resolution Blender geometry using closest faces')
+    original_indexes, original_quantized, original_transfer = transfer_surface_weights(
+        positions, triangles, mesh_vertices(original), weights)
     bind_mesh(original, rig, bones, original_indexes, original_quantized)
-    original.hide_set(True)
-    original.hide_render = True
-    log('Preserving original GLB geometry and textures; appending skeleton and animations')
-    raw_positions = read_accessor(document, binary, primitive['attributes']['POSITION'])
-    raw_positions += np.asarray(document['nodes'][0].get('translation', [0, 0, 0]))
+    original.hide_set(False)
+    original.hide_render = False
+    runtime.hide_set(True)
+    runtime.hide_render = True
+    log('Transferring skin to ALL original GLB vertices; geometry/UV/textures remain untouched')
+    raw_positions = source_positions + np.asarray(document['nodes'][0].get('translation', [0, 0, 0]))
     raw_blender = np.column_stack([raw_positions[:, 0], -raw_positions[:, 2], raw_positions[:, 1]])
-    full_indexes, full_quantized = transfer_weights(positions, raw_blender, weights)
-    make_full_resolution(source, output / 'anime-girl-rigged.glb', output / 'anime-girl-full.glb',
+    full_indexes, full_quantized, full_transfer = transfer_surface_weights(
+        positions, triangles, raw_blender, weights)
+    primary_path = output/'anime-girl-rigged.glb'
+    make_full_resolution(source, output/'solver-cage.glb', primary_path,
                          [b.name for b in bones], full_indexes, full_quantized)
-    full_skin = validate_skin(output / 'anime-girl-full.glb', set(CLIPS))
+    preservation = assert_geometry_preserved(source, primary_path)
+    full_skin = validate_skin(primary_path, set(CLIPS))
     report = {
-        'previews_generated': bool(args.render),
-        'toolchain': {'blender': bpy.app.version_string, 'method': rig['rigging_method'], 'fps': FPS},
+        'toolchain': {'blender': bpy.app.version_string, 'libigl': '2.6.3',
+                      'method': rig['rigging_method'], 'fps': FPS},
         'source': {'file': source.name, 'archive_sha256': sha256(args.archive), 'glb_sha256': sha256(source),
                    'vertices': source_vertices, 'triangles': source_triangles,
-                   'original_skins': len(document.get('skins', [])), 'original_animations': len(document.get('animations', []))},
-        'runtime': {'file': 'anime-girl-rigged.glb', 'vertices': len(positions), 'triangles': len(triangles),
-                    'skin': runtime_skin, 'topology': topology, 'tangent_repairs': tangent_repairs, 'bytes': (output / 'anime-girl-rigged.glb').stat().st_size},
-        'full_resolution': {'file': 'anime-girl-full.glb', 'geometry_and_textures_preserved': True,
-                            'skin': full_skin, 'bytes': (output / 'anime-girl-full.glb').stat().st_size},
+                   'bytes': source.stat().st_size, 'original_skins': 0, 'original_animations': 0},
+        'primary': {'file': primary_path.name, 'resolution': 'original, NOT decimated',
+                    'vertices': source_vertices, 'triangles': source_triangles,
+                    'bytes': primary_path.stat().st_size, 'sha256': sha256(primary_path), 'skin': full_skin},
+        'preservation': preservation, 'joint_fitting': fitting, 'solver': solver_report,
+        'solver_cage': {'internal_only': True, 'vertices': len(positions), 'triangles': len(triangles),
+                        'topology': topology, 'tangent_repairs': repairs},
+        'surface_transfer': {'blender_original': original_transfer, 'glb_original': full_transfer},
         'bones': [{'name': b.name, 'parent': b.parent, 'category': b.category} for b in bones],
         'clips': [{'name': name, 'duration_seconds': duration, 'fps': FPS,
                    'procedural': True, 'loop': name != 'Wave'} for name, duration in CLIPS.items()],
-        'pose_checks': pose_checks,
-        'limitations': ['Profile is fitted to this model, not a universal arbitrary-pose autorigger.',
-                        'No facial blendshapes or individually articulated fingers.',
-                        'Hair/clothing motion is skeletal/procedural, not physical simulation.',
-                        'Extreme poses may need manual weights and corrective shapes.']}
-    (output / 'rig-report.json').write_text(json.dumps(report, ensure_ascii=False, indent=2) + '\n')
+        'pose_checks': {},
+        'limitations': ['Model-specific FK rig; not a universal arbitrary-pose autorigger.',
+                        'No facial shapes or individually articulated fingers.',
+                        'Skeletal secondary motion, not cloth/hair physics.',
+                        'Strong contact poses may still need manual corrective shapes.']}
+    report_path = output/'rig-report.json'
+    report_path.write_text(json.dumps(report, indent=2)+'\n')
+    log('Auditing REAL EXPORTED FULL-resolution skin at 21 times per clip')
+    evaluator = SkinEvaluator(primary_path)
+    report['pose_checks'] = evaluator.audit(frames=21)
+    rest_error = float(np.max(np.abs(evaluator.deform(evaluator.matrices()) - raw_positions)))
+    report['preservation']['maximum_rest_position_error_world_units'] = rest_error
+    report_path.write_text(json.dumps(report, indent=2)+'\n')
+    if rest_error > height*2e-5:
+        raise ValueError(f'Rest skin changes original vertex positions: {rest_error}')
+    for name, qa in report['pose_checks'].items():
+        log(f'FULL QA {name}: p99.5={qa["edge_stretch_p99_5"]:.3f}, p99.9={qa["edge_stretch_p99_9"]:.3f}, max={qa["edge_stretch_max"]:.3f}, compression={qa["edge_compression_p00_5"]:.3f}')
+        if (qa['edge_stretch_p99_5'] > 2.2 or qa['edge_stretch_p99_9'] > 3.6
+                or qa['edge_compression_p00_5'] < .35
+                or qa['maximum_extent_in_model_heights'] > 1.5):
+            raise ValueError(f'Full-resolution deformation quality gate failed in {name}: {qa}')
+    if not source.stat().st_size <= primary_path.stat().st_size < 100*1024*1024:
+        raise ValueError('Unexpected full-resolution size or GitHub file limit exceeded')
     if args.validate_gltf:
-        log('Checking both exports with the official Khronos validator before rendering')
         subprocess.run(['node', str(Path(__file__).with_name('validate-glb.cjs')),
-                        str(output / 'anime-girl-rigged.glb'),
-                        str(output / 'anime-girl-full.glb')], check=True)
-    camera = add_studio(height, origin)
+                        str(primary_path)], check=True)
+    # Only now produce the editable/full-resolution ancillary assets.
+    del evaluator
+    reset_rest_pose(rig)
+    export_high_fbx(original, rig, output)
+    camera = None
+    if args.quality_renders:
+        camera = render_quality_proof(original, runtime, rig, actions, report, height, origin, output)
     if args.render:
+        camera = camera or add_studio(height, origin)
         render_previews(rig, bones, actions, camera, output)
-    # Keep each clip as an independent, muted NLA track for convenient editing.
-    rig.animation_data.action = actions['Idle']
+    reset_rest_pose(rig)
     for name, action in actions.items():
         track = rig.animation_data.nla_tracks.new()
         track.name = name
         track.strips.new(name, 1, action)
         track.mute = True
-    bpy.context.scene.frame_set(1)
-    select_export(runtime, rig)
-    bpy.ops.wm.save_as_mainfile(filepath=str(output / 'anime-girl-rigged.blend'), compress=True)
+    activate(original)
+    rig.select_set(True)
+    bpy.ops.wm.save_as_mainfile(filepath=str(output/'anime-girl-rigged.blend'), compress=True)
+    report_path.write_text(json.dumps(report, indent=2)+'\n')
     write_readme(output, report)
-    log('DONE: GLB (runtime + full), FBX, Blender scene, skin checks and preview files')
+    log(f'DONE: original-detail GLB {primary_path.stat().st_size:,} bytes; original buffers verified; high-poly FBX/Blender; deformation gates passed')
 
 
 if __name__ == '__main__':
     import sys
     import traceback
-    # Avoid bpy's native teardown crash on both success and Python exceptions.
-    # Real native crashes are not intercepted; Python failures retain exit code 1.
     try:
         main()
         exit_code = 0
