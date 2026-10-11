@@ -103,6 +103,21 @@ public final class ChatListAdapter extends RecyclerView.Adapter<ChatListAdapter.
         });
     }
 
+    /** Размер аватара строки берётся из настроек: 54dp по умолчанию, меньше или больше по вкусу. */
+    private void applyIconSize(Holder holder) {
+        android.view.View parent = (android.view.View) holder.avatar.getParent();
+        if (parent == null) return;
+        int dp = com.tsuyu.messenger.util.Settings.getInt("icon_size", 54);
+        if (dp < 40) dp = 40;
+        if (dp > 64) dp = 64;
+        int size = Math.round(dp * holder.itemView.getResources().getDisplayMetrics().density);
+        android.view.ViewGroup.LayoutParams params = parent.getLayoutParams();
+        if (params == null || params.width == size) return;
+        params.width = size;
+        params.height = size;
+        parent.setLayoutParams(params);
+    }
+
     /** Chat id at a list position, used by swipe gestures. */
     public ChatSummary summaryAt(int position) {
         return position >= 0 && position < items.size() ? items.get(position) : null;
@@ -180,6 +195,7 @@ public final class ChatListAdapter extends RecyclerView.Adapter<ChatListAdapter.
         }
         holder.divider.setVisibility(position == items.size() - 1 ? View.GONE : View.VISIBLE);
         bindAvatar(holder.avatar, holder.initial, peer, title);
+        applyIconSize(holder);
         String description = "Диалог с " + title + ". " + preview
                 + (summary.unread > 0 ? ". Непрочитанных: " + summary.unread : "");
         holder.itemView.setContentDescription(description);

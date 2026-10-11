@@ -303,4 +303,11 @@
     <string name="logs_copied">Логи скопированы — можно вставлять</string>
     <string name="logs_copy_failed">Копирование не сработало: выделите текст пальцем и скопируйте вручную</string>
     <string name="logs_empty">Журнал очищен</string>
+    <string name="customization_text_size">Размер текста сообщений</string>
+    <string name="customization_icon_size">Размер иконок и аватаров</string>
+    <string name="customization_media_size">Размер фото и видео в чате</string>
+    <string name="customization_bold">Жирный текст</string>
+    <string name="customization_italic">Курсив</string>
+    <string name="customization_send_dark">Тёмная кнопка отправки</string>
+    <string name="customization_wallpaper">Свои обои для всех чатов</string>
 </resources>

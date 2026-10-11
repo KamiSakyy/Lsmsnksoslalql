@@ -108,8 +108,8 @@
                     app:cardBackgroundColor="@color/tsuyu_black"
                     app:cardCornerRadius="100dp"
                     app:cardElevation="0dp"
-                    app:strokeColor="@color/tsuyu_blue"
-                    app:strokeWidth="2dp">
+                    app:strokeColor="@android:color/transparent"
+                    app:strokeWidth="0dp">
 
                     <VideoView
                         android:id="@+id/message_circle_video"

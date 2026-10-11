@@ -1428,6 +1428,7 @@ public final class MainActivity extends AppCompatActivity {
             avatarPicker.launch("image/*");
         });
         View sendButton = root.findViewById(R.id.chat_send);
+        applySendButtonStyle(sendButton);
         sendButton.setEnabled(false);
         sendButton.setVisibility(View.GONE);
         sendButton.setOnClickListener(v -> sendCurrentText());
@@ -2819,20 +2820,56 @@ public final class MainActivity extends AppCompatActivity {
         Slider size = body.findViewById(R.id.customization_text_size);
         int current = com.tsuyu.messenger.util.Settings.getInt("text_size", 15);
         size.setValue(Math.max(12, Math.min(22, current)));
+        Slider iconSize = body.findViewById(R.id.customization_icon_size);
+        iconSize.setValue(Math.max(40, Math.min(64, com.tsuyu.messenger.util.Settings.getInt("icon_size", 54))));
+        Slider mediaSize = body.findViewById(R.id.customization_media_size);
+        mediaSize.setValue(Math.max(60, Math.min(100, com.tsuyu.messenger.util.Settings.getInt("media_scale", 100))));
         MaterialCheckBox bold = body.findViewById(R.id.customization_bold);
         MaterialCheckBox italic = body.findViewById(R.id.customization_italic);
         bold.setChecked(isTextBold());
         italic.setChecked(com.tsuyu.messenger.util.Settings.getBoolean("italic", false));
-        new AlertDialog.Builder(this).setTitle("Кастомизация").setView(body)
+        com.google.android.material.materialswitch.MaterialSwitch sendDark =
+                body.findViewById(R.id.customization_send_dark);
+        sendDark.setChecked(com.tsuyu.messenger.util.Settings.getBoolean("send_dark", false));
+        // Ползунки показывают своё значение прямо над собой: видно, что выставляешь.
+        TextView textLabel = body.findViewById(R.id.customization_text_label);
+        TextView iconLabel = body.findViewById(R.id.customization_icon_label);
+        TextView mediaLabel = body.findViewById(R.id.customization_media_label);
+        size.addOnChangeListener((slider, value, fromUser) ->
+                textLabel.setText(getString(R.string.customization_text_size) + ": " + Math.round(value)));
+        iconSize.addOnChangeListener((slider, value, fromUser) ->
+                iconLabel.setText(getString(R.string.customization_icon_size) + ": " + Math.round(value) + " dp"));
+        mediaSize.addOnChangeListener((slider, value, fromUser) ->
+                mediaLabel.setText(getString(R.string.customization_media_size) + ": " + Math.round(value) + "%"));
+        textLabel.setText(getString(R.string.customization_text_size) + ": " + Math.round(size.getValue()));
+        iconLabel.setText(getString(R.string.customization_icon_size) + ": " + Math.round(iconSize.getValue()) + " dp");
+        mediaLabel.setText(getString(R.string.customization_media_size) + ": " + Math.round(mediaSize.getValue()) + "%");
+        AlertDialog customizationDialog = new AlertDialog.Builder(this)
+                .setTitle("Кастомизация")
+                .setView(body)
                 .setNegativeButton("Отмена", null)
                 .setPositiveButton("Сохранить", (dialog, which) -> {
                     com.tsuyu.messenger.util.Settings.putInt("text_size", Math.round(size.getValue()));
+                    com.tsuyu.messenger.util.Settings.putInt("icon_size", Math.round(iconSize.getValue()));
+                    com.tsuyu.messenger.util.Settings.putInt("media_scale", Math.round(mediaSize.getValue()));
                     com.tsuyu.messenger.util.Settings.putBoolean("bold", bold.isChecked());
                     com.tsuyu.messenger.util.Settings.putBoolean("italic", italic.isChecked());
+                    com.tsuyu.messenger.util.Settings.putBoolean("send_dark", sendDark.isChecked());
+                    applySendButtonStyle(findViewById(R.id.chat_send));
+                    if (chatListAdapter != null) renderChatList();
                     if (messageListAdapter != null && messageList != null && "chat".equals(page)) {
                         renderMessages(conversationModel.lastRemoteMessages, activePeerUid);
                     }
-                }).show();
+                })
+                .create();
+        View wallpaperRow = body.findViewById(R.id.customization_wallpaper);
+        if (wallpaperRow != null) {
+            wallpaperRow.setOnClickListener(v -> {
+                customizationDialog.dismiss();
+                showWallpaperDialog(null, true);
+            });
+        }
+        customizationDialog.show();
     }
 
     private void showNotificationSettings() {
@@ -3239,6 +3276,17 @@ public final class MainActivity extends AppCompatActivity {
     /** Экран переписки закрыт: подписки на сообщения, реакции и метки сняты. */
     public void onChatScreenLeft() {
         try { detachChatListeners(); } catch (Throwable ignored) { }
+    }
+
+    /** Кнопка отправки: по умолчанию как на сайте — синий круг и белая стрелка; можно сделать тёмной. */
+    private void applySendButtonStyle(View sendButton) {
+        if (sendButton == null) return;
+        boolean dark = com.tsuyu.messenger.util.Settings.getBoolean("send_dark", false);
+        sendButton.setBackgroundResource(dark ? R.drawable.bg_send_dark : R.drawable.bg_scroll_fab);
+        if (sendButton instanceof android.widget.ImageView) {
+            ((android.widget.ImageView) sendButton).setImageTintList(
+                    android.content.res.ColorStateList.valueOf(getColor(R.color.tsuyu_white)));
+        }
     }
 
     private void markNoActiveChat() {

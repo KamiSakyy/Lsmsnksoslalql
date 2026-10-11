@@ -595,12 +595,15 @@ public final class MessageListAdapter extends RecyclerView.Adapter<RecyclerView.
     private void bindCircleNote(Holder holder, org.json.JSONObject object, String payload, ChatMessage message) {
         android.content.Context context = holder.itemView.getContext();
         android.util.DisplayMetrics metrics = context.getResources().getDisplayMetrics();
-        int cap = Math.max(Math.round(200 * metrics.density), Math.round(metrics.widthPixels * 0.72f));
-        int side = Math.min(Math.round(200 * metrics.density), cap);
+        int cap = Math.max(Math.round(220 * metrics.density), Math.round(metrics.widthPixels * 0.78f));
+        int side = Math.min(Math.round(248 * metrics.density), cap);
         ViewGroup.LayoutParams params = holder.circle.getLayoutParams();
         params.width = side;
         params.height = side;
         holder.circle.setLayoutParams(params);
+        // Кружочек — чистое видео в круге: никакой обводки.
+        holder.circleCard.setStrokeWidth(0);
+        holder.circleCard.setStrokeColor(android.graphics.Color.TRANSPARENT);
         holder.circleCard.setShapeAppearanceModel(ShapeAppearanceModel.builder()
                 .setAllCornerSizes(ShapeAppearanceModel.PILL).build());
         holder.circle.setVisibility(View.VISIBLE);
@@ -681,20 +684,28 @@ public final class MessageListAdapter extends RecyclerView.Adapter<RecyclerView.
     /** Медиа внутри пузыря масштабируется пропорционально выбранной ширине полосы. */
     private void scaleMedia(Holder holder, android.util.DisplayMetrics metrics, int adaptiveCap) {
         android.content.Context context = holder.itemView.getContext();
-        int baseWidth = context.getResources().getDimensionPixelSize(R.dimen.media_width);
-        float scale = Math.min(1f, adaptiveCap / (float) baseWidth);
-        applySize(holder.image, context, R.dimen.media_width, R.dimen.media_height_image, scale);
-        applySize(holder.video, context, R.dimen.media_width, R.dimen.media_height_video, scale);
-        applySize(holder.gallery, context, R.dimen.media_width, R.dimen.media_height_gallery, scale);
+        // Фото и видео показываются сразу крупно: место под медиа занимает всю полосу, а
+        // высота считается по пропорциям кадра. Размер можно уменьшить в настройках.
+        int gutter = context.getResources().getDimensionPixelSize(R.dimen.bubble_gutter);
+        int bubblePadding = context.getResources().getDimensionPixelSize(R.dimen.bubble_padding_h_web);
+        int percent = com.tsuyu.messenger.util.Settings.getInt("media_scale", 100);
+        if (percent < 60) percent = 60;
+        if (percent > 100) percent = 100;
+        int full = Math.max(context.getResources().getDimensionPixelSize(R.dimen.media_width),
+                metrics.widthPixels - gutter - bubblePadding * 2);
+        int width = Math.max(1, Math.round(full * (percent / 100f)));
+        setSize(holder.image, width, Math.round(width * 0.75f));
+        setSize(holder.video, width, Math.round(width * 0.5625f));
+        setSize(holder.gallery, width, Math.round(width * 0.62f));
     }
 
-    /** Размер считается заново от dimens, поэтому переработанные строки не «сжимаются». */
-    private void applySize(View view, android.content.Context context, int widthRes, int heightRes, float scale) {
+    /** Размер задаётся в точках: переработанные строки не «сжимаются» при прокрутке. */
+    private void setSize(View view, int width, int height) {
         if (view == null) return;
         android.view.ViewGroup.LayoutParams params = view.getLayoutParams();
         if (params == null) return;
-        params.width = Math.round(context.getResources().getDimensionPixelSize(widthRes) * scale);
-        params.height = Math.round(context.getResources().getDimensionPixelSize(heightRes) * scale);
+        params.width = width;
+        params.height = height;
         view.setLayoutParams(params);
     }
 
