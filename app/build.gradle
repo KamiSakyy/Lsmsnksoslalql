@@ -9,6 +9,7 @@ if (!signingPropertiesFile.isFile()) {
 }
 signingPropertiesFile.withInputStream { signingProperties.load(it) }
 def buildVersionCode = System.getenv('TSUYU_VERSION_CODE') ? Integer.parseInt(System.getenv('TSUYU_VERSION_CODE')) : 1
+def buildVersionName = findProperty('tsuyuVersionName') ?: '1.1'
 
 android {
     namespace 'com.tsuyu.messenger'
@@ -19,7 +20,7 @@ android {
         minSdk 26
         targetSdk 36
         versionCode buildVersionCode
-        versionName "1.0.${buildVersionCode}"
+        versionName buildVersionName
         testInstrumentationRunner 'androidx.test.runner.AndroidJUnitRunner'
         // Package only the native ABI used by modern Android phones; a universal APK
         // bundles every Signal native library and is unnecessarily hundreds of MB.
