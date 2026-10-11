@@ -291,4 +291,14 @@
     <string name="crash_copy">Копировать</string>
     <string name="crash_close">Понятно</string>
     <string name="settings_version">Версия</string>
+    <string name="settings_logs_title">Логи и сбои</string>
+    <string name="settings_logs_hint">Копирование и отправка журнала</string>
+    <string name="logs_title">Журнал приложения</string>
+    <string name="logs_hint">Здесь все события и причины сбоев. «Копировать» — в буфер обмена, «Отправить» — почтой или в мессенджер, текст можно и просто выделить пальцем.</string>
+    <string name="logs_copy">Копировать</string>
+    <string name="logs_share">Отправить</string>
+    <string name="logs_clear">Очистить</string>
+    <string name="logs_copied">Логи скопированы — можно вставлять</string>
+    <string name="logs_copy_failed">Копирование не сработало: выделите текст пальцем и скопируйте вручную</string>
+    <string name="logs_empty">Журнал очищен</string>
 </resources>

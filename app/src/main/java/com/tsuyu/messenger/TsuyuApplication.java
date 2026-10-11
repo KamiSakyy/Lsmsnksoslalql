@@ -20,6 +20,7 @@ public final class TsuyuApplication extends Application {
     public void onCreate() {
         super.onCreate();
         installCrashGuard();
+        TsuyuLogs.init(this);
         FirebaseApp app = FirebaseBootstrap.initialize(this);
         FirebaseMessagingSetup.registerTokenListener(app);
         // Приоритет мобильного трафика: обычный мобильный интернет вместо Wi-Fi.
@@ -31,17 +32,16 @@ public final class TsuyuApplication extends Application {
     }
 
     /**
-     * Приложение больше не закрывается из-за сбоя.
+     * Приложение больше не закрывается из-за сбоя — вообще ни в одном потоке.
      *
-     * <p>Любая ошибка записывается (её потом видно прямо в настройках, там же кнопка
-     * «Копировать»), а главный поток продолжает работу: если экран «сломался», через
-     * пару секунд приложение само возвращается к списку чатов. Так «вылетов» нет даже
-     * при ошибке в отдельном сообщении или в новом оформлении чата.
+     * <p>Любая ошибка (в главном потоке или в фоне) записывается в журнал целиком, а
+     * приложение продолжает работу: если экран «сломался», через пару секунд оно само
+     * возвращается к списку чатов. Причину видно в настройках — кнопка «Логи и сбои»,
+     * оттуда её можно скопировать или отправить.
      */
     private void installCrashGuard() {
-        final Thread.UncaughtExceptionHandler previous = Thread.getDefaultUncaughtExceptionHandler();
         Thread.setDefaultUncaughtExceptionHandler((thread, error) -> {
-            saveCrash(error);
+            TsuyuLogs.crash(this, "поток " + (thread == null ? "?" : thread.getName()), error);
             boolean mainThread = Looper.getMainLooper() != null
                     && thread == Looper.getMainLooper().getThread();
             if (mainThread) {
@@ -63,22 +63,8 @@ public final class TsuyuApplication extends Application {
                 // Важно: не убиваем процесс — приложение продолжает работать.
                 return;
             }
-            if (previous != null) previous.uncaughtException(thread, error);
+            // Фоновые потоки тоже не имеют права ронять приложение: журнал уже записан,
+            // а испорченный поток просто заканчивается.
         });
-    }
-
-    /** Сбой сохраняется на устройстве: причина видна в настройках и после перезапуска. */
-    private void saveCrash(Throwable error) {
-        try {
-            java.io.StringWriter writer = new java.io.StringWriter();
-            if (error != null) error.printStackTrace(new java.io.PrintWriter(writer));
-            String trace = writer.toString();
-            if (trace.length() > 4000) trace = trace.substring(0, 4000);
-            getSharedPreferences(CRASH_PREFS, MODE_PRIVATE).edit()
-                    .putString("last", trace)
-                    .putLong("at", System.currentTimeMillis()).apply();
-        } catch (Throwable ignored) {
-            // Само сохранение причины не имеет права ничего ломать.
-        }
     }
 }

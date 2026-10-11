@@ -290,7 +290,7 @@ public final class MessageListAdapter extends RecyclerView.Adapter<RecyclerView.
         String kind = "text";
         if (payload != null) {
             try { object = new JSONObject(payload); kind = object.optString("kind", "text"); }
-            catch (Exception ignored) { }
+            catch (Throwable ignored) { }
         }
         if (object == null) {
             if ("decrypt_error".equals(payload)) {
@@ -442,7 +442,7 @@ public final class MessageListAdapter extends RecyclerView.Adapter<RecyclerView.
         if (payload == null) return 0;
         try {
             return new org.json.JSONObject(payload).optInt("burn", 0);
-        } catch (Exception ignored) {
+        } catch (Throwable ignored) {
             return 0;
         }
     }
@@ -566,7 +566,7 @@ public final class MessageListAdapter extends RecyclerView.Adapter<RecyclerView.
                 holder.itemView.post(() -> {
                     if (key.equals(holder.circle.getTag(R.id.message_circle))) attachCircleFile(holder, file, key);
                 });
-            } catch (Exception failed) {
+            } catch (Throwable failed) {
                 holder.itemView.post(() -> holder.circleProgress.setVisibility(View.GONE));
             }
         });
@@ -588,7 +588,7 @@ public final class MessageListAdapter extends RecyclerView.Adapter<RecyclerView.
                 player.seekTo(1);
                 holder.circleVideo.start();
                 holder.circlePlay.setVisibility(View.GONE);
-            } catch (Exception ignored) { }
+            } catch (Throwable ignored) { }
         });
         holder.circleVideo.setOnCompletionListener(player -> holder.circlePlay.setVisibility(View.VISIBLE));
         holder.circleVideo.setOnErrorListener((player, what, extra) -> {
@@ -739,12 +739,47 @@ public final class MessageListAdapter extends RecyclerView.Adapter<RecyclerView.
         return current.sentAt - previous.sentAt > GROUP_WINDOW_MS;
     }
 
+    /**
+     * Фото в переписке показываем уменьшенным: большая картинка иначе съедает всю память
+     * телефона. Здесь же ловим и переполнение памяти — такое сообщение не роняет приложение.
+     */
     private static void bindImage(ShapeableImageView image, String encoded) {
         try {
             byte[] bytes = Base64.decode(encoded, Base64.NO_WRAP);
-            Bitmap bitmap = BitmapFactory.decodeByteArray(bytes, 0, bytes.length);
+            Bitmap bitmap = decodeScaled(bytes, 1280);
+            if (bitmap == null) {
+                image.setImageDrawable(null);
+                return;
+            }
             image.setImageBitmap(bitmap);
-        } catch (Exception ignored) { image.setImageDrawable(null); }
+        } catch (Throwable ignored) {
+            try { image.setImageDrawable(null); } catch (Throwable ignoredAgain) { }
+        }
+    }
+
+    /** Уменьшаем картинку ещё до создания: так память не переполнится даже на снимке 4000x3000. */
+    private static Bitmap decodeScaled(byte[] bytes, int maxSide) {
+        BitmapFactory.Options size = new BitmapFactory.Options();
+        size.inJustDecodeBounds = true;
+        BitmapFactory.decodeByteArray(bytes, 0, bytes.length, size);
+        int width = size.outWidth;
+        int height = size.outHeight;
+        if (width <= 0 || height <= 0) return null;
+        int sample = 1;
+        while (width / (sample * 2) >= maxSide || height / (sample * 2) >= maxSide) sample *= 2;
+        BitmapFactory.Options options = new BitmapFactory.Options();
+        options.inSampleSize = sample;
+        options.inPreferredConfig = android.graphics.Bitmap.Config.RGB_565;
+        try {
+            return BitmapFactory.decodeByteArray(bytes, 0, bytes.length, options);
+        } catch (OutOfMemoryError heavy) {
+            options.inSampleSize = sample * 4;
+            try {
+                return BitmapFactory.decodeByteArray(bytes, 0, bytes.length, options);
+            } catch (Throwable ignored) {
+                return null;
+            }
+        }
     }
 
     @Override public int getItemCount() { return rows.size(); }

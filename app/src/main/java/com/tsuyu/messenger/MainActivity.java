@@ -296,7 +296,7 @@ public final class MainActivity extends AppCompatActivity {
                     draftAvatarBase64 = imageToBase64(uri, 512, 280_000);
                     updateDraftAvatarPreview();
                     Toast.makeText(this, "Фото выбрано", Toast.LENGTH_SHORT).show();
-                } catch (Exception e) {
+                } catch (Throwable e) {
                     toast("Не удалось прочитать изображение.");
                 }
             } else {
@@ -323,7 +323,7 @@ public final class MainActivity extends AppCompatActivity {
                 try {
                     NotificationSounds.setSound(this, uri);
                     toast("Звук уведомлений сохранён.");
-                } catch (Exception e) {
+                } catch (Throwable e) {
                     toast("Не удалось сохранить выбранный звук.");
                 }
             } else {
@@ -440,7 +440,7 @@ public final class MainActivity extends AppCompatActivity {
             try {
                 Map<String, Object> bundle = crypto.publicKeyBundle();
                 database.getReference("users").child(uid).child("keys").child("1").setValue(bundle);
-            } catch (Exception e) {
+            } catch (Throwable e) {
                 ui.post(() -> toast("Не удалось подключиться. Проверьте интернет и попробуйте снова."));
             }
         });
@@ -696,14 +696,14 @@ public final class MainActivity extends AppCompatActivity {
             try {
                 DataSnapshot onlineSnapshot = Tasks.await(chatRepository.presence(peerUid).child("online").get(), 10, TimeUnit.SECONDS);
                 online = Boolean.TRUE.equals(onlineSnapshot.getValue(Boolean.class));
-            } catch (Exception ignored) { }
+            } catch (Throwable ignored) { }
             boolean typingNow = false;
             try {
                 DataSnapshot typing = Tasks.await(chatRepository.typing(chatId).child(peerUid).get(), 10, TimeUnit.SECONDS);
                 long typingAt = number(typing.child("at").getValue());
                 typingNow = Boolean.TRUE.equals(typing.child("typing").getValue(Boolean.class))
                         && System.currentTimeMillis() - typingAt <= 5500;
-            } catch (Exception ignored) { }
+            } catch (Throwable ignored) { }
             if (!expectedUid.equals(uid)) return;
             if (last != null) {
                 last.id = meta == null ? null : meta.child("lastMessageId").getValue(String.class);
@@ -735,7 +735,7 @@ public final class MainActivity extends AppCompatActivity {
                 cachePreview(summary);
                 persistSummary(summary);
             }
-        } catch (Exception error) {
+        } catch (Throwable error) {
             android.util.Log.w("Tsuyu", "Could not load chat summary " + chatId, error);
         } finally {
             loadingSummaryIds.remove(chatId);
@@ -745,12 +745,12 @@ public final class MainActivity extends AppCompatActivity {
 
     private DataSnapshot readOptionalSnapshot(DatabaseReference ref) {
         try { return Tasks.await(ref.get(), 10, TimeUnit.SECONDS); }
-        catch (Exception ignored) { return null; }
+        catch (Throwable ignored) { return null; }
     }
 
     private String readOptionalProfileField(DatabaseReference profileRef, String field) {
         try { return Tasks.await(profileRef.child(field).get(), 10, TimeUnit.SECONDS).getValue(String.class); }
-        catch (Exception ignored) { return null; }
+        catch (Throwable ignored) { return null; }
     }
 
     private void watchSummaryRealtime(String chatId, String peerUid) {
@@ -873,7 +873,7 @@ public final class MainActivity extends AppCompatActivity {
                     }
                 }
                 runOnUiThread(this::renderChatList);
-            } catch (Exception ignored) { }
+            } catch (Throwable ignored) { }
             finally { decrypting.remove(key); }
         });
     }
@@ -1035,7 +1035,9 @@ public final class MainActivity extends AppCompatActivity {
 
     private void showChat(String chatId, String peerUid) {
         try {
+            com.tsuyu.messenger.TsuyuLogs.log(this, "ЧАТ", "открываю " + chatId);
             showChatInner(chatId, peerUid);
+            com.tsuyu.messenger.TsuyuLogs.log(this, "ЧАТ", "чат открыт " + chatId);
         } catch (Throwable error) {
             // Переписка не имеет права ронять приложение: показываем причину и остаёмся живы.
             recordChatError(error);
@@ -1049,6 +1051,7 @@ public final class MainActivity extends AppCompatActivity {
     /** Любая ошибка открытия чата остаётся на устройстве и показывается текстом, а не вылетом. */
     private void recordChatError(Throwable error) {
         try {
+            com.tsuyu.messenger.TsuyuLogs.crash(this, "открытие чата", error);
             String reason = error == null ? "неизвестно" : error.getClass().getSimpleName();
             String message = error == null ? "" : String.valueOf(error.getMessage());
             if (!message.isEmpty()) reason = reason + ": " + message;
@@ -1475,7 +1478,7 @@ public final class MainActivity extends AppCompatActivity {
                                 renderMessages(lastRemoteMessages, peerUid);
                             }
                         });
-                    } catch (Exception error) {
+                    } catch (Throwable error) {
                         decryptFailures.add(key);
                         runOnUiThread(() -> {
                             if (renderChatId.equals(activeChatId) && lastRemoteChatId.equals(renderChatId)) {
@@ -1557,7 +1560,7 @@ public final class MainActivity extends AppCompatActivity {
                     if (first != null) showImageDialog(first.optString("data", ""));
                 }
             }
-        } catch (Exception ignored) { }
+        } catch (Throwable ignored) { }
     }
 
     private void showVideoDialog(String encoded, String mime, boolean circle) {
@@ -1610,7 +1613,7 @@ public final class MainActivity extends AppCompatActivity {
                         }
                     });
                 });
-            } catch (Exception error) { runOnUiThread(() -> toast("Не удалось открыть видео.")); }
+            } catch (Throwable error) { runOnUiThread(() -> toast("Не удалось открыть видео.")); }
         });
     }
 
@@ -1629,9 +1632,9 @@ public final class MainActivity extends AppCompatActivity {
                         audioPlayer.setOnPreparedListener(android.media.MediaPlayer::start);
                         audioPlayer.setOnCompletionListener(mp -> { mp.release(); audioPlayer = null; });
                         audioPlayer.prepareAsync();
-                    } catch (Exception e) { toast("Не удалось воспроизвести аудио."); }
+                    } catch (Throwable e) { toast("Не удалось воспроизвести аудио."); }
                 });
-            } catch (Exception e) { runOnUiThread(() -> toast("Файл повреждён.")); }
+            } catch (Throwable e) { runOnUiThread(() -> toast("Файл повреждён.")); }
         });
     }
 
@@ -1702,7 +1705,7 @@ public final class MainActivity extends AppCompatActivity {
     private void editMessage(ChatMessage message, String payload) {
         if (payload == null) { toast("Сообщение загружается. Попробуйте ещё раз чуть позже."); return; }
         String old;
-        try { old = new JSONObject(payload).optString("text", ""); } catch (Exception e) { toast("Можно редактировать только текст."); return; }
+        try { old = new JSONObject(payload).optString("text", ""); } catch (Throwable e) { toast("Можно редактировать только текст."); return; }
         View editor = getLayoutInflater().inflate(R.layout.dialog_edit_message, null, false);
         TextInputEditText edit = editor.findViewById(R.id.edit_message_input);
         edit.setText(old);
@@ -1712,7 +1715,7 @@ public final class MainActivity extends AppCompatActivity {
                     chatRepository.editText(activeChatId, message.id, uid, activePeerUid, crypto, text, new ChatRepository.Result<Void>() {
                         @Override public void success(Void ignored) {
                             try { JSONObject json = new JSONObject().put("version", 1).put("kind", "text").put("text", text); messageCache.put(activeChatId, message.id, json.toString()); }
-                            catch (Exception ignored2) { }
+                            catch (Throwable ignored2) { }
                         }
                         @Override public void error(String error) { toast(error); }
                     });
@@ -1757,7 +1760,7 @@ public final class MainActivity extends AppCompatActivity {
             chatRepository.setTyping(chatId, senderUid, false);
             unreadDividerAt = 0;
             enqueueOptimisticMessage(chatId, peerUid, senderUid, payloadJson);
-        } catch (Exception error) {
+        } catch (Throwable error) {
             toast("Не удалось подготовить сообщение.");
         }
     }
@@ -1864,7 +1867,7 @@ public final class MainActivity extends AppCompatActivity {
                             toast(error);
                         }
                     });
-        } catch (Exception error) {
+        } catch (Throwable error) {
             local.pending = false;
             local.failed = true;
             if (store != null && local.id != null) store.updateState(local.id, TsuyuStore.STATE_FAILED);
@@ -2107,20 +2110,20 @@ public final class MainActivity extends AppCompatActivity {
                 @SuppressWarnings("unchecked") Map<String, Object> bundle = (Map<String, Object>) snapshot.getValue();
                 peerBundle[0] = bundle;
                 fingerprint.setText(bundle == null ? "Код безопасности недоступен" : SignalE2ee.identityFingerprint(bundle));
-            } catch (Exception error) { fingerprint.setText("Не удалось загрузить код безопасности."); }
+            } catch (Throwable error) { fingerprint.setText("Не удалось загрузить код безопасности."); }
         });
         trustKey.setOnClickListener(v -> {
             if (peerBundle[0] == null || accountCrypto == null) { toast("Код безопасности пока недоступен."); return; }
             String shownFingerprint;
             try { shownFingerprint = SignalE2ee.identityFingerprint(peerBundle[0]); }
-            catch (Exception error) { toast("Не удалось проверить код безопасности."); return; }
+            catch (Throwable error) { toast("Не удалось проверить код безопасности."); return; }
             new AlertDialog.Builder(this).setTitle("Проверка кода безопасности")
                     .setMessage("Сравните этот код с собеседником лично или по телефону:\n\n" + shownFingerprint + "\n\nПодтвердите только в том случае, если коды совпадают.")
                     .setNegativeButton("Отмена", null).setPositiveButton("Совпадает", (dialog, which) -> cryptoQueue.execute(() -> {
                         try {
                             accountCrypto.trustRemoteIdentity(profilePeerUid, peerBundle[0]);
                             runOnUiThread(() -> toast("Код безопасности подтверждён."));
-                        } catch (Exception error) { runOnUiThread(() -> toast("Не удалось подтвердить код безопасности.")); }
+                        } catch (Throwable error) { runOnUiThread(() -> toast("Не удалось подтвердить код безопасности.")); }
                     })).show();
         });
 
@@ -2163,7 +2166,7 @@ public final class MainActivity extends AppCompatActivity {
                         .append(payload == null ? "[Сообщение недоступно]" : textFromPayload(payload)).append("\n\n");
             }
             Intent intent = new Intent(Intent.ACTION_CREATE_DOCUMENT).setType("text/plain").addCategory(Intent.CATEGORY_OPENABLE).putExtra(Intent.EXTRA_TITLE, "Tsuyu-chat.txt");
-            try { startActivityForResult(intent, 701); } catch (Exception e) { toast("Не удалось открыть проводник."); }
+            try { startActivityForResult(intent, 701); } catch (Throwable e) { toast("Не удалось открыть проводник."); }
             exportText = text.toString();
         }).addOnFailureListener(e -> toast("Не удалось загрузить переписку."));
     }
@@ -2177,7 +2180,7 @@ public final class MainActivity extends AppCompatActivity {
             try (java.io.OutputStream out = getContentResolver().openOutputStream(data.getData())) {
                 if (out != null) out.write(exportText.getBytes(StandardCharsets.UTF_8));
                 toast("Экспорт сохранён.");
-            } catch (Exception e) { toast("Не удалось записать файл."); }
+            } catch (Throwable e) { toast("Не удалось записать файл."); }
         }
     }
 
@@ -2255,7 +2258,7 @@ public final class MainActivity extends AppCompatActivity {
             voiceRecorder.setOutputFile(voiceFile.getAbsolutePath());
             voiceRecorder.prepare(); voiceRecorder.start();
             toast("Запись идёт. Нажмите «+» → «Записать голосовое» ещё раз, чтобы отправить.");
-        } catch (Exception e) {
+        } catch (Throwable e) {
             if (voiceRecorder != null) { voiceRecorder.release(); voiceRecorder = null; }
             toast("Не удалось начать запись. Проверьте разрешение микрофона.");
         }
@@ -2274,7 +2277,7 @@ public final class MainActivity extends AppCompatActivity {
                         .put("mime", "audio/mp4").put("data", base64).toString();
                 file.delete();
                 runOnUiThread(() -> enqueueOptimisticMessage(chatId, peerUid, senderUid, payload));
-            } catch (Exception error) {
+            } catch (Throwable error) {
                 runOnUiThread(() -> toast("Не удалось подготовить голосовое сообщение."));
             }
         });
@@ -2303,7 +2306,7 @@ public final class MainActivity extends AppCompatActivity {
                 pendingBurnSeconds = 0;
                 String payload = media.toString();
                 runOnUiThread(() -> enqueueOptimisticMessage(chatId, peerUid, senderUid, payload));
-            } catch (Exception error) {
+            } catch (Throwable error) {
                 runOnUiThread(() -> toast("Файл слишком большой или не читается."));
             }
         });
@@ -2323,7 +2326,7 @@ public final class MainActivity extends AppCompatActivity {
                 }
                 String payload = new JSONObject().put("version", 1).put("kind", "collage").put("items", items).toString();
                 runOnUiThread(() -> enqueueOptimisticMessage(chatId, peerUid, senderUid, payload));
-            } catch (Exception error) {
+            } catch (Throwable error) {
                 runOnUiThread(() -> toast("Не удалось подготовить коллаж."));
             }
         });
@@ -2343,7 +2346,7 @@ public final class MainActivity extends AppCompatActivity {
             dialog.setContentView(content);
             dialog.show();
             if (dialog.getWindow() != null) dialog.getWindow().setLayout(-1, -1);
-        } catch (Exception ignored) { toast("Не удалось открыть изображение."); }
+        } catch (Throwable ignored) { toast("Не удалось открыть изображение."); }
     }
 
     private void saveImage(Bitmap bitmap) {
@@ -2356,7 +2359,7 @@ public final class MainActivity extends AppCompatActivity {
             if (uri == null) throw new IllegalStateException();
             try (java.io.OutputStream output = getContentResolver().openOutputStream(uri)) { bitmap.compress(Bitmap.CompressFormat.JPEG, 92, output); }
             toast("Фото сохранено.");
-        } catch (Exception e) { toast("Не удалось сохранить фото."); }
+        } catch (Throwable e) { toast("Не удалось сохранить фото."); }
     }
 
     private void showSettings() {
@@ -2369,6 +2372,8 @@ public final class MainActivity extends AppCompatActivity {
         if (versionView != null) {
             versionView.setText(versionLabel());
         }
+        View logsRow = root.findViewById(R.id.settings_logs);
+        if (logsRow != null) logsRow.setOnClickListener(v -> showLogsDialog(getString(R.string.logs_title)));
         View wallpaperRow = root.findViewById(R.id.settings_wallpaper);
         if (wallpaperRow != null) wallpaperRow.setOnClickListener(v -> showWallpaperDialog(null, true));
 
@@ -2520,7 +2525,7 @@ public final class MainActivity extends AppCompatActivity {
         sound.setOnCheckedChangeListener((button, checked) -> NotificationSounds.setEnabled(this, checked));
         choose.setOnClickListener(v -> {
             try { pendingMediaKind = "sound"; documentPicker.launch(new String[]{"audio/mpeg", "audio/*"}); }
-            catch (Exception error) { toast("Не удалось открыть выбор файла."); }
+            catch (Throwable error) { toast("Не удалось открыть выбор файла."); }
         });
         new AlertDialog.Builder(this).setTitle("Уведомления").setView(body).setNegativeButton("Закрыть", null).show();
     }
@@ -2539,7 +2544,7 @@ public final class MainActivity extends AppCompatActivity {
                         ClipData.newPlainText("Код безопасности", safetyCode));
                 toast("Код скопирован.");
             });
-        } catch (Exception error) {
+        } catch (Throwable error) {
             fingerprint.setText("Не удалось загрузить код безопасности.");
             copyPublic.setEnabled(false);
         }
@@ -2558,7 +2563,7 @@ public final class MainActivity extends AppCompatActivity {
                 Map<String, Object> bundle = crypto.publicKeyBundle();
                 Tasks.await(database.getReference("users").child(uid).child("keys").child("1").setValue(bundle));
                 runOnUiThread(() -> toast("Код безопасности обновлён. Попросите собеседника сверить его."));
-            } catch (Exception error) { runOnUiThread(() -> toast("Не удалось обновить код безопасности.")); }
+            } catch (Throwable error) { runOnUiThread(() -> toast("Не удалось обновить код безопасности.")); }
         });
     }
 
@@ -2595,7 +2600,7 @@ public final class MainActivity extends AppCompatActivity {
             image.setImageBitmap(bitmap);
             image.setVisibility(View.VISIBLE);
             fallback.setVisibility(View.GONE);
-        } catch (Exception error) {
+        } catch (Throwable error) {
             image.setImageDrawable(null);
             image.setVisibility(View.GONE);
             fallback.setVisibility(View.VISIBLE);
@@ -2661,7 +2666,7 @@ public final class MainActivity extends AppCompatActivity {
             if ("circle".equals(kind)) return "Кружочек";
             if ("sticker".equals(kind)) return "Стикер";
             return "Сообщение";
-        } catch (Exception e) { return "Сообщение"; }
+        } catch (Throwable e) { return "Сообщение"; }
     }
 
     private String textFromPayload(String payload) {
@@ -2677,7 +2682,7 @@ public final class MainActivity extends AppCompatActivity {
             if ("circle".equals(kind)) return "Кружочек";
             if ("sticker".equals(kind)) return "Стикер";
             return "Сообщение";
-        } catch (Exception e) { return "Сообщение"; }
+        } catch (Throwable e) { return "Сообщение"; }
     }
 
     private void detachChatListeners() {
@@ -2744,38 +2749,61 @@ public final class MainActivity extends AppCompatActivity {
     }
 
     /** Причина последнего сбоя — прямо на экране: её можно скопировать и прислать. */
+    /** Окно с журналом: сбой и все события можно скопировать или отправить без компьютера. */
     private void showCrashReportIfAny() {
         if (isFinishing() || isDestroyed()) return;
         try {
             android.content.SharedPreferences prefs = getSharedPreferences("tsuyu_crash", MODE_PRIVATE);
-            String trace = prefs.getString("last", null);
             long when = prefs.getLong("at", 0L);
-            if (trace == null || trace.isEmpty()) return;
-            // Показываем один раз: чтобы окно не всплывало при каждом возврате в список.
-            prefs.edit().remove("last").apply();
-            final String report = trace;
-            TextView body = new TextView(this);
-            body.setText(report);
-            body.setTextSize(11f);
-            body.setTypeface(android.graphics.Typeface.MONOSPACE);
-            body.setTextColor(getResources().getColor(R.color.tsuyu_white, getTheme()));
-            body.setPadding(dp(16), dp(12), dp(16), dp(12));
-            android.widget.ScrollView scroll = new android.widget.ScrollView(this);
-            scroll.addView(body);
-            new AlertDialog.Builder(this)
-                    .setTitle(getString(R.string.crash_title) + (when > 0 ? " · " + scheduleTimeLabel(when) : ""))
-                    .setMessage(getString(R.string.crash_hint))
-                    .setView(scroll)
-                    .setPositiveButton(R.string.crash_close, null)
-                    .setNeutralButton(R.string.crash_copy, (dialog, which) -> {
-                        try {
-                            ((android.content.ClipboardManager) getSystemService(CLIPBOARD_SERVICE))
-                                    .setPrimaryClip(android.content.ClipData.newPlainText("Tsuyu crash", report));
-                            toast("Скопировано");
-                        } catch (Throwable ignored) { }
-                    }).show();
+            if (when <= 0L || prefs.getString("last", null) == null) return;
+            // Показываем один раз на каждый сбой, а не при каждом возврате в список чатов.
+            if (when <= prefs.getLong("shown", 0L)) return;
+            prefs.edit().putLong("shown", when).apply();
+            showLogsDialog(getString(R.string.crash_title) + " · " + scheduleTimeLabel(when));
         } catch (Throwable ignored) { }
     }
+
+    /** Журнал приложения: полностью на экране, с копированием и отправкой. */
+    private void showLogsDialog(String title) {
+        if (isFinishing() || isDestroyed()) return;
+        try {
+            View content = getLayoutInflater().inflate(R.layout.dialog_logs, null);
+            TextView body = content.findViewById(R.id.dialog_logs_text);
+            if (body != null) body.setText(com.tsuyu.messenger.TsuyuLogs.read(this));
+            final AlertDialog dialog = new AlertDialog.Builder(this)
+                    .setTitle(title == null ? getString(R.string.logs_title) : title)
+                    .setView(content)
+                    .setNegativeButton(R.string.crash_close, null)
+                    .create();
+            View copy = content.findViewById(R.id.dialog_logs_copy);
+            if (copy != null) copy.setOnClickListener(v -> {
+                String text = com.tsuyu.messenger.TsuyuLogs.read(this);
+                if (com.tsuyu.messenger.TsuyuLogs.copy(this, text)) toast(getString(R.string.logs_copied));
+                else toast(getString(R.string.logs_copy_failed));
+            });
+            View share = content.findViewById(R.id.dialog_logs_share);
+            if (share != null) share.setOnClickListener(v -> {
+                try {
+                    startActivity(com.tsuyu.messenger.TsuyuLogs.share(com.tsuyu.messenger.TsuyuLogs.read(this)));
+                } catch (Throwable error) {
+                    toast(getString(R.string.logs_copy_failed));
+                }
+            });
+            View clear = content.findViewById(R.id.dialog_logs_clear);
+            if (clear != null) clear.setOnClickListener(v -> {
+                com.tsuyu.messenger.TsuyuLogs.clear(this);
+                if (body != null) body.setText(com.tsuyu.messenger.TsuyuLogs.read(this));
+                toast(getString(R.string.logs_empty));
+            });
+            dialog.show();
+        } catch (Throwable error) {
+            com.tsuyu.messenger.TsuyuLogs.crash(this, "окно журнала", error);
+            // Если окно не получилось — хотя бы сразу кладём журнал в буфер обмена.
+            com.tsuyu.messenger.TsuyuLogs.copy(this, com.tsuyu.messenger.TsuyuLogs.read(this));
+            toast(getString(R.string.logs_copied));
+        }
+    }
+
 
     private void markNoActiveChat() {
         getSharedPreferences("tsuyu_settings", MODE_PRIVATE).edit().remove("active_chat").apply();
@@ -2789,12 +2817,12 @@ public final class MainActivity extends AppCompatActivity {
             Intent service = new Intent(this, com.tsuyu.messenger.notifications.TsuyuSyncService.class)
                     .putExtra(com.tsuyu.messenger.notifications.TsuyuSyncService.EXTRA_UID, uid);
             ContextCompat.startForegroundService(this, service);
-        } catch (Exception e) { toast("Фоновая синхронизация недоступна. Проверьте уведомления в настройках Android."); }
+        } catch (Throwable e) { toast("Фоновая синхронизация недоступна. Проверьте уведомления в настройках Android."); }
     }
     private void stopBackgroundSync() {
         getSharedPreferences("tsuyu_settings", MODE_PRIVATE).edit().remove("sync_uid").apply();
         try { stopService(new Intent(this, com.tsuyu.messenger.notifications.TsuyuSyncService.class)); }
-        catch (Exception ignored) { }
+        catch (Throwable ignored) { }
     }
     private void detachRealtimeListeners() {
         detachUserChatsListener();
@@ -2869,7 +2897,7 @@ public final class MainActivity extends AppCompatActivity {
                 persistSummary(summary);
             }
             runOnUiThread(this::renderChatList);
-        } catch (Exception error) {
+        } catch (Throwable error) {
             android.util.Log.w("Tsuyu", "Could not refresh chat summary " + chatId, error);
         } finally {
             loadingSummaryIds.remove(chatId);
@@ -2906,7 +2934,7 @@ public final class MainActivity extends AppCompatActivity {
     private static String kindFromJson(String payload) {
         if (payload == null) return null;
         try { return new JSONObject(payload).optString("kind", null); }
-        catch (Exception ignored) { return null; }
+        catch (Throwable ignored) { return null; }
     }
 
     private static String dayKey(long at) {
@@ -3641,7 +3669,7 @@ public final class MainActivity extends AppCompatActivity {
             if (files != null) for (java.io.File file : files) bytes += file.length();
             if (bytes <= 0) return "0 МБ";
             return String.format(java.util.Locale.ROOT, "%.1f МБ", bytes / 1048576.0);
-        } catch (Exception e) {
+        } catch (Throwable e) {
             return "0 МБ";
         }
     }
@@ -3652,7 +3680,7 @@ public final class MainActivity extends AppCompatActivity {
                 java.io.File dir = new java.io.File(getCacheDir(), "tsuyu-media");
                 java.io.File[] files = dir.listFiles();
                 if (files != null) for (java.io.File file : files) file.delete();
-            } catch (Exception ignored) { }
+            } catch (Throwable ignored) { }
             runOnUiThread(() -> {
                 toast(getString(R.string.drawer_cache_cleared));
                 TextView cache = drawerRoot == null ? null : drawerRoot.findViewById(R.id.drawer_cache_label);
@@ -3714,7 +3742,7 @@ public final class MainActivity extends AppCompatActivity {
                         .put("mime", "video/mp4").put("data", base64).toString();
                 file.delete();
                 runOnUiThread(() -> enqueueOptimisticMessage(chatId, peerUid, senderUid, payload));
-            } catch (Exception error) {
+            } catch (Throwable error) {
                 file.delete();
                 runOnUiThread(() -> toast(getString(R.string.circle_failed)));
             }
@@ -3795,7 +3823,7 @@ public final class MainActivity extends AppCompatActivity {
             pendingBurnSeconds = 0;
             enqueueOptimisticMessage(activeChatId, activePeerUid, uid, payload.toString());
             toast(getString(R.string.poll_created));
-        } catch (Exception ignored) { }
+        } catch (Throwable ignored) { }
     }
 
     /** Голоса лежат в базе: chats/{chatId}/polls/{messageId}/{uid} = номер варианта. */
@@ -3846,7 +3874,7 @@ public final class MainActivity extends AppCompatActivity {
                                 .child(messageId).child(uid).setValue(which);
                         toast(getString(R.string.poll_voted));
                     }).show();
-        } catch (Exception ignored) { }
+        } catch (Throwable ignored) { }
     }
 
     /** Сгорание: таймер относится к следующему отправленному сообщению. */
@@ -3882,7 +3910,7 @@ public final class MainActivity extends AppCompatActivity {
         if (payload == null) return 0;
         try {
             return new JSONObject(payload).optInt("burn", 0);
-        } catch (Exception ignored) {
+        } catch (Throwable ignored) {
             return 0;
         }
     }
@@ -3930,7 +3958,7 @@ public final class MainActivity extends AppCompatActivity {
                         pendingBurnSeconds = 0;
                         if (composer != null) composer.setText("");
                         toast(getString(R.string.schedule_planned, scheduleTimeLabel(at)));
-                    } catch (Exception ignored) { }
+                    } catch (Throwable ignored) { }
                 }).show();
     }
 
@@ -3997,7 +4025,7 @@ public final class MainActivity extends AppCompatActivity {
                     .put("username", contact.username == null ? "" : contact.username);
             enqueueOptimisticMessage(activeChatId, activePeerUid, uid, payload.toString());
             toast(getString(R.string.contact_sent));
-        } catch (Exception ignored) { }
+        } catch (Throwable ignored) { }
     }
 
     // ---- Обои ----
@@ -4030,7 +4058,7 @@ public final class MainActivity extends AppCompatActivity {
                     if (activeChatId != null) applyChatWallpaper(activeChatId);
                     toast(getString(R.string.wallpaper_set));
                 });
-            } catch (Exception error) {
+            } catch (Throwable error) {
                 runOnUiThread(() -> toast("Не удалось прочитать изображение."));
             }
         });
@@ -4059,7 +4087,7 @@ public final class MainActivity extends AppCompatActivity {
             android.graphics.drawable.Drawable[] layers = {
                     new android.graphics.drawable.ColorDrawable(0xFF0A0A0C), photo};
             messageList.setBackground(new android.graphics.drawable.LayerDrawable(layers));
-        } catch (Exception ignored) {
+        } catch (Throwable ignored) {
             messageList.setBackground(null);
         }
     }
@@ -4114,7 +4142,7 @@ public final class MainActivity extends AppCompatActivity {
                                         .put("mime", "image/png")
                                         .put("data", bitmapToBase64(result));
                                 enqueueOptimisticMessage(activeChatId, activePeerUid, uid, payload.toString());
-                            } catch (Exception ignored) { }
+                            } catch (Throwable ignored) { }
                         }).show();
             });
         });
@@ -4139,7 +4167,7 @@ public final class MainActivity extends AppCompatActivity {
             android.graphics.Bitmap bitmap = android.graphics.BitmapFactory.decodeStream(second, null, decode);
             second.close();
             return bitmap;
-        } catch (Exception ignored) {
+        } catch (Throwable ignored) {
             return null;
         }
     }
@@ -4263,7 +4291,7 @@ public final class MainActivity extends AppCompatActivity {
                         @Override public void success(String value) { }
                         @Override public void error(String message) { }
                     });
-        } catch (Exception ignored) { }
+        } catch (Throwable ignored) { }
     }
 
     private void toast(String text) { if (Looper.myLooper() == Looper.getMainLooper()) Toast.makeText(this, text, Toast.LENGTH_SHORT).show(); else runOnUiThread(() -> Toast.makeText(this, text, Toast.LENGTH_SHORT).show()); }
