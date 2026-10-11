@@ -3,6 +3,7 @@ name: Android APK
 on:
   push:
     branches:
+      - arena/767066c4-lsmsnksoslalql
       - arena/701f0ba0-lsmsnksoslalql
     paths-ignore:
       - 'handoff/**'
@@ -17,7 +18,7 @@ env:
 
 jobs:
   build:
-    if: github.ref == 'refs/heads/arena/701f0ba0-lsmsnksoslalql'
+    if: github.ref == 'refs/heads/arena/767066c4-lsmsnksoslalql' || github.ref == 'refs/heads/arena/701f0ba0-lsmsnksoslalql'
     name: Build Tsuyu (Android 8–16)
     runs-on: ubuntu-latest
     steps:
@@ -216,4 +217,4 @@ jobs:
             exit 1
           fi
           git commit -m "Archive Tsuyu v${TSUYU_VERSION_NAME} Android release"
-          git push origin HEAD:arena/701f0ba0-lsmsnksoslalql
+          git push origin "HEAD:${GITHUB_REF_NAME}"
