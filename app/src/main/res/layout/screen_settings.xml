@@ -603,8 +603,6 @@
                 android:layout_height="52dp"
                 android:layout_marginTop="@dimen/space_2xl"
                 android:text="Выйти из аккаунта" />
-        </LinearLayout>
-    </androidx.core.widget.NestedScrollView>
 
             <com.google.android.material.card.MaterialCardView
                 style="@style/Widget.Tsuyu.Card"
@@ -665,5 +663,6 @@
                 android:gravity="center"
                 android:text="@string/settings_version"
                 android:textAppearance="@style/TextAppearance.Tsuyu.Timestamp" />
-
+        </LinearLayout>
+    </androidx.core.widget.NestedScrollView>
 </LinearLayout>

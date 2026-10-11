@@ -403,7 +403,7 @@ public final class MainActivity extends AppCompatActivity {
         if (chatId != null && peerUid != null) {
             intent.removeExtra("open_chat_id");
             intent.removeExtra("open_peer_uid");
-            ui.postDelayed(() -> showChat(chatId, peerUid), 350);
+            ui.post(() -> showChat(chatId, peerUid));
         }
     }
 
@@ -994,14 +994,10 @@ public final class MainActivity extends AppCompatActivity {
                 }));
         searchResults.setAdapter(profileSearchAdapter);
         searchInput.addTextChangedListener(new TextWatcher() {
-            private final Handler debounce = new Handler(Looper.getMainLooper());
-            private Runnable pending;
             @Override public void beforeTextChanged(CharSequence s, int start, int count, int after) { }
             @Override public void onTextChanged(CharSequence s, int start, int before, int count) {
-                if (pending != null) debounce.removeCallbacks(pending);
-                String query = s == null ? "" : s.toString();
-                pending = () -> runSearch(query);
-                debounce.postDelayed(pending, 260);
+                // Поиск идёт сразу, без ожидания: локальные данные отвечают мгновенно.
+                runSearch(s == null ? "" : s.toString());
             }
             @Override public void afterTextChanged(Editable s) { }
         });
@@ -1446,6 +1442,22 @@ public final class MainActivity extends AppCompatActivity {
             if (!visibleIds.add(cachedMessage.id)) continue;
             visible.add(cachedMessage);
         }
+        // Одна запись на сообщение: даже если оно пришло и из сети, и из кеша, и как
+        // «отправляемое», на экране оно будет один раз.
+        java.util.LinkedHashMap<String, ChatMessage> unique = new java.util.LinkedHashMap<>();
+        for (ChatMessage message : visible) {
+            String uniqueKey = message.id != null && !message.id.isEmpty() ? "id:" + message.id
+                    : message.clientId != null && !message.clientId.isEmpty() ? "client:" + message.clientId
+                    : "at:" + message.sentAt + ":" + message.senderUid;
+            ChatMessage known = unique.get(uniqueKey);
+            if (known == null) {
+                unique.put(uniqueKey, message);
+            } else if (known.localPayload == null && message.localPayload != null) {
+                // Из двух копий оставляем ту, что уже расшифрована.
+                unique.put(uniqueKey, message);
+            }
+        }
+        visible = new ArrayList<>(unique.values());
         visible.sort((first, second) -> {
             int time = Long.compare(first.sentAt, second.sentAt);
             if (time != 0) return time;
@@ -1495,18 +1507,12 @@ public final class MainActivity extends AppCompatActivity {
                         String text = com.tsuyu.messenger.data.TsuyuMedia.spill(this,
                                 new String(plain, StandardCharsets.UTF_8));
                         if (activeCache != null) activeCache.put(renderChatId, messageId, text);
-                        runOnUiThread(() -> {
-                            if (renderChatId.equals(activeChatId) && lastRemoteChatId.equals(renderChatId)) {
-                                renderMessages(lastRemoteMessages, peerUid);
-                            }
-                        });
+                        // Один общий запрос на перерисовку: если расшифровались сразу несколько
+                        // сообщений, экран обновится один раз и мгновенно.
+                        requestMessageRender();
                     } catch (Throwable error) {
                         decryptFailures.add(key);
-                        runOnUiThread(() -> {
-                            if (renderChatId.equals(activeChatId) && lastRemoteChatId.equals(renderChatId)) {
-                                renderMessages(lastRemoteMessages, peerUid);
-                            }
-                        });
+                        requestMessageRender();
                     } finally { decrypting.remove(key); }
                 });
             }
@@ -2837,6 +2843,22 @@ public final class MainActivity extends AppCompatActivity {
         }
     }
 
+
+    /**
+     * Просьба перерисовать переписку. Несколько событий подряд (расшифровка, реакции,
+     * опрос) собираются в одну перерисовку — экран обновляется ровно один раз.
+     */
+    private void requestMessageRender() {
+        ui.removeCallbacks(renderPending);
+        ui.post(renderPending);
+    }
+
+    private final Runnable renderPending = () -> {
+        String chatId = activeChatId;
+        if (chatId == null || !"chat".equals(page)) return;
+        if (!chatId.equals(lastRemoteChatId)) return;
+        renderMessages(lastRemoteMessages, activePeerUid);
+    };
 
     private void markNoActiveChat() {
         getSharedPreferences("tsuyu_settings", MODE_PRIVATE).edit().remove("active_chat").apply();

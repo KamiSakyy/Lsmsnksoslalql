@@ -14,7 +14,6 @@ import android.widget.ProgressBar;
 import android.widget.TextView;
 
 import androidx.annotation.NonNull;
-import androidx.recyclerview.widget.DiffUtil;
 import androidx.recyclerview.widget.GridLayoutManager;
 import androidx.recyclerview.widget.RecyclerView;
 
@@ -158,21 +157,14 @@ public final class MessageListAdapter extends RecyclerView.Adapter<RecyclerView.
         }
     }
 
+    /**
+     * Переписка перерисовывается одним движением и мгновенно, без анимаций и без «умных»
+     * сравнений: так не бывает ни дублей, ни пропавших сообщений.
+     */
     public void submit(List<Row> next) {
-        final List<Row> incoming = new ArrayList<>(next);
-        DiffUtil.DiffResult result = DiffUtil.calculateDiff(new DiffUtil.Callback() {
-            @Override public int getOldListSize() { return rows.size(); }
-            @Override public int getNewListSize() { return incoming.size(); }
-            @Override public boolean areItemsTheSame(int oldPos, int newPos) {
-                return rowKey(rows.get(oldPos)).equals(rowKey(incoming.get(newPos)));
-            }
-            @Override public boolean areContentsTheSame(int oldPos, int newPos) {
-                return sameContents(rows.get(oldPos), incoming.get(newPos));
-            }
-        });
         rows.clear();
-        rows.addAll(incoming);
-        result.dispatchUpdatesTo(this);
+        if (next != null) rows.addAll(next);
+        notifyDataSetChanged();
     }
 
     private static String rowKey(Row row) {

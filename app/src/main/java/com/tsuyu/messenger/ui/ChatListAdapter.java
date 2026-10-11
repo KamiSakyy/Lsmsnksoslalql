@@ -12,7 +12,6 @@ import android.widget.ImageView;
 import android.widget.TextView;
 
 import androidx.annotation.NonNull;
-import androidx.recyclerview.widget.DiffUtil;
 import androidx.recyclerview.widget.RecyclerView;
 
 import com.google.android.material.imageview.ShapeableImageView;
@@ -47,22 +46,11 @@ public final class ChatListAdapter extends RecyclerView.Adapter<ChatListAdapter.
     public ChatListAdapter(Listener listener) { this.listener = listener; }
 
     public void submit(List<ChatSummary> summaries) {
-        final List<ChatSummary> next = new ArrayList<>(summaries);
-        DiffUtil.DiffResult result = DiffUtil.calculateDiff(new DiffUtil.Callback() {
-            @Override public int getOldListSize() { return items.size(); }
-            @Override public int getNewListSize() { return next.size(); }
-            @Override public boolean areItemsTheSame(int oldPos, int newPos) {
-                String first = items.get(oldPos).chatId;
-                String second = next.get(newPos).chatId;
-                return first != null && first.equals(second);
-            }
-            @Override public boolean areContentsTheSame(int oldPos, int newPos) {
-                return sameContents(items.get(oldPos), next.get(newPos));
-            }
-        });
+        // Список чатов показывается мгновенно: без анимаций и без «умных» сравнений,
+        // поэтому строки не задваиваются.
         items.clear();
-        items.addAll(next);
-        result.dispatchUpdatesTo(this);
+        if (summaries != null) items.addAll(summaries);
+        notifyDataSetChanged();
     }
 
     /** Chat id at a list position, used by swipe gestures. */
