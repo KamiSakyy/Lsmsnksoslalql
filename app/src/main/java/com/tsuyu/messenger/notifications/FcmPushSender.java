@@ -81,6 +81,40 @@ public final class FcmPushSender {
         }
     }
 
+    /**
+     * Звонок — единственный случай, когда ждать склейки нельзя: страница о вызове
+     * уходит на устройство собеседника немедленно, с коротким сроком жизни.
+     */
+    public static void pushCall(Context context, String chatId, String callId, String senderUid,
+                                String recipientUid, boolean video, String type) {
+        if (context == null || chatId == null || callId == null || recipientUid == null) return;
+        executor.execute(() -> deliverCall(chatId, callId, senderUid, recipientUid, video, type));
+    }
+
+    private static void deliverCall(String chatId, String callId, String senderUid,
+                                    String recipientUid, boolean video, String type) {
+        try {
+            JSONObject account = serviceAccount();
+            String token = accessToken(account);
+            String projectId = account.optString("project_id", "");
+            if (projectId.isEmpty()) return;
+            JSONObject data = new JSONObject();
+            data.put("type", type == null ? "call" : type);
+            data.put("chatId", chatId);
+            data.put("callId", callId);
+            data.put("senderUid", senderUid);
+            data.put("video", video ? "1" : "0");
+            String senderName = displayName(token, senderUid);
+            if (senderName != null && !senderName.isEmpty()) data.put("senderName", senderName);
+            for (String device : deviceTokens(token, recipientUid)) {
+                int code = postData(projectId, token, device, data, "45s");
+                if (code == 404 || code == 410) deleteToken(token, recipientUid, device);
+            }
+        } catch (Exception ignored) {
+            // Пуш — вспомогательный канал: сам звонок уже записан в базу.
+        }
+    }
+
     private static final class Pending {
         final String chatId;
         volatile String senderUid;
@@ -137,11 +171,15 @@ public final class FcmPushSender {
         data.put("senderUid", senderUid);
         data.put("messageId", messageId);
         if (senderName != null && !senderName.isEmpty()) data.put("senderName", senderName);
+        return postData(projectId, accessToken, device, data, TTL);
+    }
 
+    private static int postData(String projectId, String accessToken, String device, JSONObject data,
+                                String ttl) throws Exception {
         JSONObject android = new JSONObject();
         // High priority wakes a backgrounded app so the notification appears at once.
         android.put("priority", "HIGH");
-        android.put("ttl", TTL);
+        android.put("ttl", ttl);
 
         JSONObject message = new JSONObject();
         message.put("token", device);

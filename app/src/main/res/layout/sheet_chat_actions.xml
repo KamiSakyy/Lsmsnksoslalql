@@ -32,6 +32,100 @@
         android:textAppearance="@style/TextAppearance.Tsuyu.RowSubtitle" />
 
     <LinearLayout
+        android:id="@+id/chat_menu_call"
+        android:layout_width="match_parent"
+        android:layout_height="@dimen/row_sheet_action_height"
+        android:background="?attr/selectableItemBackground"
+        android:clickable="true"
+        android:focusable="true"
+        android:gravity="center_vertical"
+        android:orientation="horizontal">
+
+        <FrameLayout
+            android:layout_width="@dimen/row_icon_tile"
+            android:layout_height="@dimen/row_icon_tile"
+            android:background="@drawable/bg_menu_icon">
+
+            <ImageView
+                android:layout_width="@dimen/row_icon_size"
+                android:layout_height="@dimen/row_icon_size"
+                android:layout_gravity="center"
+                android:contentDescription="@string/call_menu_audio"
+                android:src="@drawable/ic_call"
+                app:tint="@color/tsuyu_green" />
+        </FrameLayout>
+
+        <LinearLayout
+            android:layout_width="0dp"
+            android:layout_height="wrap_content"
+            android:layout_marginStart="@dimen/space_md"
+            android:layout_weight="1"
+            android:orientation="vertical">
+
+            <TextView
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:text="@string/call_menu_audio"
+                android:textAppearance="@style/TextAppearance.Tsuyu.RowItemTitle" />
+
+            <TextView
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:layout_marginTop="2dp"
+                android:text="@string/call_menu_audio_hint"
+                android:textAppearance="@style/TextAppearance.Tsuyu.RowMeta"
+                android:textSize="12sp" />
+        </LinearLayout>
+    </LinearLayout>
+
+    <LinearLayout
+        android:id="@+id/chat_menu_video"
+        android:layout_width="match_parent"
+        android:layout_height="@dimen/row_sheet_action_height"
+        android:background="?attr/selectableItemBackground"
+        android:clickable="true"
+        android:focusable="true"
+        android:gravity="center_vertical"
+        android:orientation="horizontal">
+
+        <FrameLayout
+            android:layout_width="@dimen/row_icon_tile"
+            android:layout_height="@dimen/row_icon_tile"
+            android:background="@drawable/bg_menu_icon">
+
+            <ImageView
+                android:layout_width="@dimen/row_icon_size"
+                android:layout_height="@dimen/row_icon_size"
+                android:layout_gravity="center"
+                android:contentDescription="@string/call_menu_video"
+                android:src="@drawable/ic_video"
+                app:tint="@color/tsuyu_green" />
+        </FrameLayout>
+
+        <LinearLayout
+            android:layout_width="0dp"
+            android:layout_height="wrap_content"
+            android:layout_marginStart="@dimen/space_md"
+            android:layout_weight="1"
+            android:orientation="vertical">
+
+            <TextView
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:text="@string/call_menu_video"
+                android:textAppearance="@style/TextAppearance.Tsuyu.RowItemTitle" />
+
+            <TextView
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:layout_marginTop="2dp"
+                android:text="@string/call_menu_video_hint"
+                android:textAppearance="@style/TextAppearance.Tsuyu.RowMeta"
+                android:textSize="12sp" />
+        </LinearLayout>
+    </LinearLayout>
+
+    <LinearLayout
         android:id="@+id/chat_menu_profile"
         android:layout_width="match_parent"
         android:layout_height="@dimen/row_sheet_action_height"
@@ -408,6 +502,102 @@
                 android:layout_height="wrap_content"
                 android:layout_marginTop="2dp"
                 android:text="@string/chat_menu_select_subtitle"
+                android:textAppearance="@style/TextAppearance.Tsuyu.RowMeta"
+                android:textSize="12sp" />
+        </LinearLayout>
+    </LinearLayout>
+
+    <LinearLayout
+        android:id="@+id/chat_menu_wallpaper"
+        android:layout_width="match_parent"
+        android:layout_height="@dimen/row_sheet_action_height"
+        android:background="?attr/selectableItemBackground"
+        android:clickable="true"
+        android:focusable="true"
+        android:gravity="center_vertical"
+        android:orientation="horizontal">
+
+        <FrameLayout
+            android:layout_width="@dimen/row_icon_tile"
+            android:layout_height="@dimen/row_icon_tile"
+            android:background="@drawable/bg_menu_icon">
+
+            <ImageView
+                android:layout_width="@dimen/row_icon_size"
+                android:layout_height="@dimen/row_icon_size"
+                android:layout_gravity="center"
+                android:contentDescription="@string/wallpaper_title"
+                android:src="@drawable/ic_photo"
+                app:tint="@color/tsuyu_secondary" />
+        </FrameLayout>
+
+        <LinearLayout
+            android:layout_width="0dp"
+            android:layout_height="wrap_content"
+            android:layout_marginStart="@dimen/space_md"
+            android:layout_weight="1"
+            android:orientation="vertical">
+
+            <TextView
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:text="@string/wallpaper_title"
+                android:textAppearance="@style/TextAppearance.Tsuyu.RowItemTitle" />
+
+            <TextView
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:layout_marginTop="2dp"
+                android:text="@string/wallpaper_hint"
+                android:textAppearance="@style/TextAppearance.Tsuyu.RowMeta"
+                android:textSize="12sp" />
+        </LinearLayout>
+    </LinearLayout>
+
+    <LinearLayout
+        android:id="@+id/chat_menu_guard"
+        android:layout_width="match_parent"
+        android:layout_height="@dimen/row_sheet_action_height"
+        android:background="?attr/selectableItemBackground"
+        android:clickable="true"
+        android:focusable="true"
+        android:gravity="center_vertical"
+        android:orientation="horizontal">
+
+        <FrameLayout
+            android:layout_width="@dimen/row_icon_tile"
+            android:layout_height="@dimen/row_icon_tile"
+            android:background="@drawable/bg_menu_icon">
+
+            <ImageView
+                android:layout_width="@dimen/row_icon_size"
+                android:layout_height="@dimen/row_icon_size"
+                android:layout_gravity="center"
+                android:contentDescription="@string/guard_exception_title"
+                android:src="@drawable/ic_lock"
+                app:tint="@color/tsuyu_secure" />
+        </FrameLayout>
+
+        <LinearLayout
+            android:layout_width="0dp"
+            android:layout_height="wrap_content"
+            android:layout_marginStart="@dimen/space_md"
+            android:layout_weight="1"
+            android:orientation="vertical">
+
+            <TextView
+                android:id="@+id/chat_menu_guard_title"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:text="@string/guard_exception_title"
+                android:textAppearance="@style/TextAppearance.Tsuyu.RowItemTitle" />
+
+            <TextView
+                android:id="@+id/chat_menu_guard_subtitle"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:layout_marginTop="2dp"
+                android:text="@string/guard_exception_off"
                 android:textAppearance="@style/TextAppearance.Tsuyu.RowMeta"
                 android:textSize="12sp" />
         </LinearLayout>

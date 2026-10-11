@@ -45,6 +45,12 @@ import androidx.recyclerview.widget.LinearLayoutManager;
 import androidx.recyclerview.widget.RecyclerView;
 import androidx.transition.TransitionManager;
 
+import com.tsuyu.messenger.data.ScheduledMessages;
+
+import com.tsuyu.messenger.call.CallActivity;
+import com.tsuyu.messenger.call.CallEngine;
+import com.tsuyu.messenger.call.CallSignal;
+
 import com.google.android.material.appbar.MaterialToolbar;
 import com.google.android.material.bottomsheet.BottomSheetDialog;
 import com.google.android.material.button.MaterialButton;
@@ -228,6 +234,27 @@ public final class MainActivity extends AppCompatActivity {
     private boolean peerTyping;
     private String listenedUserChatsUid;
 
+    /** Приложение на экране: по этому признаку пуш открывает экран звонка сразу. */
+    public static volatile boolean visible;
+    /** Слушатель ящика вызовов — подстраховка к пушу, пока приложение открыто. */
+    private com.google.firebase.database.ValueEventListener callInboxListener;
+    private CallEngine.Listener callLogListener;
+    private String callLogChatId;
+    private String callLogPeerUid;
+    private boolean callLogVideo;
+    private boolean callLogIncoming;
+    private long callLogActiveAt;
+    private boolean callLogSent;
+    /** Таймер сгорания, выбранный в меню вложений: уйдёт со следующим сообщением. */
+    private int pendingBurnSeconds;
+    /** Ключ обоев, которые сейчас выбираем в галерее. */
+    private String pendingWallpaperKey;
+    /** Голоса опросов: messageId -> (uid -> номер варианта). */
+    private final Map<String, Map<String, Integer>> pollVotes = new ConcurrentHashMap<>();
+    private com.google.firebase.database.DatabaseReference pollVotesRef;
+    private com.google.firebase.database.ValueEventListener pollVotesListener;
+    private String burnRefreshChatId;
+
     @Override
     protected void onCreate(Bundle savedInstanceState) {
         super.onCreate(savedInstanceState);
@@ -274,7 +301,14 @@ public final class MainActivity extends AppCompatActivity {
             } else {
                 String kind = pendingMediaKind == null ? "image" : pendingMediaKind;
                 pendingMediaKind = null;
-                sendPickedMedia(uri, kind);
+                if ("wallpaper".equals(kind)) {
+                    saveWallpaper(uri, pendingWallpaperKey);
+                    pendingWallpaperKey = null;
+                } else if ("sticker".equals(kind)) {
+                    showStickerEditor(uri);
+                } else {
+                    sendPickedMedia(uri, kind);
+                }
             }
         });
         documentPicker = registerForActivityResult(new ActivityResultContracts.OpenDocument(), uri -> {
@@ -342,12 +376,16 @@ public final class MainActivity extends AppCompatActivity {
 
     protected void onStart() {
         super.onStart();
+        visible = true;
         auth.addAuthStateListener(authListener);
+        attachCallInbox();
     }
 
     @Override
     protected void onStop() {
         super.onStop();
+        visible = false;
+        detachCallInbox();
         com.tsuyu.messenger.crypto.PinLock.onBackground();
         if (auth != null && authListener != null) auth.removeAuthStateListener(authListener);
     }
@@ -379,6 +417,11 @@ public final class MainActivity extends AppCompatActivity {
             @Override public void onCancelled() { finishAndRemoveTask(); }
         });
         crypto = new SignalE2ee(this, uid);
+        attachCallLogListener();
+        attachCallInbox();
+        // Отложенные сообщения: будильник и досылка того, что уже пора отправить.
+        com.tsuyu.messenger.data.ScheduledMessages.armNext(this);
+        dataQueue.execute(() -> com.tsuyu.messenger.notifications.ScheduledSendReceiver.flush(getApplicationContext()));
         messageCache = new LocalMessageCache(this, uid);
         vault = new LocalVault(uid);
         store = new TsuyuStore(this, uid, vault);
@@ -1008,6 +1051,10 @@ public final class MainActivity extends AppCompatActivity {
             showHome();
         });
         root.findViewById(R.id.chat_more).setOnClickListener(v -> showChatMenu());
+        View voiceCall = root.findViewById(R.id.chat_voice_call);
+        if (voiceCall != null) voiceCall.setOnClickListener(v -> startCall(chatId, peerUid, false));
+        View videoCall = root.findViewById(R.id.chat_video_call);
+        if (videoCall != null) videoCall.setOnClickListener(v -> startCall(chatId, peerUid, true));
         ShapeableImageView avatar = root.findViewById(R.id.chat_peer_avatar);
         TextView avatarInitial = root.findViewById(R.id.chat_peer_initial);
         chatStatus = root.findViewById(R.id.chat_peer_status);
@@ -1045,6 +1092,9 @@ public final class MainActivity extends AppCompatActivity {
         }
         loadCachedMessages(chatId, peerUid);
 
+        applyChatWallpaper(chatId);
+        attachPollVotesListener(chatId);
+        applyScreenGuard();
         messageList = root.findViewById(R.id.message_list);
         LinearLayoutManager messageLayout = new LinearLayoutManager(this);
         messageLayout.setStackFromEnd(true);
@@ -1060,6 +1110,7 @@ public final class MainActivity extends AppCompatActivity {
                     @Override public void onGalleryImage(String encodedImage) { showImageDialog(encodedImage); }
                     @Override public void onReply(ChatMessage message) { startReply(message, message.localPayload); }
                     @Override public void onToggleSelect(ChatMessage message) { toggleMessageSelection(message); }
+                    @Override public void onVote(ChatMessage message, String payload) { showPollVoteDialog(message, payload); }
                 });
         messageList.setAdapter(messageListAdapter);
         chatScrollBottom = root.findViewById(R.id.chat_scroll_bottom);
@@ -1298,6 +1349,9 @@ public final class MainActivity extends AppCompatActivity {
         reactionsListener = new ValueEventListener() {
             @Override public void onDataChange(DataSnapshot snapshot) {
                 messageReactions.clear();
+        pollVotes.clear();
+        pollVotesRef = null; pollVotesListener = null;
+        burnRefreshChatId = null;
                 for (DataSnapshot message : snapshot.getChildren()) {
                     Set<String> users = new HashSet<>();
                     for (DataSnapshot reaction : message.getChildren()) {
@@ -1358,6 +1412,14 @@ public final class MainActivity extends AppCompatActivity {
             String payload = message.localPayload;
             if (payload == null && activeCache != null && message.id != null) payload = activeCache.get(renderChatId, message.id);
             String key = renderChatId + ":" + message.id;
+            if (isBurnExpired(payload, message)) {
+                // Сообщение с истёкшим таймером сгорания исчезает само: у автора — из базы.
+                if (uid != null && uid.equals(message.senderUid) && message.id != null
+                        && !message.id.startsWith("local_")) {
+                    chatRepository.deleteMessage(renderChatId, message.id, NOOP_RESULT);
+                }
+                continue;
+            }
             if (payload == null && decryptFailures.contains(key)) payload = "{\"kind\":\"decrypt_error\"}";
             if (payload == null && message.senderUid != null && !uid.equals(message.senderUid)
                     && message.cipher != null && decrypting.add(key)) {
@@ -1423,7 +1485,9 @@ public final class MainActivity extends AppCompatActivity {
         }
         messageListAdapter.setTextStyle(textSize(), isTextBold(),
                 getSharedPreferences("tsuyu_settings", MODE_PRIVATE).getBoolean("italic", false));
+        messageListAdapter.setPollVotes(pollVotes);
         messageListAdapter.submit(rows);
+        scheduleBurnRefresh(renderChatId);
         if (chatEmptyState != null) chatEmptyState.setVisibility(rows.isEmpty() ? View.VISIBLE : View.GONE);
         if (!rows.isEmpty() && keepBottomPinned) messageList.post(() -> {
             if (renderChatId.equals(activeChatId) && messageListAdapter.getItemCount() > 0) {
@@ -1639,6 +1703,8 @@ public final class MainActivity extends AppCompatActivity {
         try {
             JSONObject payload = new JSONObject().put("version", 1).put("kind", "text").put("text", text);
             if (replyId != null) payload.put("replyTo", replyId);
+            if (pendingBurnSeconds > 0) payload.put("burn", pendingBurnSeconds);
+            pendingBurnSeconds = 0;
             String payloadJson = payload.toString();
             composer.setText("");
             replyToId = null;
@@ -1829,6 +1895,14 @@ public final class MainActivity extends AppCompatActivity {
         }
         final boolean currentlyPinned = pinned;
         final boolean currentlyUnread = unread > 0;
+        content.findViewById(R.id.chat_menu_call).setOnClickListener(v -> {
+            sheet.dismiss();
+            startCall(chatId, targetPeerUid, false);
+        });
+        content.findViewById(R.id.chat_menu_video).setOnClickListener(v -> {
+            sheet.dismiss();
+            startCall(chatId, targetPeerUid, true);
+        });
         content.findViewById(R.id.chat_menu_profile).setOnClickListener(v -> {
             sheet.dismiss();
             openPeerProfile(targetPeerUid);
@@ -1867,6 +1941,21 @@ public final class MainActivity extends AppCompatActivity {
         content.findViewById(R.id.chat_menu_folders).setOnClickListener(v -> {
             sheet.dismiss();
             showFolderPicker(chatId);
+        });
+        TextView guardSubtitle = content.findViewById(R.id.chat_menu_guard_subtitle);
+        SharedPreferences guardPrefs = getSharedPreferences("tsuyu_settings", MODE_PRIVATE);
+        boolean guardedChat = guardPrefs.getStringSet("screen_guard_exceptions", Collections.emptySet())
+                .contains(chatId);
+        if (guardSubtitle != null) {
+            guardSubtitle.setText(guardedChat ? R.string.guard_exception_on : R.string.guard_exception_off);
+        }
+        content.findViewById(R.id.chat_menu_guard).setOnClickListener(v -> {
+            sheet.dismiss();
+            toggleGuardException(chatId);
+        });
+        content.findViewById(R.id.chat_menu_wallpaper).setOnClickListener(v -> {
+            sheet.dismiss();
+            showWallpaperDialog(chatId, false);
         });
         content.findViewById(R.id.chat_menu_clear).setOnClickListener(v -> {
             sheet.dismiss();
@@ -2070,6 +2159,22 @@ public final class MainActivity extends AppCompatActivity {
             pendingMediaKind = "audio";
             documentPicker.launch(new String[]{"audio/*"});
         });
+        content.findViewById(R.id.attachment_poll).setOnClickListener(v -> {
+            sheet.dismiss();
+            showPollDialog();
+        });
+        content.findViewById(R.id.attachment_contact).setOnClickListener(v -> {
+            sheet.dismiss();
+            showContactPicker();
+        });
+        content.findViewById(R.id.attachment_schedule).setOnClickListener(v -> {
+            sheet.dismiss();
+            showScheduleDialog();
+        });
+        content.findViewById(R.id.attachment_burn).setOnClickListener(v -> {
+            sheet.dismiss();
+            showBurnDialog();
+        });
         MaterialButton voice = content.findViewById(R.id.attachment_voice);
         if (voiceRecorder != null) voice.setText("Остановить и отправить голосовое");
         voice.setOnClickListener(v -> {
@@ -2147,9 +2252,12 @@ public final class MainActivity extends AppCompatActivity {
             try {
                 String mime = getContentResolver().getType(uri);
                 String base64 = "image".equals(kind) ? imageToBase64(uri, 1440, 950_000) : readBase64(uri, 3_000_000);
-                String payload = new JSONObject().put("version", 1).put("kind", kind)
+                JSONObject media = new JSONObject().put("version", 1).put("kind", kind)
                         .put("mime", mime == null ? "application/octet-stream" : mime)
-                        .put("data", base64).toString();
+                        .put("data", base64);
+                if (pendingBurnSeconds > 0) media.put("burn", pendingBurnSeconds);
+                pendingBurnSeconds = 0;
+                String payload = media.toString();
                 runOnUiThread(() -> enqueueOptimisticMessage(chatId, peerUid, senderUid, payload));
             } catch (Exception error) {
                 runOnUiThread(() -> toast("Файл слишком большой или не читается."));
@@ -2213,6 +2321,8 @@ public final class MainActivity extends AppCompatActivity {
         page = "settings";
         View root = showScreen(R.layout.screen_settings);
         bindScreenGuardSwitch(root);
+        View wallpaperRow = root.findViewById(R.id.settings_wallpaper);
+        if (wallpaperRow != null) wallpaperRow.setOnClickListener(v -> showWallpaperDialog(null, true));
         MaterialToolbar toolbar = root.findViewById(R.id.settings_toolbar);
         toolbar.setNavigationOnClickListener(v -> showHome());
         View profileCard = root.findViewById(R.id.settings_profile_card);
@@ -2317,7 +2427,7 @@ public final class MainActivity extends AppCompatActivity {
     private void showCustomization() {
         View body = getLayoutInflater().inflate(R.layout.dialog_customization, null, false);
         Slider size = body.findViewById(R.id.customization_text_size);
-        int current = getSharedPreferences("tsuyu_settings", MODE_PRIVATE).getInt("text_size", 14);
+        int current = getSharedPreferences("tsuyu_settings", MODE_PRIVATE).getInt("text_size", 15);
         size.setValue(Math.max(12, Math.min(22, current)));
         MaterialCheckBox bold = body.findViewById(R.id.customization_bold);
         MaterialCheckBox italic = body.findViewById(R.id.customization_italic);
@@ -2512,6 +2622,7 @@ public final class MainActivity extends AppCompatActivity {
             if (receiptRef != null && receiptListener != null) receiptRef.removeEventListener(receiptListener);
             if (peerLastSeenRef != null && peerLastSeenListener != null) peerLastSeenRef.removeEventListener(peerLastSeenListener);
             if (reactionsListener != null) chatRepository.root().child("chats").child(activeChatId).child("reactions").removeEventListener(reactionsListener);
+            if (pollVotesRef != null && pollVotesListener != null) pollVotesRef.removeEventListener(pollVotesListener);
             if (uid != null) chatRepository.setTyping(activeChatId, uid, false);
         }
         markNoActiveChat();
@@ -2526,12 +2637,18 @@ public final class MainActivity extends AppCompatActivity {
         messageReactions.clear();
     }
 
-    private int textSize() { return getSharedPreferences("tsuyu_settings", MODE_PRIVATE).getInt("text_size", 14); }
+    private int textSize() { return getSharedPreferences("tsuyu_settings", MODE_PRIVATE).getInt("text_size", 15); }
     private boolean isTextBold() { return getSharedPreferences("tsuyu_settings", MODE_PRIVATE).getBoolean("bold", false); }
     /** v3-дизайн: «Защита от скриншотов» — системный флаг, снимки и превью в задачах блокируются. */
     private void applyScreenGuard() {
-        boolean guarded = getSharedPreferences("tsuyu_settings", MODE_PRIVATE)
-                .getBoolean("screen_guard", false);
+        SharedPreferences guardPrefs = getSharedPreferences("tsuyu_settings", MODE_PRIVATE);
+        boolean guarded = guardPrefs.getBoolean("screen_guard", false);
+        // Исключение: в отмеченных чатах защита снимается, остальное приложение остаётся закрытым.
+        if (guarded && activeChatId != null && "chat".equals(page)
+                && guardPrefs.getStringSet("screen_guard_exceptions", Collections.emptySet())
+                        .contains(activeChatId)) {
+            guarded = false;
+        }
         if (guarded) getWindow().addFlags(android.view.WindowManager.LayoutParams.FLAG_SECURE);
         else getWindow().clearFlags(android.view.WindowManager.LayoutParams.FLAG_SECURE);
     }
@@ -2550,7 +2667,10 @@ public final class MainActivity extends AppCompatActivity {
         if (row != null) row.setOnClickListener(v -> guard.setChecked(!guard.isChecked()));
     }
 
-    private void markNoActiveChat() { getSharedPreferences("tsuyu_settings", MODE_PRIVATE).edit().remove("active_chat").apply(); }
+    private void markNoActiveChat() {
+        getSharedPreferences("tsuyu_settings", MODE_PRIVATE).edit().remove("active_chat").apply();
+        applyScreenGuard();
+    }
     private void startBackgroundSync() {
         android.content.SharedPreferences prefs = getSharedPreferences("tsuyu_settings", MODE_PRIVATE);
         if (uid == null || !prefs.getBoolean("background_sync", true)) return;
@@ -3489,6 +3609,550 @@ public final class MainActivity extends AppCompatActivity {
                 runOnUiThread(() -> toast(getString(R.string.circle_failed)));
             }
         });
+    }
+
+    // ------------------------------------------------------------------
+    // Опросы, таймер сгорания, отложенная отправка, контакты, обои, защита
+    // ------------------------------------------------------------------
+
+    private static final ChatRepository.Result<Void> NOOP_RESULT = new ChatRepository.Result<Void>() {
+        @Override public void success(Void value) { }
+        @Override public void error(String message) { }
+    };
+
+    /** Опрос: вопрос и до шести вариантов, всё уезжает обычным шифрованным сообщением. */
+    private void showPollDialog() {
+        if (activeChatId == null || activePeerUid == null) return;
+        View body = getLayoutInflater().inflate(R.layout.dialog_poll, null, false);
+        android.widget.LinearLayout container = (android.widget.LinearLayout) body;
+        body.findViewById(R.id.poll_add_option).setOnClickListener(v -> {
+            if (pollOptionFields(container).size() >= 6) {
+                toast(getString(R.string.poll_need_options));
+                return;
+            }
+            TextInputEditText extra = new TextInputEditText(this);
+            extra.setHint(R.string.poll_option_hint);
+            extra.setSingleLine(true);
+            extra.setTextColor(getResources().getColor(R.color.tsuyu_white, getTheme()));
+            extra.setHintTextColor(getResources().getColor(R.color.tsuyu_secondary, getTheme()));
+            container.addView(extra);
+        });
+        new AlertDialog.Builder(this)
+                .setTitle(R.string.poll_title)
+                .setView(body)
+                .setNegativeButton("Отмена", null)
+                .setPositiveButton("Отправить", (dialog, which) -> {
+                    TextInputEditText question = body.findViewById(R.id.poll_question);
+                    String text = question.getText() == null ? "" : question.getText().toString().trim();
+                    if (text.isEmpty()) {
+                        toast(getString(R.string.poll_need_question));
+                        return;
+                    }
+                    List<String> options = new ArrayList<>();
+                    for (TextInputEditText field : pollOptionFields(container)) {
+                        String value = field.getText() == null ? "" : field.getText().toString().trim();
+                        if (!value.isEmpty()) options.add(value);
+                    }
+                    if (options.size() < 2) {
+                        toast(getString(R.string.poll_need_options));
+                        return;
+                    }
+                    sendPoll(text, options);
+                }).show();
+    }
+
+    private List<TextInputEditText> pollOptionFields(android.widget.LinearLayout container) {
+        List<TextInputEditText> fields = new ArrayList<>();
+        for (int i = 0; i < container.getChildCount(); i++) {
+            View child = container.getChildAt(i);
+            if (child instanceof TextInputEditText && child.getId() != R.id.poll_question) {
+                fields.add((TextInputEditText) child);
+            }
+        }
+        return fields;
+    }
+
+    private void sendPoll(String question, List<String> options) {
+        try {
+            JSONArray array = new JSONArray();
+            for (String option : options) array.put(option);
+            JSONObject payload = new JSONObject()
+                    .put("version", 1)
+                    .put("kind", "poll")
+                    .put("question", question)
+                    .put("options", array);
+            if (pendingBurnSeconds > 0) payload.put("burn", pendingBurnSeconds);
+            pendingBurnSeconds = 0;
+            enqueueOptimisticMessage(activeChatId, activePeerUid, uid, payload.toString());
+            toast(getString(R.string.poll_created));
+        } catch (Exception ignored) { }
+    }
+
+    /** Голоса лежат в базе: chats/{chatId}/polls/{messageId}/{uid} = номер варианта. */
+    private void attachPollVotesListener(String chatId) {
+        if (pollVotesRef != null && pollVotesListener != null) {
+            pollVotesRef.removeEventListener(pollVotesListener);
+        }
+        pollVotesRef = chatRepository.root().child("chats").child(chatId).child("polls");
+        pollVotesListener = new ValueEventListener() {
+            @Override public void onDataChange(DataSnapshot snapshot) {
+                Map<String, Map<String, Integer>> next = new ConcurrentHashMap<>();
+                for (DataSnapshot poll : snapshot.getChildren()) {
+                    Map<String, Integer> votes = new ConcurrentHashMap<>();
+                    for (DataSnapshot vote : poll.getChildren()) {
+                        Integer index = vote.getValue(Integer.class);
+                        if (index != null && vote.getKey() != null) votes.put(vote.getKey(), index);
+                    }
+                    if (poll.getKey() != null) next.put(poll.getKey(), votes);
+                }
+                pollVotes.clear();
+                pollVotes.putAll(next);
+                if (chatId.equals(activeChatId) && "chat".equals(page)) {
+                    renderMessages(lastRemoteMessages, activePeerUid);
+                }
+            }
+            @Override public void onCancelled(DatabaseError error) { }
+        };
+        pollVotesRef.addValueEventListener(pollVotesListener);
+    }
+
+    /** Тап по опросу: выбор варианта, повторный тап меняет голос. */
+    private void showPollVoteDialog(ChatMessage message, String payload) {
+        if (message == null || message.id == null || uid == null) return;
+        try {
+            JSONObject object = new JSONObject(payload);
+            JSONArray options = object.optJSONArray("options");
+            if (options == null || options.length() == 0) return;
+            String[] items = new String[options.length()];
+            for (int i = 0; i < options.length(); i++) items[i] = options.optString(i, "");
+            final String chatId = activeChatId;
+            final String messageId = message.id;
+            new AlertDialog.Builder(this)
+                    .setTitle(object.optString("question", getString(R.string.poll_title)))
+                    .setItems(items, (dialog, which) -> {
+                        if (chatId == null) return;
+                        chatRepository.root().child("chats").child(chatId).child("polls")
+                                .child(messageId).child(uid).setValue(which);
+                        toast(getString(R.string.poll_voted));
+                    }).show();
+        } catch (Exception ignored) { }
+    }
+
+    /** Сгорание: таймер относится к следующему отправленному сообщению. */
+    private void showBurnDialog() {
+        final int[] seconds = {0, 5, 30, 60, 300, 3600, 86400};
+        String[] labels = {
+                getString(R.string.burn_off), getString(R.string.burn_5s), getString(R.string.burn_30s),
+                getString(R.string.burn_1m), getString(R.string.burn_5m), getString(R.string.burn_1h),
+                getString(R.string.burn_1d)};
+        new AlertDialog.Builder(this)
+                .setTitle(R.string.burn_title)
+                .setItems(labels, (dialog, which) -> {
+                    pendingBurnSeconds = seconds[which];
+                    toast(pendingBurnSeconds == 0 ? getString(R.string.burn_off)
+                            : getString(R.string.burn_armed, burnLabel(pendingBurnSeconds)));
+                }).show();
+    }
+
+    private String burnLabel(int seconds) {
+        if (seconds >= 86400) return getString(R.string.burn_1d);
+        if (seconds >= 3600) return getString(R.string.burn_1h);
+        if (seconds >= 300) return getString(R.string.burn_5m);
+        if (seconds >= 60) return getString(R.string.burn_1m);
+        if (seconds >= 30) return getString(R.string.burn_30s);
+        return getString(R.string.burn_5s);
+    }
+
+    private boolean isBurnExpired(String payload, ChatMessage message) {
+        return burnSeconds(payload) > 0 && burnRemaining(payload, message) <= 0L;
+    }
+
+    private int burnSeconds(String payload) {
+        if (payload == null) return 0;
+        try {
+            return new JSONObject(payload).optInt("burn", 0);
+        } catch (Exception ignored) {
+            return 0;
+        }
+    }
+
+    private long burnRemaining(String payload, ChatMessage message) {
+        int seconds = burnSeconds(payload);
+        if (seconds <= 0 || message == null) return -1L;
+        long sentAt = message.sentAt > 0 ? message.sentAt : System.currentTimeMillis();
+        return sentAt + seconds * 1000L - System.currentTimeMillis();
+    }
+
+    /** Пока в переписке есть сгорающие сообщения, экран перерисовывается сам. */
+    private void scheduleBurnRefresh(final String chatId) {
+        if (burnRefreshChatId != null && burnRefreshChatId.equals(chatId)) return;
+        burnRefreshChatId = chatId;
+        ui.postDelayed(() -> {
+            burnRefreshChatId = null;
+            if (chatId.equals(activeChatId) && "chat".equals(page)) {
+                renderMessages(lastRemoteMessages, activePeerUid);
+            }
+        }, 5000L);
+    }
+
+    /** Отложенная отправка: текст из поля уходит сам в выбранный момент. */
+    private void showScheduleDialog() {
+        if (activeChatId == null || activePeerUid == null) return;
+        String text = composer == null || composer.getText() == null ? "" : composer.getText().toString().trim();
+        if (text.isEmpty()) {
+            toast(getString(R.string.schedule_empty));
+            return;
+        }
+        final long[] delays = {5 * 60_000L, 30 * 60_000L, 60 * 60_000L, 0L};
+        String[] labels = {getString(R.string.schedule_5m), getString(R.string.schedule_30m),
+                getString(R.string.schedule_1h), getString(R.string.schedule_morning)};
+        final String payload = text;
+        final int burn = pendingBurnSeconds;
+        new AlertDialog.Builder(this)
+                .setTitle(R.string.schedule_title)
+                .setItems(labels, (dialog, which) -> {
+                    long at = delays[which] > 0 ? System.currentTimeMillis() + delays[which] : tomorrowMorning();
+                    try {
+                        JSONObject json = new JSONObject().put("version", 1).put("kind", "text").put("text", payload);
+                        if (burn > 0) json.put("burn", burn);
+                        ScheduledMessages.schedule(this, activeChatId, activePeerUid, json.toString(), at);
+                        pendingBurnSeconds = 0;
+                        if (composer != null) composer.setText("");
+                        toast(getString(R.string.schedule_planned, scheduleTimeLabel(at)));
+                    } catch (Exception ignored) { }
+                }).show();
+    }
+
+    private long tomorrowMorning() {
+        java.util.Calendar calendar = java.util.Calendar.getInstance();
+        calendar.add(java.util.Calendar.DAY_OF_YEAR, 1);
+        calendar.set(java.util.Calendar.HOUR_OF_DAY, 9);
+        calendar.set(java.util.Calendar.MINUTE, 0);
+        calendar.set(java.util.Calendar.SECOND, 0);
+        return calendar.getTimeInMillis();
+    }
+
+    private String scheduleTimeLabel(long at) {
+        return new SimpleDateFormat("d MMMM, HH:mm", new Locale("ru")).format(new Date(at));
+    }
+
+    /** Поделиться контактом: визитка уезжает как обычное сообщение. */
+    private void showContactPicker() {
+        if (uid == null) return;
+        chatRepository.root().child("users").child(uid).child("contacts").get()
+                .addOnSuccessListener(snapshot -> {
+                    List<String> ids = new ArrayList<>();
+                    for (DataSnapshot child : snapshot.getChildren()) {
+                        if (child.getKey() != null && Boolean.TRUE.equals(child.getValue(Boolean.class))) {
+                            ids.add(child.getKey());
+                        }
+                    }
+                    if (ids.isEmpty()) {
+                        toast(getString(R.string.contact_empty));
+                        return;
+                    }
+                    List<String> names = new ArrayList<>();
+                    List<Profile> profiles = new ArrayList<>();
+                    for (String id : ids) {
+                        Profile cached = store != null ? store.getProfile(id) : null;
+                        if (cached != null) {
+                            cached.uid = id;
+                            profiles.add(cached);
+                            names.add(cached.displayNameOrUsername());
+                        } else {
+                            Profile placeholder = new Profile();
+                            placeholder.uid = id;
+                            placeholder.displayName = id;
+                            profiles.add(placeholder);
+                            names.add(id);
+                        }
+                    }
+                    new AlertDialog.Builder(this)
+                            .setTitle(R.string.contact_title)
+                            .setItems(names.toArray(new String[0]),
+                                    (dialog, which) -> sendContact(profiles.get(which)))
+                            .show();
+                });
+    }
+
+    private void sendContact(Profile contact) {
+        if (contact == null || activeChatId == null || activePeerUid == null) return;
+        try {
+            JSONObject payload = new JSONObject()
+                    .put("version", 1)
+                    .put("kind", "contact")
+                    .put("uid", contact.uid)
+                    .put("name", contact.displayNameOrUsername() == null ? "" : contact.displayNameOrUsername())
+                    .put("username", contact.username == null ? "" : contact.username);
+            enqueueOptimisticMessage(activeChatId, activePeerUid, uid, payload.toString());
+            toast(getString(R.string.contact_sent));
+        } catch (Exception ignored) { }
+    }
+
+    // ---- Обои ----
+
+    private void showWallpaperDialog(final String chatId, final boolean global) {
+        String[] items = {getString(R.string.wallpaper_hint), getString(R.string.wallpaper_reset)};
+        new AlertDialog.Builder(this)
+                .setTitle(global ? R.string.wallpaper_global_title : R.string.wallpaper_title)
+                .setItems(items, (dialog, which) -> {
+                    if (which == 0) {
+                        pendingWallpaperKey = global ? "wallpaper_global" : "wallpaper_" + chatId;
+                        pendingMediaKind = "wallpaper";
+                        avatarPicker.launch("image/*");
+                    } else {
+                        String key = global ? "wallpaper_global" : "wallpaper_" + chatId;
+                        getSharedPreferences("tsuyu_settings", MODE_PRIVATE).edit().remove(key).apply();
+                        if (chatId != null) applyChatWallpaper(chatId);
+                        toast(getString(R.string.wallpaper_cleared));
+                    }
+                }).show();
+    }
+
+    private void saveWallpaper(Uri uri, String key) {
+        if (key == null) return;
+        dataQueue.execute(() -> {
+            try {
+                String encoded = imageToBase64(uri, 1080, 1_400_000);
+                getSharedPreferences("tsuyu_settings", MODE_PRIVATE).edit().putString(key, encoded).apply();
+                runOnUiThread(() -> {
+                    if (activeChatId != null) applyChatWallpaper(activeChatId);
+                    toast(getString(R.string.wallpaper_set));
+                });
+            } catch (Exception error) {
+                runOnUiThread(() -> toast("Не удалось прочитать изображение."));
+            }
+        });
+    }
+
+    /** Обои чата перекрывают общие: фон ставится списку сообщений, под затемнением. */
+    private void applyChatWallpaper(String chatId) {
+        if (messageList == null) return;
+        SharedPreferences prefs = getSharedPreferences("tsuyu_settings", MODE_PRIVATE);
+        String encoded = prefs.getString("wallpaper_" + chatId, null);
+        if (encoded == null || encoded.isEmpty()) encoded = prefs.getString("wallpaper_global", null);
+        if (encoded == null || encoded.isEmpty()) {
+            messageList.setBackground(null);
+            return;
+        }
+        try {
+            byte[] bytes = Base64.decode(encoded, Base64.DEFAULT);
+            android.graphics.Bitmap bitmap = BitmapFactory.decodeByteArray(bytes, 0, bytes.length);
+            if (bitmap == null) {
+                messageList.setBackground(null);
+                return;
+            }
+            android.graphics.drawable.BitmapDrawable photo =
+                    new android.graphics.drawable.BitmapDrawable(getResources(), bitmap);
+            photo.setAlpha(120);
+            android.graphics.drawable.Drawable[] layers = {
+                    new android.graphics.drawable.ColorDrawable(0xFF0A0A0C), photo};
+            messageList.setBackground(new android.graphics.drawable.LayerDrawable(layers));
+        } catch (Exception ignored) {
+            messageList.setBackground(null);
+        }
+    }
+
+    // ---- Исключения режима защиты ----
+
+    private void toggleGuardException(String chatId) {
+        SharedPreferences prefs = getSharedPreferences("tsuyu_settings", MODE_PRIVATE);
+        Set<String> set = new HashSet<>(prefs.getStringSet("screen_guard_exceptions", Collections.emptySet()));
+        boolean now = !set.contains(chatId);
+        if (now) set.add(chatId); else set.remove(chatId);
+        prefs.edit().putStringSet("screen_guard_exceptions", set).apply();
+        applyScreenGuard();
+        toast(getString(now ? R.string.guard_exception_on : R.string.guard_exception_off));
+    }
+
+    // ---- Редактор стикеров ----
+
+    private void showStickerEditor(final Uri uri) {
+        if (activeChatId == null || activePeerUid == null) return;
+        dataQueue.execute(() -> {
+            final android.graphics.Bitmap source = decodeScaled(uri, 720);
+            if (source == null) {
+                runOnUiThread(() -> toast("Не удалось прочитать изображение."));
+                return;
+            }
+            runOnUiThread(() -> {
+                View body = getLayoutInflater().inflate(R.layout.dialog_sticker_editor, null, false);
+                final com.tsuyu.messenger.ui.StickerCanvas canvas = body.findViewById(R.id.sticker_canvas);
+                canvas.setSource(source);
+                Slider brushSlider = body.findViewById(R.id.sticker_brush);
+                Slider thresholdSlider = body.findViewById(R.id.sticker_threshold);
+                brushSlider.addOnChangeListener((slider, value, fromUser) -> canvas.setBrushSize(value));
+                thresholdSlider.addOnChangeListener((slider, value, fromUser) -> canvas.setThreshold(value));
+                int[] colors = {0xFFFFFFFF, 0xFF7B61FF, 0xFFFF3B30, 0xFF00C781};
+                int[] ids = {R.id.sticker_color_1, R.id.sticker_color_2, R.id.sticker_color_3, R.id.sticker_color_4};
+                for (int i = 0; i < ids.length; i++) {
+                    final int color = colors[i];
+                    body.findViewById(ids[i]).setOnClickListener(v -> canvas.setBrushColor(color));
+                }
+                new AlertDialog.Builder(this)
+                        .setTitle(R.string.sticker_editor_title)
+                        .setView(body)
+                        .setNegativeButton("Отмена", null)
+                        .setPositiveButton(R.string.sticker_send, (dialog, which) -> {
+                            android.graphics.Bitmap result = canvas.export();
+                            if (result == null) return;
+                            try {
+                                JSONObject payload = new JSONObject()
+                                        .put("version", 1)
+                                        .put("kind", "sticker")
+                                        .put("mime", "image/png")
+                                        .put("data", bitmapToBase64(result));
+                                enqueueOptimisticMessage(activeChatId, activePeerUid, uid, payload.toString());
+                            } catch (Exception ignored) { }
+                        }).show();
+            });
+        });
+    }
+
+    private android.graphics.Bitmap decodeScaled(Uri uri, int max) {
+        try {
+            java.io.InputStream stream = getContentResolver().openInputStream(uri);
+            if (stream == null) return null;
+            android.graphics.BitmapFactory.Options options = new android.graphics.BitmapFactory.Options();
+            options.inJustDecodeBounds = true;
+            android.graphics.BitmapFactory.decodeStream(stream, null, options);
+            stream.close();
+            int sample = 1;
+            int longest = Math.max(options.outWidth, options.outHeight);
+            while (longest / sample > max) sample *= 2;
+            android.graphics.BitmapFactory.Options decode = new android.graphics.BitmapFactory.Options();
+            decode.inSampleSize = sample;
+            decode.inPreferredConfig = android.graphics.Bitmap.Config.ARGB_8888;
+            java.io.InputStream second = getContentResolver().openInputStream(uri);
+            if (second == null) return null;
+            android.graphics.Bitmap bitmap = android.graphics.BitmapFactory.decodeStream(second, null, decode);
+            second.close();
+            return bitmap;
+        } catch (Exception ignored) {
+            return null;
+        }
+    }
+
+    private String bitmapToBase64(android.graphics.Bitmap bitmap) {
+        java.io.ByteArrayOutputStream out = new java.io.ByteArrayOutputStream();
+        bitmap.compress(android.graphics.Bitmap.CompressFormat.PNG, 100, out);
+        return Base64.encodeToString(out.toByteArray(), Base64.NO_WRAP);
+    }
+
+    // ------------------------------------------------------------------
+    // Звонки: экран, ящик вызовов и запись в истории переписки
+    // ------------------------------------------------------------------
+
+    /** Открывает экран звонка; сам звонок поднимает движок уже внутри активности. */
+    private void startCall(String chatId, String peerUid, boolean video) {
+        if (chatId == null || peerUid == null || uid == null) return;
+        if (CallEngine.busy()) {
+            toast(getString(R.string.call_in_progress));
+            return;
+        }
+        String name = peerProfile != null && peerUid.equals(peerProfile.uid)
+                ? peerProfile.displayNameOrUsername() : null;
+        if (name == null) name = peerNameFor(peerUid);
+        Intent intent = new Intent(this, CallActivity.class);
+        intent.putExtra(CallActivity.EXTRA_CHAT_ID, chatId);
+        intent.putExtra(CallActivity.EXTRA_PEER_UID, peerUid);
+        intent.putExtra(CallActivity.EXTRA_PEER_NAME, name);
+        intent.putExtra(CallActivity.EXTRA_VIDEO, video);
+        intent.putExtra(CallActivity.EXTRA_INCOMING, false);
+        startActivity(intent);
+    }
+
+    private String peerNameFor(String peerUid) {
+        Profile cached = store != null ? store.getProfile(peerUid) : null;
+        if (cached != null) {
+            cached.uid = peerUid;
+            return cached.displayNameOrUsername();
+        }
+        return null;
+    }
+
+    /** Приглашение из базы: если приложение открыто, экран звонка поднимается без пуша. */
+    private void attachCallInbox() {
+        if (uid == null || callInboxListener != null) return;
+        callInboxListener = CallSignal.watchInbox(uid, invite -> {
+            if (CallEngine.busy()) return;
+            if (isDestroyed() || isFinishing()) return;
+            if (invite.callId != null && invite.callId.equals(CallEngine.get().getCallId())) return;
+            String name = peerNameFor(invite.from);
+            startActivity(CallActivity.incomingIntent(this, invite.chatId, invite.callId,
+                    invite.from, name, invite.video));
+        });
+    }
+
+    private void detachCallInbox() {
+        if (callInboxListener != null && uid != null) {
+            com.google.firebase.database.FirebaseDatabase.getInstance().getReference("users")
+                    .child(uid).child("callInbox").removeEventListener(callInboxListener);
+        }
+        callInboxListener = null;
+    }
+
+    /**
+     * Итог разговора остаётся в переписке отдельной строкой: вызывающий записывает
+     * её один раз, чтобы в чате не появлялись две записи об одном звонке.
+     */
+    private void attachCallLogListener() {
+        if (callLogListener != null) return;
+        callLogListener = (state, detail) -> {
+            CallEngine engine = CallEngine.get();
+            if ("ringing".equals(state) || "connecting".equals(state)) {
+                if (callLogChatId == null) rememberCall(engine);
+                return;
+            }
+            if ("active".equals(state)) {
+                if (callLogChatId == null) rememberCall(engine);
+                if (callLogActiveAt == 0L) callLogActiveAt = System.currentTimeMillis();
+                return;
+            }
+            if (!"ended".equals(state) && !"declined".equals(state)
+                    && !"missed".equals(state) && !"failed".equals(state)) return;
+            if (callLogChatId == null) rememberCall(engine);
+            long seconds = callLogActiveAt == 0L ? 0L : (System.currentTimeMillis() - callLogActiveAt) / 1000L;
+            boolean missed = callLogActiveAt == 0L || "missed".equals(state) || "failed".equals(state);
+            boolean declined = "declined".equals(state);
+            if (!callLogIncoming && !callLogSent && callLogChatId != null && callLogPeerUid != null) {
+                callLogSent = true;
+                publishCallLog(callLogChatId, callLogPeerUid, callLogVideo, seconds, missed, declined);
+            }
+            callLogChatId = null;
+            callLogPeerUid = null;
+            callLogActiveAt = 0L;
+            callLogSent = false;
+        };
+        CallEngine.get().addListener(callLogListener);
+    }
+
+    private void rememberCall(CallEngine engine) {
+        callLogChatId = engine.getChatId();
+        callLogPeerUid = engine.getPeerUid();
+        callLogVideo = engine.isVideoCall();
+        callLogIncoming = engine.wasIncoming();
+    }
+
+    private void publishCallLog(String chatId, String peerUid, boolean video, long seconds,
+                                boolean missed, boolean declined) {
+        SignalE2ee activeCrypto = crypto;
+        if (activeCrypto == null || uid == null) return;
+        try {
+            JSONObject payload = new JSONObject()
+                    .put("version", 1)
+                    .put("kind", "call")
+                    .put("video", video)
+                    .put("seconds", seconds)
+                    .put("missed", missed)
+                    .put("declined", declined);
+            chatRepository.sendPayload(chatId, uid, peerUid, activeCrypto,
+                    payload.toString().getBytes(java.nio.charset.StandardCharsets.UTF_8), null,
+                    new ChatRepository.Result<String>() {
+                        @Override public void success(String value) { }
+                        @Override public void error(String message) { }
+                    });
+        } catch (Exception ignored) { }
     }
 
     private void toast(String text) { if (Looper.myLooper() == Looper.getMainLooper()) Toast.makeText(this, text, Toast.LENGTH_SHORT).show(); else runOnUiThread(() -> Toast.makeText(this, text, Toast.LENGTH_SHORT).show()); }

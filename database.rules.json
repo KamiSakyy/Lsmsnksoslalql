@@ -73,6 +73,13 @@
             ".read": "auth != null && (auth.uid == $uid || !root.child('users').child($uid).child('publicSettings').child('privacy').child('lastSeen').exists() || root.child('users').child($uid).child('publicSettings').child('privacy').child('lastSeen').val() == 'Все' || (root.child('users').child($uid).child('publicSettings').child('privacy').child('lastSeen').val() == 'Только контакты' && root.child('users').child($uid).child('contacts').child(auth.uid).val() == true) || (root.child('users').child($uid).child('publicSettings').child('privacy').child('lastSeen').val() == 'Только @' && root.child('users').child($uid).child('publicSettings').child('allowList').child(auth.uid).val() == true))"
           }
         },
+        "callInbox": {
+          ".read": "auth != null && auth.uid == $uid",
+          "$chatId": {
+            ".write": "auth != null && (auth.uid == $uid || (newData.child('from').val() == auth.uid && root.child('chats').child($chatId).child('members').child(auth.uid).val() == true))",
+            ".validate": "!newData.exists() || newData.hasChildren(['callId','from','at'])"
+          }
+        },
         "fcmTokens": {
           ".read": "auth != null && auth.uid == $uid",
           "$token": {
@@ -100,6 +107,12 @@
           "$memberUid": {
             ".write": "auth != null && newData.val() == true && !data.exists() && ((auth.uid == $memberUid) || ($memberUid != auth.uid && (!root.child('users').child($memberUid).child('publicSettings').child('messages').exists() || root.child('users').child($memberUid).child('publicSettings').child('messages').val() == 'Все' || (root.child('users').child($memberUid).child('publicSettings').child('messages').val() == 'Только контакты' && root.child('users').child($memberUid).child('contacts').child(auth.uid).val() == true) || (root.child('users').child($memberUid).child('publicSettings').child('messages').val() == 'Только @' && root.child('users').child($memberUid).child('publicSettings').child('allowList').child(auth.uid).val() == true))))",
             ".validate": "newData.val() == true"
+          }
+        },
+        "calls": {
+          ".read": "auth != null && root.child('chats').child($chatId).child('members').child(auth.uid).val() == true",
+          "$callId": {
+            ".write": "auth != null && root.child('chats').child($chatId).child('members').child(auth.uid).val() == true && (!data.exists() || data.child('from').val() == auth.uid || data.child('to').val() == auth.uid)"
           }
         },
         "meta": {

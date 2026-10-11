@@ -1,0 +1,263 @@
+<?xml version="1.0" encoding="utf-8"?>
+<FrameLayout xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:app="http://schemas.android.com/apk/res-auto"
+    android:layout_width="match_parent"
+    android:layout_height="match_parent"
+    android:background="@color/tsuyu_header">
+
+    <!-- Видео собеседника: на весь экран, как в веб-клиенте -->
+    <org.webrtc.SurfaceViewRenderer
+        android:id="@+id/call_remote"
+        android:layout_width="match_parent"
+        android:layout_height="match_parent" />
+
+    <View
+        android:id="@+id/call_remote_shade"
+        android:layout_width="match_parent"
+        android:layout_height="match_parent"
+        android:background="@color/tsuyu_scrim_strong" />
+
+    <LinearLayout
+        android:id="@+id/call_center"
+        android:layout_width="wrap_content"
+        android:layout_height="wrap_content"
+        android:layout_gravity="center"
+        android:gravity="center_horizontal"
+        android:orientation="vertical">
+
+        <FrameLayout
+            android:layout_width="104dp"
+            android:layout_height="104dp">
+
+            <TextView
+                android:id="@+id/call_initial"
+                android:layout_width="match_parent"
+                android:layout_height="match_parent"
+                android:background="@drawable/bg_avatar_fallback"
+                android:fontFamily="sans-serif-medium"
+                android:gravity="center"
+                android:textColor="@color/tsuyu_white"
+                android:textSize="38sp" />
+
+            <com.google.android.material.imageview.ShapeableImageView
+                android:id="@+id/call_avatar"
+                android:layout_width="match_parent"
+                android:layout_height="match_parent"
+                android:scaleType="centerCrop"
+                android:visibility="gone"
+                app:shapeAppearanceOverlay="@style/TsuyuCircleShape" />
+        </FrameLayout>
+
+        <TextView
+            android:id="@+id/call_name"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:layout_marginTop="14dp"
+            android:fontFamily="sans-serif-medium"
+            android:maxLines="1"
+            android:ellipsize="end"
+            android:textColor="@color/tsuyu_white"
+            android:textSize="22sp" />
+
+        <TextView
+            android:id="@+id/call_status"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:layout_marginTop="6dp"
+            android:textColor="@color/tsuyu_secondary"
+            android:textSize="14sp" />
+    </LinearLayout>
+
+    <!-- Своё видео: маленькое окно поверх чужого -->
+    <com.google.android.material.card.MaterialCardView
+        android:id="@+id/call_local_card"
+        android:layout_width="104dp"
+        android:layout_height="150dp"
+        android:layout_gravity="top|end"
+        android:layout_marginTop="24dp"
+        android:layout_marginEnd="16dp"
+        android:visibility="gone"
+        app:cardBackgroundColor="@color/tsuyu_surface"
+        app:cardCornerRadius="14dp"
+        app:cardElevation="6dp">
+
+        <org.webrtc.SurfaceViewRenderer
+            android:id="@+id/call_local"
+            android:layout_width="match_parent"
+            android:layout_height="match_parent" />
+    </com.google.android.material.card.MaterialCardView>
+
+    <!-- Кнопки идущего разговора -->
+    <LinearLayout
+        android:id="@+id/call_active_actions"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:layout_gravity="bottom"
+        android:orientation="vertical"
+        android:paddingStart="24dp"
+        android:paddingEnd="24dp"
+        android:paddingTop="16dp"
+        android:paddingBottom="32dp">
+
+        <LinearLayout
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:gravity="center"
+            android:orientation="horizontal">
+
+            <com.google.android.material.button.MaterialButton
+                android:id="@+id/call_mute"
+                style="@style/Widget.Tsuyu.IconButton"
+                android:layout_width="56dp"
+                android:layout_height="56dp"
+                android:contentDescription="@string/call_mute"
+                android:insetTop="0dp"
+                android:insetBottom="0dp"
+                app:backgroundTint="@color/tsuyu_header_btn_active"
+                app:cornerRadius="28dp"
+                app:icon="@drawable/ic_mic"
+                app:iconGravity="textStart"
+                app:iconPadding="0dp"
+                app:iconSize="24dp"
+                app:iconTint="@color/tsuyu_white" />
+
+            <com.google.android.material.button.MaterialButton
+                android:id="@+id/call_speaker"
+                style="@style/Widget.Tsuyu.IconButton"
+                android:layout_width="56dp"
+                android:layout_height="56dp"
+                android:layout_marginStart="18dp"
+                android:contentDescription="@string/call_speaker"
+                android:insetTop="0dp"
+                android:insetBottom="0dp"
+                app:backgroundTint="@color/tsuyu_header_btn_active"
+                app:cornerRadius="28dp"
+                app:icon="@drawable/ic_speaker"
+                app:iconGravity="textStart"
+                app:iconPadding="0dp"
+                app:iconSize="24dp"
+                app:iconTint="@color/tsuyu_white" />
+
+            <com.google.android.material.button.MaterialButton
+                android:id="@+id/call_camera"
+                style="@style/Widget.Tsuyu.IconButton"
+                android:layout_width="56dp"
+                android:layout_height="56dp"
+                android:layout_marginStart="18dp"
+                android:contentDescription="@string/call_camera"
+                android:insetTop="0dp"
+                android:insetBottom="0dp"
+                app:backgroundTint="@color/tsuyu_header_btn_active"
+                app:cornerRadius="28dp"
+                app:icon="@drawable/ic_video_off"
+                app:iconGravity="textStart"
+                app:iconPadding="0dp"
+                app:iconSize="24dp"
+                app:iconTint="@color/tsuyu_white" />
+
+            <com.google.android.material.button.MaterialButton
+                android:id="@+id/call_switch"
+                style="@style/Widget.Tsuyu.IconButton"
+                android:layout_width="56dp"
+                android:layout_height="56dp"
+                android:layout_marginStart="18dp"
+                android:contentDescription="@string/call_switch"
+                android:insetTop="0dp"
+                android:insetBottom="0dp"
+                android:visibility="gone"
+                app:backgroundTint="@color/tsuyu_header_btn_active"
+                app:cornerRadius="28dp"
+                app:icon="@drawable/ic_flip"
+                app:iconGravity="textStart"
+                app:iconPadding="0dp"
+                app:iconSize="24dp"
+                app:iconTint="@color/tsuyu_white" />
+        </LinearLayout>
+
+        <com.google.android.material.button.MaterialButton
+            android:id="@+id/call_end"
+            style="@style/Widget.Tsuyu.IconButton"
+            android:layout_width="72dp"
+            android:layout_height="72dp"
+            android:layout_gravity="center_horizontal"
+            android:layout_marginTop="20dp"
+            android:contentDescription="@string/call_end"
+            android:insetTop="0dp"
+            android:insetBottom="0dp"
+            app:backgroundTint="@color/tsuyu_red"
+            app:cornerRadius="36dp"
+            app:icon="@drawable/ic_call_end"
+            app:iconGravity="textStart"
+            app:iconPadding="0dp"
+            app:iconSize="30dp"
+            app:iconTint="@color/tsuyu_white" />
+    </LinearLayout>
+
+    <!-- Ответ на входящий вызов -->
+    <LinearLayout
+        android:id="@+id/call_incoming_actions"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:layout_gravity="bottom"
+        android:gravity="center"
+        android:orientation="horizontal"
+        android:paddingStart="32dp"
+        android:paddingEnd="32dp"
+        android:paddingTop="24dp"
+        android:paddingBottom="48dp"
+        android:visibility="gone">
+
+        <com.google.android.material.button.MaterialButton
+            android:id="@+id/call_decline"
+            style="@style/Widget.Tsuyu.IconButton"
+            android:layout_width="72dp"
+            android:layout_height="72dp"
+            android:contentDescription="@string/call_decline"
+            android:insetTop="0dp"
+            android:insetBottom="0dp"
+            app:backgroundTint="@color/tsuyu_red"
+            app:cornerRadius="36dp"
+            app:icon="@drawable/ic_call_end"
+            app:iconGravity="textStart"
+            app:iconPadding="0dp"
+            app:iconSize="30dp"
+            app:iconTint="@color/tsuyu_white" />
+
+        <Space
+            android:layout_width="0dp"
+            android:layout_height="1dp"
+            android:layout_weight="1" />
+
+        <com.google.android.material.button.MaterialButton
+            android:id="@+id/call_answer"
+            style="@style/Widget.Tsuyu.IconButton"
+            android:layout_width="72dp"
+            android:layout_height="72dp"
+            android:contentDescription="@string/call_answer"
+            android:insetTop="0dp"
+            android:insetBottom="0dp"
+            app:backgroundTint="@color/tsuyu_green"
+            app:cornerRadius="36dp"
+            app:icon="@drawable/ic_call"
+            app:iconGravity="textStart"
+            app:iconPadding="0dp"
+            app:iconSize="30dp"
+            app:iconTint="@color/tsuyu_white" />
+    </LinearLayout>
+
+    <TextView
+        android:id="@+id/call_relay_badge"
+        android:layout_width="wrap_content"
+        android:layout_height="wrap_content"
+        android:layout_gravity="top|start"
+        android:layout_marginStart="16dp"
+        android:layout_marginTop="24dp"
+        android:background="@drawable/bg_security_pill"
+        android:paddingStart="10dp"
+        android:paddingEnd="10dp"
+        android:paddingTop="4dp"
+        android:paddingBottom="4dp"
+        android:text="@string/call_p2p_badge"
+        android:textColor="@color/tsuyu_secure"
+        android:textSize="11sp" />
+</FrameLayout>

@@ -23,6 +23,7 @@ import com.google.android.material.card.MaterialCardView;
 import com.google.android.material.imageview.ShapeableImageView;
 import com.google.android.material.shape.ShapeAppearanceModel;
 import com.tsuyu.messenger.R;
+import com.tsuyu.messenger.call.CallEngine;
 import com.tsuyu.messenger.data.ChatMessage;
 
 import org.json.JSONArray;
@@ -48,6 +49,8 @@ public final class MessageListAdapter extends RecyclerView.Adapter<RecyclerView.
         void onReply(ChatMessage message);
         /** Tap on a bubble while the multi-select action bar is open. */
         void onToggleSelect(ChatMessage message);
+        /** Тап по опросу: голосование за вариант. */
+        void onVote(ChatMessage message, String payload);
     }
 
     public static final class Row {
@@ -102,6 +105,8 @@ public final class MessageListAdapter extends RecyclerView.Adapter<RecyclerView.
     private final Set<String> animatedIds = new HashSet<>();
     private final Set<String> selectedKeys = new HashSet<>();
     private boolean selectionMode;
+    /** Голоса опросов: messageId -> (uid -> номер варианта). Заполняет экран чата. */
+    private java.util.Map<String, java.util.Map<String, Integer>> pollVotes = java.util.Collections.emptyMap();
     private int textSize;
     private boolean bold;
     private boolean italic;
@@ -112,6 +117,10 @@ public final class MessageListAdapter extends RecyclerView.Adapter<RecyclerView.
         this.bold = bold;
         this.italic = italic;
         this.listener = listener;
+    }
+
+    public void setPollVotes(java.util.Map<String, java.util.Map<String, Integer>> votes) {
+        pollVotes = votes == null ? java.util.Collections.emptyMap() : votes;
     }
 
     /** Turns tap-to-select on for every bubble (web .msg-select-mode). */
@@ -316,6 +325,15 @@ public final class MessageListAdapter extends RecyclerView.Adapter<RecyclerView.
             bindImage(holder.image, object.optString("data", ""));
             holder.image.setVisibility(View.VISIBLE);
             holder.image.setOnClickListener(v -> listener.onOpenPayload(payload));
+        } else if ("poll".equals(kind)) {
+            // Опрос: вопрос, варианты и проценты — всё внутри пузыря.
+            holder.body.setText(pollText(object, message));
+            holder.body.setOnClickListener(v -> listener.onVote(message, payload));
+        } else if ("contact".equals(kind)) {
+            holder.body.setText(contactText(object));
+        } else if ("call".equals(kind)) {
+            // Итог звонка как обычная строка переписки, а не системный мусор.
+            holder.body.setText(callLogText(holder.itemView.getContext(), message, object));
         } else if ("voice".equals(kind) || "audio".equals(kind)) {
             holder.body.setVisibility(View.GONE);
             holder.audio.setVisibility(View.VISIBLE);
@@ -328,6 +346,17 @@ public final class MessageListAdapter extends RecyclerView.Adapter<RecyclerView.
 
         if (message.sentAt > 0) holder.time.setText(new SimpleDateFormat("HH:mm", Locale.getDefault()).format(new Date(message.sentAt)));
         else holder.time.setText("");
+        int burn = burnSeconds(payload);
+        if (burn > 0) {
+            // Оранжевый пунктир и бейдж таймера: видно, что сообщение сгорит само.
+            long left = message.sentAt > 0
+                    ? message.sentAt + burn * 1000L - System.currentTimeMillis()
+                    : burn * 1000L;
+            holder.time.setText(holder.time.getText() + "  🔥 " + shortDuration(Math.max(0L, left)));
+            holder.time.setTextColor(holder.itemView.getContext().getColor(R.color.tsuyu_burn));
+            holder.bubble.setForeground(holder.itemView.getContext()
+                    .getDrawable(R.drawable.bg_burn_bubble));
+        }
         if (message.edited) holder.edited.setVisibility(View.VISIBLE);
         if (outgoing && message.pending) {
             holder.status.setImageResource(R.drawable.ic_clock);
@@ -378,6 +407,87 @@ public final class MessageListAdapter extends RecyclerView.Adapter<RecyclerView.
 
     /** Restores the default bubble look so recycled holders never keep sticker/circle styling. */
     /** Кружок: круглый плеер в пузыре, первый кадр вместо серой карточки. */
+    private static int burnSeconds(String payload) {
+        if (payload == null) return 0;
+        try {
+            return new org.json.JSONObject(payload).optInt("burn", 0);
+        } catch (Exception ignored) {
+            return 0;
+        }
+    }
+
+    private static String shortDuration(long millis) {
+        long seconds = Math.max(0L, millis / 1000L);
+        if (seconds >= 86400L) return (seconds / 86400L) + "д";
+        if (seconds >= 3600L) return (seconds / 3600L) + "ч";
+        if (seconds >= 60L) return (seconds / 60L) + "м";
+        return seconds + "с";
+    }
+
+    /** Опрос как в веб-клиенте: вопрос, варианты, голоса и проценты. */
+    private String pollText(JSONObject object, ChatMessage message) {
+        StringBuilder out = new StringBuilder();
+        out.append("📊 ").append(object.optString("question", "")).append('\n');
+        JSONArray options = object.optJSONArray("options");
+        java.util.Map<String, Integer> votes = message == null ? null : pollVotes.get(message.id);
+        int total = 0;
+        if (votes != null) for (Integer value : votes.values()) if (value != null) total++;
+        if (options != null) {
+            for (int i = 0; i < options.length(); i++) {
+                int count = 0;
+                Integer mine = null;
+                if (votes != null) for (java.util.Map.Entry<String, Integer> entry : votes.entrySet()) {
+                    if (entry.getValue() != null && entry.getValue() == i) count++;
+                    if (ownUid != null && ownUid.equals(entry.getKey())) mine = entry.getValue();
+                }
+                int percent = total == 0 ? 0 : Math.round(count * 100f / total);
+                boolean chosen = mine != null && mine == i;
+                out.append(chosen ? "● " : "○ ")
+                        .append(options.optString(i, ""))
+                        .append(" — ")
+                        .append(percent).append("% (").append(count).append(')')
+                        .append(i == options.length() - 1 ? "" : "\n");
+            }
+        }
+        out.append("\n").append(total).append(" голосов");
+        return out.toString();
+    }
+
+    /** Визитка контакта: имя и @username, как в веб-клиенте. */
+    private static String contactText(JSONObject object) {
+        String name = object.optString("name", "");
+        String username = object.optString("username", "");
+        StringBuilder out = new StringBuilder("👤 ");
+        out.append(name.isEmpty() ? "Контакт" : name);
+        if (!username.isEmpty()) out.append("\n@").append(username);
+        return out.toString();
+    }
+
+    /**
+     * Формулировка записи о звонке с точки зрения того, кто читает переписку:
+     * «Исходящий», «Входящий», «Пропущенный», «Отклонённый» плюс длительность и «Видео».
+     */
+    private String callLogText(android.content.Context context, ChatMessage message, JSONObject object) {
+        boolean mine = message != null && message.senderUid != null && message.senderUid.equals(ownUid);
+        boolean video = object.optBoolean("video", false);
+        long seconds = object.optLong("seconds", 0L);
+        boolean missed = object.optBoolean("missed", false);
+        boolean declined = object.optBoolean("declined", false);
+        String label;
+        if (mine) {
+            if (declined) label = context.getString(R.string.call_log_declined);
+            else if (missed || seconds <= 0L) label = context.getString(R.string.call_log_no_answer);
+            else label = context.getString(R.string.call_log_outgoing);
+        } else {
+            if (seconds > 0L) label = context.getString(R.string.call_log_incoming);
+            else label = context.getString(R.string.call_log_missed_in);
+        }
+        StringBuilder text = new StringBuilder(label);
+        if (video) text.append(" · ").append(context.getString(R.string.call_log_video));
+        if (seconds > 0L) text.append(" · ").append(CallEngine.formatDuration(seconds * 1000L));
+        return text.toString();
+    }
+
     private void bindCircleNote(Holder holder, org.json.JSONObject object, String payload, ChatMessage message) {
         android.content.Context context = holder.itemView.getContext();
         android.util.DisplayMetrics metrics = context.getResources().getDisplayMetrics();
@@ -487,6 +597,9 @@ public final class MessageListAdapter extends RecyclerView.Adapter<RecyclerView.
     }
 
     private void resetBubbleChrome(Holder holder, boolean outgoing) {
+        holder.bubble.setForeground(null);
+        holder.time.setTextColor(holder.itemView.getContext().getColor(R.color.tsuyu_time));
+        holder.body.setOnClickListener(null);
         android.content.Context context = holder.itemView.getContext();
         holder.bubble.setCardBackgroundColor(context.getColor(
                 outgoing ? R.color.tsuyu_outgoing : R.color.tsuyu_incoming));

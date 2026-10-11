@@ -45,3 +45,7 @@
 -dontwarn org.slf4j.**
 -dontwarn edu.umd.**
 -dontwarn **
+
+# WebRTC: нативный слой ищет классы по именам, JNI-мосты нельзя переименовывать.
+-keep class org.webrtc.** { *; }
+-dontwarn org.webrtc.**

@@ -126,6 +126,65 @@
                 android:layout_marginStart="@dimen/space_2xs"
                 android:layout_marginTop="@dimen/space_xl"
                 android:layout_marginBottom="@dimen/space_sm"
+                android:text="@string/wallpaper_section"
+                android:textAppearance="@style/TextAppearance.Tsuyu.SectionLabel" />
+
+            <com.google.android.material.card.MaterialCardView
+                style="@style/Widget.Tsuyu.Card"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                app:cardBackgroundColor="@color/tsuyu_surface">
+
+                <LinearLayout
+                    android:id="@+id/settings_wallpaper"
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:background="?attr/selectableItemBackground"
+                    android:clickable="true"
+                    android:focusable="true"
+                    android:gravity="center_vertical"
+                    android:minHeight="@dimen/row_settings_height"
+                    android:orientation="horizontal"
+                    android:paddingStart="@dimen/space_lg"
+                    android:paddingTop="@dimen/space_md"
+                    android:paddingEnd="@dimen/space_lg"
+                    android:paddingBottom="@dimen/space_md">
+
+                    <LinearLayout
+                        android:layout_width="0dp"
+                        android:layout_height="wrap_content"
+                        android:layout_weight="1"
+                        android:orientation="vertical">
+
+                        <TextView
+                            android:layout_width="wrap_content"
+                            android:layout_height="wrap_content"
+                            android:text="@string/wallpaper_global_title"
+                            android:textAppearance="@style/TextAppearance.Tsuyu.RowItemTitle" />
+
+                        <TextView
+                            android:layout_width="wrap_content"
+                            android:layout_height="wrap_content"
+                            android:layout_marginTop="2dp"
+                            android:text="@string/wallpaper_hint"
+                            android:textAppearance="@style/TextAppearance.Tsuyu.RowMeta" />
+                    </LinearLayout>
+
+                    <ImageView
+                        android:layout_width="20dp"
+                        android:layout_height="20dp"
+                        android:contentDescription="@string/wallpaper_title"
+                        android:src="@drawable/ic_chevron_right"
+                        app:tint="@color/tsuyu_secondary" />
+                </LinearLayout>
+            </com.google.android.material.card.MaterialCardView>
+
+            <TextView
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:layout_marginStart="@dimen/space_2xs"
+                android:layout_marginTop="@dimen/space_xl"
+                android:layout_marginBottom="@dimen/space_sm"
                 android:text="Уведомления"
                 android:textAppearance="@style/TextAppearance.Tsuyu.SectionLabel" />
 

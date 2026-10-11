@@ -99,6 +99,34 @@
         </LinearLayout>
 
         <ImageView
+            android:id="@+id/chat_video_call"
+            android:layout_width="@dimen/header_button"
+            android:layout_height="@dimen/header_button"
+            android:layout_gravity="center_vertical"
+            android:layout_marginEnd="@dimen/space_2xs"
+            android:background="@drawable/bg_header_btn"
+            android:clickable="true"
+            android:contentDescription="@string/call_menu_video"
+            android:focusable="true"
+            android:padding="10dp"
+            android:src="@drawable/ic_video"
+            app:tint="@color/tsuyu_white" />
+
+        <ImageView
+            android:id="@+id/chat_voice_call"
+            android:layout_width="@dimen/header_button"
+            android:layout_height="@dimen/header_button"
+            android:layout_gravity="center_vertical"
+            android:layout_marginEnd="@dimen/space_2xs"
+            android:background="@drawable/bg_header_btn"
+            android:clickable="true"
+            android:contentDescription="@string/call_menu_audio"
+            android:focusable="true"
+            android:padding="10dp"
+            android:src="@drawable/ic_call"
+            app:tint="@color/tsuyu_white" />
+
+        <ImageView
             android:id="@+id/chat_more"
             android:layout_width="@dimen/header_button"
             android:layout_height="@dimen/header_button"

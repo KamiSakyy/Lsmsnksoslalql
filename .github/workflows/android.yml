@@ -82,6 +82,10 @@ jobs:
             exit 1
           fi
 
+      - name: Publish the database rules that carry calls and the call inbox
+        continue-on-error: true
+        run: python3 tools/update_database_rules.py
+
       - name: Verify the bundled sender key really works with FCM HTTP v1 (no server anywhere)
         continue-on-error: true
         run: |

@@ -11,8 +11,13 @@ import com.google.firebase.database.DatabaseReference;
 import com.google.firebase.database.FirebaseDatabase;
 import com.google.firebase.messaging.FirebaseMessagingService;
 import com.google.firebase.messaging.RemoteMessage;
+import com.tsuyu.messenger.MainActivity;
 import com.tsuyu.messenger.Profile;
 import com.tsuyu.messenger.R;
+import com.tsuyu.messenger.call.CallActivity;
+import com.tsuyu.messenger.call.CallEngine;
+import com.tsuyu.messenger.call.CallNotifier;
+import com.tsuyu.messenger.call.CallSignal;
 import com.tsuyu.messenger.crypto.LocalMessageCache;
 import com.tsuyu.messenger.crypto.SignalE2ee;
 import com.tsuyu.messenger.data.ChatMessage;
@@ -42,6 +47,18 @@ public final class TsuyuMessagingService extends FirebaseMessagingService {
 
     @Override
     public void onMessageReceived(RemoteMessage remoteMessage) {
+        Map<String, String> incoming = remoteMessage.getData();
+        String type = incoming == null ? null : incoming.get("type");
+        // Звонки важнее тишины: даже при выключенных звуках уведомлений вызов должен дойти.
+        if (CallSignal.TYPE_CALL.equals(type)) {
+            handleIncomingCall(incoming);
+            return;
+        }
+        if (CallSignal.TYPE_END.equals(type)) {
+            if (CallEngine.busy()) CallEngine.get().finish();
+            CallNotifier.clear(this);
+            return;
+        }
         if (!NotificationSounds.isEnabled(this)) return;
         FirebaseApp app;
         try {
@@ -72,6 +89,29 @@ public final class TsuyuMessagingService extends FirebaseMessagingService {
                 data.get("senderName") == null ? getString(R.string.app_name) : data.get("senderName"),
                 null, NotificationCenter.decrypting(this), sent, messageId, true);
         new Thread(() -> deliver(database, accountUid, chatId, peerUid, messageId, 0)).start();
+    }
+
+    /**
+     * Входящий вызов: сначала уведомление во весь экран (оно сработает и на заблокированном
+     * устройстве), а если приложение уже открыто — сразу экран звонка.
+     */
+    private void handleIncomingCall(Map<String, String> data) {
+        String chatId = data.get("chatId");
+        String callId = data.get("callId");
+        String peerUid = data.get("senderUid");
+        if (chatId == null || callId == null || peerUid == null) return;
+        if (CallEngine.busy()) {
+            // Уже говорим с кем-то другим — не перебиваем разговор.
+            return;
+        }
+        boolean video = "1".equals(data.get("video"));
+        String name = data.get("senderName");
+        CallNotifier.incoming(this, chatId, callId, peerUid, name, video);
+        if (MainActivity.visible) {
+            try {
+                startActivity(CallActivity.incomingIntent(this, chatId, callId, peerUid, name, video));
+            } catch (Exception ignored) { }
+        }
     }
 
     /**
