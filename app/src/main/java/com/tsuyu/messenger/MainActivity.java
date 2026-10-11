@@ -3354,18 +3354,18 @@ public final class MainActivity extends AppCompatActivity {
     }
 
     private void setupDrawerSwitchListeners() {
-        bindSwitch(R.id.drawer_switch_stealth, presenceManager != null && presenceManager.isGhostMode(), checked -> {
-            if (presenceManager != null && uid != null) presenceManager.setGhostMode(uid, checked);
-            toast(getString(checked ? R.string.drawer_stealth_on : R.string.drawer_stealth_off));
+        // OnCheckedChangeListener takes (button, isChecked) — the button argument is unused here.
+        bindSwitch(R.id.drawer_switch_stealth, presenceManager != null && presenceManager.isGhostMode(), (button, isChecked) -> {
+            if (presenceManager != null && uid != null) presenceManager.setGhostMode(uid, isChecked);
+            toast(getString(isChecked ? R.string.drawer_stealth_on : R.string.drawer_stealth_off));
         });
-        bindSwitch(R.id.drawer_switch_sound, NotificationSounds.isEnabled(this), checked -> {
-            NotificationSounds.setEnabled(this, checked);
-            toast(getString(checked ? R.string.drawer_sound_on : R.string.drawer_sound_off));
+        bindSwitch(R.id.drawer_switch_sound, NotificationSounds.isEnabled(this), (button, isChecked) -> {
+            NotificationSounds.setEnabled(this, isChecked);
+            toast(getString(isChecked ? R.string.drawer_sound_on : R.string.drawer_sound_off));
         });
-        bindSwitch(R.id.drawer_switch_encrypt, true, checked -> {
-            View view = drawerRoot.findViewById(R.id.drawer_switch_encrypt);
-            if (view instanceof SwitchCompat && !checked) {
-                ((SwitchCompat) view).setChecked(true);
+        bindSwitch(R.id.drawer_switch_encrypt, true, (button, isChecked) -> {
+            if (!isChecked && button instanceof SwitchCompat) {
+                ((SwitchCompat) button).setChecked(true);
                 toast(getString(R.string.drawer_encrypt_locked));
             }
         });
