@@ -12,15 +12,15 @@
         android:layout_width="match_parent"
         android:layout_height="wrap_content"
         android:gravity="center_vertical"
-        android:minHeight="78dp"
+        android:minHeight="82dp"
         android:orientation="horizontal"
         android:paddingStart="16dp"
         android:paddingTop="10dp"
         android:paddingEnd="16dp"
         android:paddingBottom="10dp">
         <FrameLayout
-            android:layout_width="54dp"
-            android:layout_height="54dp">
+            android:layout_width="56dp"
+            android:layout_height="56dp">
             <TextView
                 android:id="@+id/user_initial"
                 android:layout_width="match_parent"
@@ -68,13 +68,14 @@
             android:layout_marginStart="8dp"
             android:minWidth="0dp"
             android:text="Написать"
+            android:textColor="@color/tsuyu_blue"
             android:textSize="12sp"
-            app:backgroundTint="@color/tsuyu_input"
+            app:backgroundTint="@color/tsuyu_accent_tint"
             app:cornerRadius="19dp" />
     </LinearLayout>
     <View
         android:layout_width="match_parent"
         android:layout_height="1dp"
-        android:layout_marginStart="83dp"
+        android:layout_marginStart="85dp"
         android:background="@color/tsuyu_border" />
 </LinearLayout>

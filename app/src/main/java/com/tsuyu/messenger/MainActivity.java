@@ -1208,7 +1208,7 @@ public final class MainActivity extends AppCompatActivity {
             else if (item.getItemId() == R.id.message_reply) {
                 replyToId = message.id;
                 replyToText = payload == null ? "Сообщение" : textFromPayload(payload);
-                if (replyBannerText != null) replyBannerText.setText("↪  " + replyToText);
+                if (replyBannerText != null) replyBannerText.setText(replyToText);
                 if (replyBanner != null) replyBanner.setVisibility(View.VISIBLE);
                 if (composer != null) composer.requestFocus();
             } else if (item.getItemId() == R.id.message_forward) forwardMessage(payload);

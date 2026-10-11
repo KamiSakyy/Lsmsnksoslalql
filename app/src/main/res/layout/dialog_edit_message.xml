@@ -4,13 +4,24 @@
     android:layout_width="match_parent"
     android:layout_height="wrap_content"
     android:layout_margin="20dp"
-    android:hint="Текст сообщения"
     app:boxBackgroundColor="@color/tsuyu_input"
-    app:boxBackgroundMode="outline"
+    app:boxBackgroundMode="filled"
     app:boxCornerRadiusBottomEnd="16dp"
     app:boxCornerRadiusBottomStart="16dp"
     app:boxCornerRadiusTopEnd="16dp"
     app:boxCornerRadiusTopStart="16dp"
-    app:boxStrokeColor="@color/tsuyu_blue">
-    <com.google.android.material.textfield.TextInputEditText android:id="@+id/edit_message_input" android:layout_width="match_parent" android:layout_height="wrap_content" android:gravity="top|start" android:inputType="textCapSentences|textMultiLine" android:minLines="3" android:textColor="@color/tsuyu_white" />
+    app:boxStrokeColor="@color/tsuyu_input"
+    app:boxStrokeWidth="0dp"
+    app:boxStrokeWidthFocused="0dp"
+    app:hintEnabled="false">
+    <com.google.android.material.textfield.TextInputEditText
+        android:id="@+id/edit_message_input"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:gravity="top|start"
+        android:hint="Текст сообщения"
+        android:inputType="textCapSentences|textMultiLine"
+        android:minLines="3"
+        android:textColor="@color/tsuyu_white"
+        android:textColorHint="@color/tsuyu_secondary" />
 </com.google.android.material.textfield.TextInputLayout>

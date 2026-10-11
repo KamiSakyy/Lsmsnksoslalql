@@ -10,7 +10,7 @@
     <com.google.android.material.appbar.MaterialToolbar
         android:id="@+id/profile_toolbar"
         android:layout_width="match_parent"
-        android:layout_height="64dp"
+        android:layout_height="56dp"
         android:background="@color/tsuyu_header"
         android:elevation="0dp"
         app:navigationIcon="@drawable/ic_arrow_back"
@@ -77,7 +77,7 @@
                     android:layout_width="wrap_content"
                     android:layout_height="wrap_content"
                     android:layout_marginTop="12dp"
-                    android:text="Фото профиля"
+                    android:text="@string/profile_photo"
                     android:textColor="@color/tsuyu_white"
                     android:textSize="15sp"
                     android:textStyle="bold" />
@@ -85,7 +85,7 @@
                     android:layout_width="wrap_content"
                     android:layout_height="wrap_content"
                     android:layout_marginTop="4dp"
-                    android:text="Коснитесь, чтобы изменить"
+                    android:text="@string/profile_photo_hint"
                     android:textColor="@color/tsuyu_secondary"
                     android:textSize="12sp" />
             </LinearLayout>
@@ -94,61 +94,73 @@
                 android:layout_width="match_parent"
                 android:layout_height="wrap_content"
                 android:layout_marginBottom="12dp"
-                android:hint="@string/profile_name_hint"
                 app:boxBackgroundColor="@color/tsuyu_input"
-                app:boxBackgroundMode="outline"
+                app:boxBackgroundMode="filled"
                 app:boxCornerRadiusBottomEnd="16dp"
                 app:boxCornerRadiusBottomStart="16dp"
                 app:boxCornerRadiusTopEnd="16dp"
                 app:boxCornerRadiusTopStart="16dp"
-                app:boxStrokeColor="@color/tsuyu_blue">
+                app:boxStrokeColor="@color/tsuyu_input"
+                app:boxStrokeWidth="0dp"
+                app:boxStrokeWidthFocused="0dp"
+                app:hintEnabled="false">
                 <com.google.android.material.textfield.TextInputEditText
                     android:id="@+id/profile_name"
                     android:layout_width="match_parent"
                     android:layout_height="wrap_content"
+                    android:hint="@string/profile_name_hint"
                     android:singleLine="true"
-                    android:textColor="@color/tsuyu_white" />
+                    android:textColor="@color/tsuyu_white"
+                    android:textColorHint="@color/tsuyu_secondary" />
             </com.google.android.material.textfield.TextInputLayout>
             <com.google.android.material.textfield.TextInputLayout
                 android:layout_width="match_parent"
                 android:layout_height="wrap_content"
                 android:layout_marginBottom="12dp"
-                android:hint="@string/profile_username_hint"
                 app:boxBackgroundColor="@color/tsuyu_input"
-                app:boxBackgroundMode="outline"
+                app:boxBackgroundMode="filled"
                 app:boxCornerRadiusBottomEnd="16dp"
                 app:boxCornerRadiusBottomStart="16dp"
                 app:boxCornerRadiusTopEnd="16dp"
                 app:boxCornerRadiusTopStart="16dp"
-                app:boxStrokeColor="@color/tsuyu_blue"
+                app:boxStrokeColor="@color/tsuyu_input"
+                app:boxStrokeWidth="0dp"
+                app:boxStrokeWidthFocused="0dp"
+                app:hintEnabled="false"
                 app:prefixText="@">
                 <com.google.android.material.textfield.TextInputEditText
                     android:id="@+id/profile_username"
                     android:layout_width="match_parent"
                     android:layout_height="wrap_content"
+                    android:hint="@string/profile_username_hint"
                     android:singleLine="true"
-                    android:textColor="@color/tsuyu_white" />
+                    android:textColor="@color/tsuyu_white"
+                    android:textColorHint="@color/tsuyu_secondary" />
             </com.google.android.material.textfield.TextInputLayout>
             <com.google.android.material.textfield.TextInputLayout
                 android:layout_width="match_parent"
                 android:layout_height="wrap_content"
                 android:layout_marginBottom="8dp"
-                android:hint="@string/profile_about_hint"
                 app:boxBackgroundColor="@color/tsuyu_input"
-                app:boxBackgroundMode="outline"
+                app:boxBackgroundMode="filled"
                 app:boxCornerRadiusBottomEnd="16dp"
                 app:boxCornerRadiusBottomStart="16dp"
                 app:boxCornerRadiusTopEnd="16dp"
                 app:boxCornerRadiusTopStart="16dp"
-                app:boxStrokeColor="@color/tsuyu_blue">
+                app:boxStrokeColor="@color/tsuyu_input"
+                app:boxStrokeWidth="0dp"
+                app:boxStrokeWidthFocused="0dp"
+                app:hintEnabled="false">
                 <com.google.android.material.textfield.TextInputEditText
                     android:id="@+id/profile_about"
                     android:layout_width="match_parent"
                     android:layout_height="wrap_content"
                     android:gravity="top|start"
+                    android:hint="@string/profile_about_hint"
                     android:inputType="textCapSentences|textMultiLine"
                     android:minLines="3"
-                    android:textColor="@color/tsuyu_white" />
+                    android:textColor="@color/tsuyu_white"
+                    android:textColorHint="@color/tsuyu_secondary" />
             </com.google.android.material.textfield.TextInputLayout>
             <TextView
                 android:layout_width="match_parent"

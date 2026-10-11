@@ -11,7 +11,7 @@
         android:id="@+id/home_toolbar"
         android:layout_width="match_parent"
         android:layout_height="56dp"
-        android:background="@color/tsuyu_black"
+        android:background="@color/tsuyu_header"
         android:elevation="0dp"
         app:menu="@menu/home_toolbar"
         app:title="@string/nav_chats"

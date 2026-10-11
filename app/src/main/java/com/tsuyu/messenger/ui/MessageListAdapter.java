@@ -8,6 +8,7 @@ import android.view.LayoutInflater;
 import android.view.View;
 import android.view.ViewGroup;
 import android.view.animation.AnimationUtils;
+import android.widget.ImageView;
 import android.widget.ProgressBar;
 import android.widget.TextView;
 
@@ -167,26 +168,32 @@ public final class MessageListAdapter extends RecyclerView.Adapter<MessageListAd
         else holder.time.setText("");
         if (message.edited) holder.edited.setVisibility(View.VISIBLE);
         if (outgoing && message.pending) {
+            holder.status.setImageResource(R.drawable.ic_clock);
+            holder.status.setColorFilter(holder.itemView.getContext().getColor(R.color.tsuyu_blue));
             holder.status.setVisibility(View.VISIBLE);
-            holder.status.setText("◌");
-            holder.status.setTextColor(holder.itemView.getContext().getColor(R.color.tsuyu_blue));
             holder.status.setContentDescription(holder.itemView.getResources().getString(R.string.sending_message));
             if (holder.status.getAnimation() == null) {
                 holder.status.startAnimation(AnimationUtils.loadAnimation(holder.itemView.getContext(), R.anim.sending_pulse));
             }
         } else if (outgoing && !message.failed) {
             holder.status.clearAnimation();
+            holder.status.setImageResource(row.read ? R.drawable.ic_checks : R.drawable.ic_check);
+            holder.status.setColorFilter(holder.itemView.getContext().getColor(row.read ? R.color.tsuyu_blue : R.color.tsuyu_secondary));
             holder.status.setVisibility(View.VISIBLE);
-            holder.status.setText(row.read ? "✓✓" : "✓");
-            holder.status.setTextColor(holder.itemView.getContext().getColor(row.read ? R.color.tsuyu_blue : R.color.tsuyu_secondary));
-        } else holder.status.clearAnimation();
+            holder.status.setContentDescription(holder.itemView.getResources().getString(row.read ? R.string.message_read : R.string.message_sent));
+        } else {
+            holder.status.clearAnimation();
+            holder.status.clearColorFilter();
+        }
         if (message.failed) {
             holder.retry.setVisibility(View.VISIBLE);
             holder.retry.setOnClickListener(v -> listener.onRetry(message));
         }
         if (row.reactionCount > 0) {
             holder.reaction.setVisibility(View.VISIBLE);
-            holder.reaction.setText("❤️  " + row.reactionCount);
+            holder.reaction.setText(Integer.toString(row.reactionCount));
+            holder.reaction.setContentDescription(holder.itemView.getResources().getQuantityString(
+                    R.plurals.message_reactions, row.reactionCount, row.reactionCount));
             holder.reaction.setOnClickListener(v -> listener.onReact(message));
         }
         holder.bubble.setOnClickListener(v -> listener.onOpenPayload(payload));
@@ -221,7 +228,7 @@ public final class MessageListAdapter extends RecyclerView.Adapter<MessageListAd
         final TextView reaction;
         final TextView edited;
         final TextView time;
-        final TextView status;
+        final ImageView status;
         final MaterialButton retry;
         Holder(View itemView) {
             super(itemView);

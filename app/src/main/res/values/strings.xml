@@ -14,7 +14,6 @@
     <string name="nav_chats">Чаты</string>
     <string name="nav_search">Поиск</string>
     <string name="nav_settings">Настройки</string>
-    <string name="auth_badge">ЛИЧНЫЕ СООБЩЕНИЯ</string>
     <string name="no_chats_title">Пока нет чатов</string>
     <string name="no_chats_description">Найдите собеседника, чтобы начать разговор.</string>
     <string name="find_people">Найти собеседника</string>
@@ -22,6 +21,14 @@
     <string name="search_prompt">Введите имя пользователя, чтобы найти собеседника.</string>
     <string name="send_failed">Не отправлено · повторить</string>
     <string name="sending_message">Отправляется</string>
+    <string name="message_sent">Отправлено</string>
+    <string name="message_read">Прочитано</string>
+    <plurals name="message_reactions">
+        <item quantity="one">%1$d реакция</item>
+        <item quantity="few">%1$d реакции</item>
+        <item quantity="many">%1$d реакций</item>
+        <item quantity="other">%1$d реакции</item>
+    </plurals>
     <string name="profile_photo">Фото профиля</string>
     <string name="profile_photo_hint">Коснитесь, чтобы изменить</string>
     <string name="profile_username_hint_text">Юзернейм: 3–20 символов, латиница, цифры и _.</string>
