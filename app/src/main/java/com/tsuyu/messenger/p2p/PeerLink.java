@@ -188,18 +188,31 @@ public final class PeerLink {
 
     /** Отправка полезной нагрузки: тип, шифрование, счётчик. */
     public void send(int type, byte[] payload) {
+        send(type, payload, 0, payload == null ? 0 : payload.length);
+    }
+
+    /**
+     * То же, но полезная нагрузка берётся из уже готового буфера.
+     *
+     * <p>Голосовой канал шлёт кадр каждые 20 мс, и раньше под каждый кадр создавался новый
+     * массив. Теперь кадр читается прямо из общего буфера, поэтому на каждый пакет не
+     * приходится ни одной лишней копии.
+     */
+    public void send(int type, byte[] payload, int offset, int length) {
         DatagramSocket current = socket;
         InetSocketAddress destination = peer;
         if (current == null || current.isClosed()) return;
         if (destination == null) return;
+        int safeLength = payload == null ? 0 : Math.max(0, Math.min(length, payload.length - offset));
         int number = sequence.incrementAndGet();
         try {
-            byte[] body = payload == null ? new byte[0] : payload;
             if (type == HELLO || type == PING || type == PONG) {
-                byte[] packet = new byte[5 + body.length];
+                byte[] packet = new byte[5 + safeLength];
                 packet[0] = (byte) type;
                 writeInt(packet, 1, number);
-                System.arraycopy(body, 0, packet, 5, body.length);
+                if (payload != null && safeLength > 0) {
+                    System.arraycopy(payload, offset, packet, 5, safeLength);
+                }
                 current.send(new DatagramPacket(packet, packet.length, destination));
                 return;
             }
@@ -211,7 +224,9 @@ public final class PeerLink {
             Cipher cipher = Cipher.getInstance("AES/GCM/NoPadding");
             cipher.init(Cipher.ENCRYPT_MODE, secret, new GCMParameterSpec(128, iv));
             cipher.updateAAD(new byte[]{(byte) type});
-            byte[] encrypted = cipher.doFinal(body);
+            byte[] encrypted = payload == null
+                    ? cipher.doFinal()
+                    : cipher.doFinal(payload, offset, safeLength);
             byte[] packet = new byte[5 + encrypted.length];
             packet[0] = (byte) type;
             writeInt(packet, 1, number);

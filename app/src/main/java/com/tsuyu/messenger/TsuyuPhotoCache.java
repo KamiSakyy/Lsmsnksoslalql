@@ -46,7 +46,7 @@ public final class TsuyuPhotoCache {
         Bitmap cached = MEDIA.get(key);
         if (cached != null) return cached;
         byte[] bytes = com.tsuyu.messenger.data.TsuyuMedia.bytes(context, value);
-        Bitmap decoded = TsuyuPhoto.decodeScaled(bytes, maxSide);
+        Bitmap decoded = TsuyuPhoto.decodeScaled(bytes, maxSide, true);
         if (decoded != null) MEDIA.put(key, decoded);
         return decoded;
     }
@@ -64,7 +64,7 @@ public final class TsuyuPhotoCache {
         Bitmap cached = AVATARS.get(key);
         if (cached != null) return cached;
         byte[] bytes = com.tsuyu.messenger.data.TsuyuMedia.bytes(context, value);
-        Bitmap decoded = TsuyuPhoto.decodeScaled(bytes, 160);
+        Bitmap decoded = TsuyuPhoto.decodeScaled(bytes, 160, true);
         if (decoded != null) AVATARS.put(key, decoded);
         return decoded;
     }

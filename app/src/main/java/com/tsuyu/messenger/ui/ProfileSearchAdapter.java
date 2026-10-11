@@ -26,10 +26,33 @@ public final class ProfileSearchAdapter extends RecyclerView.Adapter<ProfileSear
 
     public ProfileSearchAdapter(Listener listener) { this.listener = listener; }
 
+    /** Список результатов обновляется по строкам: полной перерисовки нет. */
     public void submit(List<Profile> profiles) {
-        items.clear();
-        items.addAll(profiles);
-        notifyDataSetChanged();
+        List<Profile> next = profiles == null ? new ArrayList<>() : new ArrayList<>(profiles);
+        int limit = Math.min(items.size(), next.size());
+        for (int index = 0; index < limit; index++) {
+            Profile fresh = next.get(index);
+            String first = items.get(index).uid;
+            String second = fresh.uid;
+            if (first == null ? second != null : !first.equals(second)) {
+                items.clear();
+                items.addAll(next);
+                notifyItemRangeChanged(0, items.size());
+                return;
+            }
+            items.set(index, fresh);
+        }
+        if (items.size() < next.size()) {
+            int from = items.size();
+            items.addAll(next.subList(from, next.size()));
+            notifyItemRangeInserted(from, items.size() - from);
+        } else if (items.size() > next.size()) {
+            int from = next.size();
+            int removed = items.size() - from;
+            items.subList(from, items.size()).clear();
+            notifyItemRangeRemoved(from, removed);
+        }
+        if (limit > 0) notifyItemRangeChanged(0, Math.min(limit, items.size()));
     }
 
     @NonNull @Override public Holder onCreateViewHolder(@NonNull ViewGroup parent, int viewType) {

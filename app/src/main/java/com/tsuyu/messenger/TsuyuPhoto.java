@@ -17,6 +17,16 @@ public final class TsuyuPhoto {
 
     /** Уменьшает фото так, чтобы большая сторона была не больше maxSide. */
     public static Bitmap decodeScaled(byte[] bytes, int maxSide) {
+        return decodeScaled(bytes, maxSide, false);
+    }
+
+    /**
+     * То же, но для чистого показа на экране (списки и пузыри): кадр хранится в памяти
+     * видеокарты, поэтому прокрутка не гоняет его через обычную память. Там, где кадр
+     * потом сохраняют или рисуют на холсте, этот режим не используется — для таких мест
+     * остаётся обычный кадр (иначе сохранение картинки невозможно).
+     */
+    public static Bitmap decodeScaled(byte[] bytes, int maxSide, boolean forDisplay) {
         if (bytes == null || bytes.length == 0) return null;
         int side = maxSide <= 0 ? 1280 : maxSide;
         try {
@@ -30,16 +40,24 @@ public final class TsuyuPhoto {
             while (width / (sample * 2) >= side || height / (sample * 2) >= side) sample *= 2;
             BitmapFactory.Options options = new BitmapFactory.Options();
             options.inSampleSize = sample;
-            options.inPreferredConfig = Bitmap.Config.RGB_565;
+            options.inPreferredConfig = forDisplay && android.os.Build.VERSION.SDK_INT >= 26
+                    ? Bitmap.Config.HARDWARE : Bitmap.Config.RGB_565;
             try {
                 return BitmapFactory.decodeByteArray(bytes, 0, bytes.length, options);
-            } catch (OutOfMemoryError heavy) {
-                // Совсем тяжёлый случай: уменьшаем ещё сильнее и пробуем снова.
-                options.inSampleSize = sample * 4;
+            } catch (Throwable hardwareFailed) {
+                if (!forDisplay) throw hardwareFailed;
+                // Телефон или прошивка не отдали кадр в память видеокарты — берём обычный.
+                options.inPreferredConfig = Bitmap.Config.RGB_565;
                 try {
                     return BitmapFactory.decodeByteArray(bytes, 0, bytes.length, options);
-                } catch (Throwable ignored) {
-                    return null;
+                } catch (OutOfMemoryError heavy) {
+                // Совсем тяжёлый случай: уменьшаем ещё сильнее и пробуем снова.
+                options.inSampleSize = sample * 4;
+                    try {
+                        return BitmapFactory.decodeByteArray(bytes, 0, bytes.length, options);
+                    } catch (Throwable ignored) {
+                        return null;
+                    }
                 }
             }
         } catch (Throwable ignored) {

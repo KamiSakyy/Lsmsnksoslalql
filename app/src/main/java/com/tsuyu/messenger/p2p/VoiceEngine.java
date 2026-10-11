@@ -94,6 +94,8 @@ public final class VoiceEngine {
 
     @SuppressLint("MissingPermission")
     private void captureLoop() {
+        // Буфер кадра создаётся один раз: отправка читает его на месте, без копий,
+        // поэтому на каждом кадре (каждые 20 мс) не появляется новых массивов.
         byte[] frame = new byte[FRAME_BYTES];
         while (running.get()) {
             try {
@@ -102,9 +104,7 @@ public final class VoiceEngine {
                 int read = current.read(frame, 0, frame.length);
                 if (read <= 0) continue;
                 if (muted.get()) continue;
-                byte[] payload = new byte[read];
-                System.arraycopy(frame, 0, payload, 0, read);
-                link.send(PeerLink.AUDIO, payload);
+                link.send(PeerLink.AUDIO, frame, 0, read);
             } catch (Throwable ignored) {
                 if (!running.get()) break;
             }
