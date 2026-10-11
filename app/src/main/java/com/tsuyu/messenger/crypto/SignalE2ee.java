@@ -116,7 +116,7 @@ public final class SignalE2ee {
         IdentityKey candidateIdentity = new IdentityKey(unb64(remoteBundle == null ? null : remoteBundle.get("identityKey")));
         IdentityKey trustedIdentity = store.getIdentity(remote);
         if (trustedIdentity != null && !Arrays.equals(trustedIdentity.serialize(), candidateIdentity.serialize())) {
-            throw new SecurityException("Собеседник сменил ключ Signal. Сверьте отпечаток в профиле перед продолжением.");
+            throw new SecurityException("Код безопасности собеседника изменился. Сверьте его в профиле перед отправкой сообщения.");
         }
         if (!store.containsSession(remote)) {
             PreKeyBundle preKeyBundle = createBundle(remoteBundle);

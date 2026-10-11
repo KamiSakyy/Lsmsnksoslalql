@@ -149,6 +149,7 @@ public final class MainActivity extends AppCompatActivity {
     private RecyclerView messageList;
     private View homeEmptyState;
     private View homeLoadingState;
+    private View homeNewChat;
     private View searchEmptyState;
     private View chatEmptyState;
     private TextView searchEmptyText;
@@ -312,7 +313,7 @@ public final class MainActivity extends AppCompatActivity {
                 Map<String, Object> bundle = crypto.publicKeyBundle();
                 database.getReference("users").child(uid).child("keys").child("1").setValue(bundle);
             } catch (Exception e) {
-                ui.post(() -> toast("Не удалось опубликовать публичные ключи. Проверьте правила RTDB."));
+                ui.post(() -> toast("Не удалось подключиться. Проверьте интернет и попробуйте снова."));
             }
         });
         profileRepository.getProfile(uid, profile -> {
@@ -442,6 +443,8 @@ public final class MainActivity extends AppCompatActivity {
         chatList.setAdapter(chatListAdapter);
         homeEmptyState = root.findViewById(R.id.home_empty_state);
         homeLoadingState = root.findViewById(R.id.home_loading_state);
+        homeNewChat = root.findViewById(R.id.home_new_chat);
+        homeNewChat.setOnClickListener(v -> showSearchScreen());
         root.findViewById(R.id.home_find_people).setOnClickListener(v -> showSearchScreen());
         setupBottomNavigation(root, R.id.nav_chats);
         attachUserChatsListener();
@@ -458,7 +461,7 @@ public final class MainActivity extends AppCompatActivity {
             @Override public void onCancelled(DatabaseError error) {
                 chatIndexLoaded = true;
                 renderChatList();
-                toast("Не удалось загрузить диалоги: " + error.getMessage());
+                toast("Не удалось загрузить чаты. Проверьте подключение и попробуйте снова.");
             }
         };
         chatRepository.userChats(uid).addValueEventListener(userChatsListener);
@@ -695,16 +698,18 @@ public final class MainActivity extends AppCompatActivity {
             chatList.setVisibility(View.GONE);
             homeLoadingState.setVisibility(chatIndexLoaded ? View.GONE : View.VISIBLE);
             homeEmptyState.setVisibility(chatIndexLoaded ? View.VISIBLE : View.GONE);
+            if (homeNewChat != null) homeNewChat.setVisibility(View.GONE);
         } else {
             chatList.setVisibility(View.VISIBLE);
             homeLoadingState.setVisibility(View.GONE);
             homeEmptyState.setVisibility(View.GONE);
+            if (homeNewChat != null) homeNewChat.setVisibility(View.VISIBLE);
         }
     }
 
     private String previewFor(ChatSummary summary) {
         ChatMessage message = summary.lastMessage;
-        if (message == null) return "Сквозное шифрование · начните диалог";
+        if (message == null) return "Начните переписку";
         if (message.localPayload != null) return previewFromJson(message.localPayload);
         String cached = message.id == null || messageCache == null ? null : messageCache.get(summary.chatId, message.id);
         if (cached != null) return previewFromJson(cached);
@@ -713,7 +718,7 @@ public final class MainActivity extends AppCompatActivity {
             if (local != null && local.localPayload != null) return previewFromJson(local.localPayload);
         }
         if (message.failed) return "Не отправлено · нажмите, чтобы повторить";
-        return message.cipher == null ? "Новое сообщение" : "Зашифрованное сообщение";
+        return "";
     }
 
     private void openChat(ChatSummary summary) { showChat(summary.chatId, summary.peerUid); }
@@ -921,7 +926,7 @@ public final class MainActivity extends AppCompatActivity {
                 renderMessages(messages, peerUid);
                 if (!presenceManager.isGhostMode()) chatRepository.markRead(chatId, uid);
             }
-            @Override public void onCancelled(DatabaseError error) { toast("Не удалось открыть сообщения: " + error.getMessage()); }
+            @Override public void onCancelled(DatabaseError error) { toast("Не удалось загрузить сообщения. Проверьте подключение и попробуйте снова."); }
         };
         chatRepository.messages(chatId).addValueEventListener(messagesListener);
     }
@@ -1137,10 +1142,25 @@ public final class MainActivity extends AppCompatActivity {
                     dialog.show();
                     if (dialog.getWindow() != null) dialog.getWindow().setLayout(-1, -1);
                     video.setVideoURI(Uri.fromFile(file));
-                    video.setOnPreparedListener(player -> { video.start(); toggle.setText("Ⅱ"); });
+                    video.setOnPreparedListener(player -> {
+                        video.start();
+                        toggle.setIconResource(R.drawable.ic_pause);
+                        toggle.setContentDescription("Пауза");
+                    });
+                    video.setOnCompletionListener(player -> {
+                        toggle.setIconResource(R.drawable.ic_play);
+                        toggle.setContentDescription("Воспроизвести");
+                    });
                     toggle.setOnClickListener(v -> {
-                        if (video.isPlaying()) { video.pause(); toggle.setText("▶"); }
-                        else { video.start(); toggle.setText("Ⅱ"); }
+                        if (video.isPlaying()) {
+                            video.pause();
+                            toggle.setIconResource(R.drawable.ic_play);
+                            toggle.setContentDescription("Воспроизвести");
+                        } else {
+                            video.start();
+                            toggle.setIconResource(R.drawable.ic_pause);
+                            toggle.setContentDescription("Пауза");
+                        }
                     });
                 });
             } catch (Exception error) { runOnUiThread(() -> toast("Не удалось открыть видео.")); }
@@ -1214,7 +1234,7 @@ public final class MainActivity extends AppCompatActivity {
     }
 
     private void editMessage(ChatMessage message, String payload) {
-        if (payload == null) { toast("Сообщение ещё не расшифровано."); return; }
+        if (payload == null) { toast("Сообщение загружается. Попробуйте ещё раз чуть позже."); return; }
         String old;
         try { old = new JSONObject(payload).optString("text", ""); } catch (Exception e) { toast("Можно редактировать только текст."); return; }
         View editor = getLayoutInflater().inflate(R.layout.dialog_edit_message, null, false);
@@ -1244,7 +1264,7 @@ public final class MainActivity extends AppCompatActivity {
     }
 
     private void forwardMessage(String payload) {
-        if (payload == null) { toast("Сообщение ещё не расшифровано."); return; }
+        if (payload == null) { toast("Сообщение загружается. Попробуйте ещё раз чуть позже."); return; }
         String text = textFromPayload(payload);
         ((ClipboardManager) getSystemService(CLIPBOARD_SERVICE)).setPrimaryClip(ClipData.newPlainText("Tsuyu", text));
         toast("Текст скопирован. Выберите диалог и вставьте его.");
@@ -1418,21 +1438,21 @@ public final class MainActivity extends AppCompatActivity {
             try {
                 @SuppressWarnings("unchecked") Map<String, Object> bundle = (Map<String, Object>) snapshot.getValue();
                 peerBundle[0] = bundle;
-                fingerprint.setText(bundle == null ? "У пользователя ещё нет публичного ключа" : SignalE2ee.identityFingerprint(bundle));
-            } catch (Exception error) { fingerprint.setText("Не удалось проверить отпечаток ключа"); }
+                fingerprint.setText(bundle == null ? "Код безопасности недоступен" : SignalE2ee.identityFingerprint(bundle));
+            } catch (Exception error) { fingerprint.setText("Не удалось загрузить код безопасности."); }
         });
         trustKey.setOnClickListener(v -> {
-            if (peerBundle[0] == null || accountCrypto == null) { toast("Публичный ключ пока недоступен."); return; }
+            if (peerBundle[0] == null || accountCrypto == null) { toast("Код безопасности пока недоступен."); return; }
             String shownFingerprint;
             try { shownFingerprint = SignalE2ee.identityFingerprint(peerBundle[0]); }
-            catch (Exception error) { toast("Некорректный публичный ключ."); return; }
-            new AlertDialog.Builder(this).setTitle("Проверить ключ")
-                    .setMessage("Сравните этот SHA-256 отпечаток с собеседником по независимому каналу:\n\n" + shownFingerprint + "\n\nДоверять ключу только после совпадения.")
-                    .setNegativeButton("Отмена", null).setPositiveButton("Доверять", (dialog, which) -> cryptoQueue.execute(() -> {
+            catch (Exception error) { toast("Не удалось проверить код безопасности."); return; }
+            new AlertDialog.Builder(this).setTitle("Проверка кода безопасности")
+                    .setMessage("Сравните этот код с собеседником лично или по телефону:\n\n" + shownFingerprint + "\n\nПодтвердите только в том случае, если коды совпадают.")
+                    .setNegativeButton("Отмена", null).setPositiveButton("Совпадает", (dialog, which) -> cryptoQueue.execute(() -> {
                         try {
                             accountCrypto.trustRemoteIdentity(profilePeerUid, peerBundle[0]);
-                            runOnUiThread(() -> toast("Ключ принят, Ratchet-сеанс сброшен."));
-                        } catch (Exception error) { runOnUiThread(() -> toast("Не удалось принять ключ.")); }
+                            runOnUiThread(() -> toast("Код безопасности подтверждён."));
+                        } catch (Exception error) { runOnUiThread(() -> toast("Не удалось подтвердить код безопасности.")); }
                     })).show();
         });
 
@@ -1465,14 +1485,14 @@ public final class MainActivity extends AppCompatActivity {
     private void exportCurrentChat() {
         if (activeChatId == null) return;
         chatRepository.messages(activeChatId).get().addOnSuccessListener(snapshot -> {
-            StringBuilder text = new StringBuilder("Tsuyu — расшифрованный экспорт\n");
+            StringBuilder text = new StringBuilder("Переписка в Tsuyu\n");
             for (DataSnapshot child : snapshot.getChildren()) {
                 ChatMessage message = child.getValue(ChatMessage.class);
                 if (message == null || message.id == null) continue;
                 String payload = messageCache.get(activeChatId, message.id);
                 text.append(message.senderUid.equals(uid) ? "Вы" : (peerProfile == null ? "Собеседник" : peerProfile.displayNameOrUsername()))
                         .append(" · ").append(message.sentAt <= 0 ? "" : new SimpleDateFormat("yyyy-MM-dd HH:mm", Locale.getDefault()).format(new Date(message.sentAt))).append("\n")
-                        .append(payload == null ? "[Не расшифровано на этом устройстве]" : textFromPayload(payload)).append("\n\n");
+                        .append(payload == null ? "[Сообщение недоступно]" : textFromPayload(payload)).append("\n\n");
             }
             Intent intent = new Intent(Intent.ACTION_CREATE_DOCUMENT).setType("text/plain").addCategory(Intent.CATEGORY_OPENABLE).putExtra(Intent.EXTRA_TITLE, "Tsuyu-chat.txt");
             try { startActivityForResult(intent, 701); } catch (Exception e) { toast("Не удалось открыть проводник."); }
@@ -1682,7 +1702,7 @@ public final class MainActivity extends AppCompatActivity {
         root.findViewById(R.id.setting_keys).setOnClickListener(v -> showKeySettings());
         root.findViewById(R.id.settings_logout).setOnClickListener(v -> new AlertDialog.Builder(this)
                 .setTitle("Выйти?")
-                .setMessage("Локальная криптографическая идентичность сохранится на этом устройстве.")
+                .setMessage("Вы сможете войти снова в любое время.")
                 .setNegativeButton("Отмена", null)
                 .setPositiveButton("Выйти", (dialog, which) -> { presenceManager.signOut(); auth.signOut(); })
                 .show());
@@ -1768,7 +1788,7 @@ public final class MainActivity extends AppCompatActivity {
                         presenceManager.setGhostMode(uid, ghost.isChecked());
                         if (activeChatId != null && !ghost.isChecked()) chatRepository.markRead(activeChatId, uid);
                         toast("Настройки приватности сохранены.");
-                    }).addOnFailureListener(error -> toast("Не удалось сохранить настройки RTDB."));
+                    }).addOnFailureListener(error -> toast("Не удалось сохранить настройки конфиденциальности."));
                 }).show();
     }
 
@@ -1814,21 +1834,22 @@ public final class MainActivity extends AppCompatActivity {
         MaterialButton rotate = body.findViewById(R.id.key_rotate);
         try {
             Map<String, Object> ownBundle = crypto.publicKeyBundle();
-            fingerprint.setText(SignalE2ee.identityFingerprint(ownBundle));
+            String safetyCode = SignalE2ee.identityFingerprint(ownBundle);
+            fingerprint.setText(safetyCode);
             copyPublic.setOnClickListener(v -> {
                 ((ClipboardManager) getSystemService(CLIPBOARD_SERVICE)).setPrimaryClip(
-                        ClipData.newPlainText("Tsuyu public key bundle", new JSONObject(ownBundle).toString()));
-                toast("Публичный bundle скопирован.");
+                        ClipData.newPlainText("Код безопасности", safetyCode));
+                toast("Код скопирован.");
             });
         } catch (Exception error) {
-            fingerprint.setText("Не удалось подготовить отпечаток ключа.");
+            fingerprint.setText("Не удалось загрузить код безопасности.");
             copyPublic.setEnabled(false);
         }
-        rotate.setOnClickListener(v -> new AlertDialog.Builder(this).setTitle("Сменить ключ?")
-                .setMessage("Текущие локальные Ratchet-сессии будут удалены. Продолжить?")
+        rotate.setOnClickListener(v -> new AlertDialog.Builder(this).setTitle("Обновить код безопасности?")
+                .setMessage("После обновления попросите собеседников сверить новый код. Старые сообщения могут стать недоступны. Продолжить?")
                 .setNegativeButton("Отмена", null)
-                .setPositiveButton("Сменить", (dialog, which) -> rotateIdentity()).show());
-        new AlertDialog.Builder(this).setTitle("Ключи шифрования").setView(body)
+                .setPositiveButton("Обновить", (dialog, which) -> rotateIdentity()).show());
+        new AlertDialog.Builder(this).setTitle("Защита сообщений").setView(body)
                 .setPositiveButton("Закрыть", null).show();
     }
 
@@ -1838,8 +1859,8 @@ public final class MainActivity extends AppCompatActivity {
                 crypto.rotateIdentity();
                 Map<String, Object> bundle = crypto.publicKeyBundle();
                 Tasks.await(database.getReference("users").child(uid).child("keys").child("1").setValue(bundle));
-                runOnUiThread(() -> toast("Новый ключ опубликован. Попросите собеседника начать новый сеанс."));
-            } catch (Exception error) { runOnUiThread(() -> toast("Не удалось сменить ключ.")); }
+                runOnUiThread(() -> toast("Код безопасности обновлён. Попросите собеседника сверить его."));
+            } catch (Exception error) { runOnUiThread(() -> toast("Не удалось обновить код безопасности.")); }
         });
     }
 
@@ -1939,7 +1960,7 @@ public final class MainActivity extends AppCompatActivity {
             JSONObject object = new JSONObject(payload);
             String kind = object.optString("kind", "text");
             if ("text".equals(kind)) return object.optString("text", "Сообщение");
-            if ("decrypt_error".equals(kind)) return "Не удалось расшифровать";
+            if ("decrypt_error".equals(kind)) return "Не удалось открыть сообщение";
             if ("image".equals(kind) || "collage".equals(kind)) return "Фото";
             if ("video".equals(kind)) return "Видео";
             if ("voice".equals(kind)) return "Голосовое сообщение";
@@ -1953,7 +1974,7 @@ public final class MainActivity extends AppCompatActivity {
             JSONObject object = new JSONObject(payload);
             String kind = object.optString("kind", "text");
             if ("text".equals(kind)) return object.optString("text", "");
-            if ("decrypt_error".equals(kind)) return "Не удалось расшифровать";
+            if ("decrypt_error".equals(kind)) return "Не удалось открыть сообщение";
             if ("image".equals(kind) || "collage".equals(kind)) return "Фото";
             if ("video".equals(kind)) return "Видео";
             if ("voice".equals(kind)) return "Голосовое сообщение";
@@ -2002,7 +2023,7 @@ public final class MainActivity extends AppCompatActivity {
     }
     private void detachRealtimeListeners() { detachUserChatsListener(); detachChatListeners(); if (presenceManager != null) presenceManager.signOut(); }
     private void toast(String text) { if (Looper.myLooper() == Looper.getMainLooper()) Toast.makeText(this, text, Toast.LENGTH_SHORT).show(); else runOnUiThread(() -> Toast.makeText(this, text, Toast.LENGTH_SHORT).show()); }
-    private String authError(Exception e) { String message = e.getLocalizedMessage(); return message == null ? "Не удалось войти. Проверьте почту и пароль." : message; }
+    private String authError(Exception e) { return "Не удалось войти. Проверьте почту и пароль или попробуйте позже."; }
     private static long number(Object value) { return value instanceof Number ? ((Number) value).longValue() : 0L; }
 
     @Override

@@ -63,7 +63,7 @@ public final class TsuyuMessagingService extends FirebaseMessagingService {
         if (chatId != null && chatId.equals(getSharedPreferences("tsuyu_settings", MODE_PRIVATE).getString("active_chat", ""))) return;
         if (chatId != null && messageId != null && !NotificationSounds.claimNotification(this, chatId, messageId)) return;
         String title = "Tsuyu";
-        String body = "Новое зашифрованное сообщение";
+        String body = "Новое сообщение";
         Bitmap avatar = null;
         if (chatId != null && peerUid != null && messageId != null) {
             try {
@@ -98,7 +98,7 @@ public final class TsuyuMessagingService extends FirebaseMessagingService {
                 }
             } catch (Exception ignored) {
                 // Never fall back to server-provided plaintext for a failed decryption.
-                body = "Новое зашифрованное сообщение";
+                body = "Новое сообщение";
             }
         }
         showNotification(title, body, avatar, chatId, peerUid);
@@ -118,7 +118,7 @@ public final class TsuyuMessagingService extends FirebaseMessagingService {
         int commonFlags = PendingIntent.FLAG_UPDATE_CURRENT | (Build.VERSION.SDK_INT >= 23 ? PendingIntent.FLAG_IMMUTABLE : 0);
         PendingIntent contentIntent = PendingIntent.getActivity(this, id, open, commonFlags);
         NotificationCompat.Builder builder = new NotificationCompat.Builder(this, NotificationSounds.channelId(this))
-                .setSmallIcon(android.R.drawable.stat_notify_chat)
+                .setSmallIcon(R.drawable.ic_chat)
                 .setContentTitle(title)
                 .setContentText(body)
                 .setCategory(Notification.CATEGORY_MESSAGE)

@@ -8,6 +8,7 @@ import android.view.LayoutInflater;
 import android.view.View;
 import android.view.ViewGroup;
 import android.view.animation.AnimationUtils;
+import android.widget.ProgressBar;
 import android.widget.TextView;
 
 import androidx.annotation.NonNull;
@@ -99,6 +100,7 @@ public final class MessageListAdapter extends RecyclerView.Adapter<MessageListAd
         boolean outgoing = ownUid != null && ownUid.equals(message.senderUid);
 
         holder.body.setVisibility(View.VISIBLE);
+        holder.loading.setVisibility(View.GONE);
         holder.image.setVisibility(View.GONE);
         holder.gallery.setVisibility(View.GONE);
         holder.video.setVisibility(View.GONE);
@@ -120,14 +122,16 @@ public final class MessageListAdapter extends RecyclerView.Adapter<MessageListAd
             catch (Exception ignored) { }
         }
         if (object == null) {
-            String label = "decrypt_error".equals(payload) ? "Не удалось расшифровать"
-                    : outgoing ? holder.itemView.getResources().getString(R.string.encrypted_message)
-                    : holder.itemView.getResources().getString(R.string.decrypting_message);
-            holder.body.setText(label);
+            if ("decrypt_error".equals(payload)) {
+                holder.body.setText("Не удалось открыть сообщение");
+            } else {
+                holder.body.setVisibility(View.GONE);
+                holder.loading.setVisibility(View.VISIBLE);
+            }
         } else if ("text".equals(kind)) {
             holder.body.setText(object.optString("text", ""));
         } else if ("decrypt_error".equals(kind)) {
-            holder.body.setText("Не удалось расшифровать");
+            holder.body.setText("Не удалось открыть сообщение");
         } else if ("image".equals(kind)) {
             holder.body.setVisibility(View.GONE);
             bindImage(holder.image, object.optString("data", ""));
@@ -207,6 +211,7 @@ public final class MessageListAdapter extends RecyclerView.Adapter<MessageListAd
     static final class Holder extends RecyclerView.ViewHolder {
         final MaterialCardView bubble;
         final TextView body;
+        final ProgressBar loading;
         final ShapeableImageView image;
         final RecyclerView gallery;
         final MaterialCardView video;
@@ -222,6 +227,7 @@ public final class MessageListAdapter extends RecyclerView.Adapter<MessageListAd
             super(itemView);
             bubble = itemView.findViewById(R.id.message_bubble);
             body = itemView.findViewById(R.id.message_body);
+            loading = itemView.findViewById(R.id.message_loading);
             image = itemView.findViewById(R.id.message_image);
             gallery = itemView.findViewById(R.id.message_gallery);
             video = itemView.findViewById(R.id.message_video);

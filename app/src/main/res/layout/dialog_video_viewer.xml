@@ -16,8 +16,10 @@
         android:layout_gravity="center"
         android:contentDescription="Воспроизведение"
         android:minWidth="0dp"
-        android:text="Ⅱ"
-        android:textSize="22sp"
+        android:text=""
         app:backgroundTint="#AA141416"
-        app:cornerRadius="29dp" />
+        app:cornerRadius="29dp"
+        app:icon="@drawable/ic_pause"
+        app:iconSize="24dp"
+        app:iconTint="@color/tsuyu_white" />
 </FrameLayout>

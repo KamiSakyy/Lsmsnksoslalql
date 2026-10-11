@@ -160,7 +160,6 @@ public final class ProfileRepository {
     }
 
     private static String safeMessage(Exception e) {
-        String message = e.getLocalizedMessage();
-        return message == null || message.trim().isEmpty() ? "Не удалось выполнить запрос. Проверь Firebase RTDB и правила." : message;
+        return "Не удалось выполнить действие. Проверьте интернет и попробуйте снова.";
     }
 }

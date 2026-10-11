@@ -78,15 +78,15 @@
                 <ImageView
                     android:layout_width="16dp"
                     android:layout_height="16dp"
-                    android:contentDescription="@string/e2ee_badge"
-                    android:src="@drawable/ic_lock"
+                    android:contentDescription="@string/auth_badge"
+                    android:src="@drawable/ic_chat"
                     app:tint="@color/tsuyu_green" />
                 <TextView
                     android:layout_width="wrap_content"
                     android:layout_height="wrap_content"
                     android:layout_marginStart="8dp"
                     android:letterSpacing="0.07"
-                    android:text="@string/e2ee_badge"
+                    android:text="@string/auth_badge"
                     android:textColor="@color/tsuyu_secondary"
                     android:textSize="10sp"
                     android:textStyle="bold" />

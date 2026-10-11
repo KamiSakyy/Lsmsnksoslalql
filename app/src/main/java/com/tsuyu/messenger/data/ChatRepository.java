@@ -249,8 +249,7 @@ public final class ChatRepository {
         Throwable cause = error;
         while (cause.getCause() != null) cause = cause.getCause();
         String text = cause.getLocalizedMessage();
-        return text == null || text.trim().isEmpty()
-                ? "Сбой RTDB/шифрования. Проверьте подключение и правила database.rules.json."
-                : text;
+        if (text != null && text.startsWith("Код безопасности собеседника")) return text;
+        return "Не удалось отправить сообщение. Проверьте интернет и попробуйте снова.";
     }
 }

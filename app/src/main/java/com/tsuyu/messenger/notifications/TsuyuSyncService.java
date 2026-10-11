@@ -154,7 +154,7 @@ public final class TsuyuSyncService extends Service {
                 byte[] bytes = Base64.decode(profile.avatarBase64, Base64.NO_WRAP);
                 avatar = BitmapFactory.decodeByteArray(bytes, 0, bytes.length);
             }
-            String body = "Новое зашифрованное сообщение";
+            String body = "Новое сообщение";
             SignalE2ee crypto = new SignalE2ee(this, uid);
             byte[] plain = crypto.decrypt(peerUid, message.signalType, message.cipher);
             String payload = new String(plain, StandardCharsets.UTF_8);
@@ -168,7 +168,7 @@ public final class TsuyuSyncService extends Service {
             else if ("audio".equals(kind)) body = "Аудиофайл";
             postNotification(title, body, avatar, chatId, peerUid);
         } catch (Exception e) {
-            postNotification("Tsuyu", "Новое зашифрованное сообщение", null, chatId, message.senderUid);
+            postNotification("Tsuyu", "Новое сообщение", null, chatId, message.senderUid);
         }
     }
 
@@ -185,7 +185,7 @@ public final class TsuyuSyncService extends Service {
         PendingIntent pending = PendingIntent.getActivity(this, id, intent,
                 PendingIntent.FLAG_UPDATE_CURRENT | (Build.VERSION.SDK_INT >= 23 ? PendingIntent.FLAG_IMMUTABLE : 0));
         NotificationCompat.Builder builder = new NotificationCompat.Builder(this, NotificationSounds.channelId(this))
-                .setSmallIcon(android.R.drawable.stat_notify_chat)
+                .setSmallIcon(R.drawable.ic_chat)
                 .setContentTitle(title).setContentText(body)
                 .setCategory(NotificationCompat.CATEGORY_MESSAGE)
                 .setPriority(NotificationCompat.PRIORITY_HIGH)
@@ -199,9 +199,9 @@ public final class TsuyuSyncService extends Service {
         PendingIntent pending = PendingIntent.getActivity(this, 4401, open,
                 PendingIntent.FLAG_UPDATE_CURRENT | (Build.VERSION.SDK_INT >= 23 ? PendingIntent.FLAG_IMMUTABLE : 0));
         return new NotificationCompat.Builder(this, SERVICE_CHANNEL)
-                .setSmallIcon(android.R.drawable.stat_notify_sync_noanim)
+                .setSmallIcon(R.drawable.ic_chat)
                 .setContentTitle("Tsuyu")
-                .setContentText("Защищённое фоновое соединение включено")
+                .setContentText("Уведомления о новых сообщениях включены")
                 .setOngoing(true)
                 .setCategory(NotificationCompat.CATEGORY_SERVICE)
                 .setContentIntent(pending)
@@ -212,8 +212,8 @@ public final class TsuyuSyncService extends Service {
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
             NotificationManager manager = getSystemService(NotificationManager.class);
             if (manager.getNotificationChannel(SERVICE_CHANNEL) == null) {
-                NotificationChannel channel = new NotificationChannel(SERVICE_CHANNEL, "Фоновая синхронизация", NotificationManager.IMPORTANCE_MIN);
-                channel.setDescription("Поддерживает RTDB-соединение для сообщений, пока приложение закрыто");
+                NotificationChannel channel = new NotificationChannel(SERVICE_CHANNEL, "Новые сообщения", NotificationManager.IMPORTANCE_MIN);
+                channel.setDescription("Помогает получать новые сообщения, пока приложение закрыто");
                 manager.createNotificationChannel(channel);
             }
         }

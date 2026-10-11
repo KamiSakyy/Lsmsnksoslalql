@@ -5,8 +5,8 @@
     android:layout_height="wrap_content"
     android:maxHeight="560dp">
     <LinearLayout android:layout_width="match_parent" android:layout_height="wrap_content" android:orientation="vertical" android:padding="18dp">
-        <com.google.android.material.materialswitch.MaterialSwitch android:id="@+id/privacy_ghost" android:layout_width="match_parent" android:layout_height="wrap_content" android:text="Режим призрака" android:textColor="@color/tsuyu_white" />
-        <TextView android:layout_width="match_parent" android:layout_height="wrap_content" android:layout_marginTop="7dp" android:layout_marginBottom="8dp" android:text="Скрой отметки прочтения. Доступность полей профиля также контролируется правилами RTDB." android:textColor="@color/tsuyu_secondary" android:textSize="12sp" />
+        <com.google.android.material.materialswitch.MaterialSwitch android:id="@+id/privacy_ghost" android:layout_width="match_parent" android:layout_height="wrap_content" android:text="Не показывать, что я в сети" android:textColor="@color/tsuyu_white" />
+        <TextView android:layout_width="match_parent" android:layout_height="wrap_content" android:layout_marginTop="7dp" android:layout_marginBottom="8dp" android:text="Скройте отметки прочтения и выберите, кто может видеть данные вашего профиля." android:textColor="@color/tsuyu_secondary" android:textSize="12sp" />
         <TextView android:layout_width="match_parent" android:layout_height="wrap_content" android:layout_marginTop="8dp" android:text="Кто может писать" android:textColor="@color/tsuyu_white" android:textSize="13sp" />
         <Spinner android:id="@+id/privacy_messages" android:layout_width="match_parent" android:layout_height="48dp" android:backgroundTint="@color/tsuyu_blue" />
         <TextView android:layout_width="match_parent" android:layout_height="wrap_content" android:layout_marginTop="8dp" android:text="Кто видит время захода" android:textColor="@color/tsuyu_white" android:textSize="13sp" />

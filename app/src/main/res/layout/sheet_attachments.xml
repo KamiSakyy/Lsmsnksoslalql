@@ -31,7 +31,7 @@
         android:layout_height="wrap_content"
         android:layout_marginTop="5dp"
         android:layout_marginBottom="16dp"
-        android:text="Медиа шифруется до отправки"
+        android:text="Выберите, чем поделиться"
         android:textColor="@color/tsuyu_secondary"
         android:textSize="12sp" />
 
