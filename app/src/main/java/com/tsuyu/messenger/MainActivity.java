@@ -39,6 +39,7 @@ import androidx.transition.TransitionManager;
 
 import com.google.android.material.appbar.MaterialToolbar;
 import com.google.android.material.bottomnavigation.BottomNavigationView;
+import com.google.android.material.bottomsheet.BottomSheetDialog;
 import com.google.android.material.button.MaterialButton;
 import com.google.android.material.checkbox.MaterialCheckBox;
 import com.google.android.material.imageview.ShapeableImageView;
@@ -851,7 +852,7 @@ public final class MainActivity extends AppCompatActivity {
             replyToText = null;
             replyBanner.setVisibility(View.GONE);
         });
-        root.findViewById(R.id.chat_attach).setOnClickListener(this::showAttachmentMenu);
+        root.findViewById(R.id.chat_attach).setOnClickListener(v -> showAttachmentMenu());
         root.findViewById(R.id.chat_send).setOnClickListener(v -> sendCurrentText());
         composer.setOnEditorActionListener((view, actionId, event) -> {
             if (actionId == android.view.inputmethod.EditorInfo.IME_ACTION_SEND
@@ -1492,20 +1493,36 @@ public final class MainActivity extends AppCompatActivity {
         }
     }
 
-    private void showAttachmentMenu(View anchor) {
-        PopupMenu menu = new PopupMenu(this, anchor);
-        menu.inflate(R.menu.attach_menu);
-        menu.setOnMenuItemClickListener(item -> {
-            int id = item.getItemId();
-            if (id == R.id.attach_image) { pendingMediaKind = "image"; avatarPicker.launch("image/*"); }
-            else if (id == R.id.attach_photos) multiPhotoPicker.launch(new androidx.activity.result.PickVisualMediaRequest.Builder().build());
-            else if (id == R.id.attach_video) { pendingMediaKind = "video"; documentPicker.launch(new String[]{"video/*"}); }
-            else if (id == R.id.attach_audio) { pendingMediaKind = "audio"; documentPicker.launch(new String[]{"audio/*"}); }
-            else if (id == R.id.attach_voice) toggleVoiceRecord();
-            else return false;
-            return true;
+    private void showAttachmentMenu() {
+        BottomSheetDialog sheet = new BottomSheetDialog(this);
+        View content = getLayoutInflater().inflate(R.layout.sheet_attachments, null, false);
+        content.findViewById(R.id.attachment_photo).setOnClickListener(v -> {
+            sheet.dismiss();
+            pendingMediaKind = "image";
+            avatarPicker.launch("image/*");
         });
-        menu.show();
+        content.findViewById(R.id.attachment_photos).setOnClickListener(v -> {
+            sheet.dismiss();
+            multiPhotoPicker.launch(new androidx.activity.result.PickVisualMediaRequest.Builder().build());
+        });
+        content.findViewById(R.id.attachment_video).setOnClickListener(v -> {
+            sheet.dismiss();
+            pendingMediaKind = "video";
+            documentPicker.launch(new String[]{"video/*"});
+        });
+        content.findViewById(R.id.attachment_audio).setOnClickListener(v -> {
+            sheet.dismiss();
+            pendingMediaKind = "audio";
+            documentPicker.launch(new String[]{"audio/*"});
+        });
+        MaterialButton voice = content.findViewById(R.id.attachment_voice);
+        if (voiceRecorder != null) voice.setText("Остановить и отправить голосовое");
+        voice.setOnClickListener(v -> {
+            sheet.dismiss();
+            toggleVoiceRecord();
+        });
+        sheet.setContentView(content);
+        sheet.show();
     }
 
     private void toggleVoiceRecord() {
