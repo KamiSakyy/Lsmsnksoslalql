@@ -835,7 +835,10 @@ public final class MessageListAdapter extends RecyclerView.Adapter<RecyclerView.
         }
         @Override public void onBindViewHolder(@NonNull GalleryHolder holder, int position) {
             String data = images.get(position);
-            bindImage(holder.image, data);
+            android.graphics.Bitmap thumb = com.tsuyu.messenger.TsuyuPhotoCache.media(
+                    holder.itemView.getContext(), data, 640);
+            if (thumb != null) holder.image.setImageBitmap(thumb);
+            else holder.image.setImageDrawable(null);
             holder.itemView.setOnClickListener(v -> listener.onImage(data));
         }
         @Override public int getItemCount() { return images.size(); }
