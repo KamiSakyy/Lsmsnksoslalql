@@ -50,7 +50,6 @@
     <string name="settings_open">Настройки Tsuyu</string>
     <string name="channel_messages">Сообщения</string>
     <string name="channel_messages_description">Уведомления о новых сообщениях Tsuyu</string>
-    <string name="home_title">VK Tsuyu</string>
     <string name="home_subtitle">Личные сообщения</string>
     <string name="search_people">Поиск людей</string>
     <string name="search_hint">Введите @юзернейм</string>
