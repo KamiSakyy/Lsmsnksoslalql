@@ -85,29 +85,42 @@ def access_token(key: dict) -> str:
         return json.load(response)["access_token"]
 
 
+RESULTS: list[str] = []
+
+
 def publish(token: str, url: str) -> bool:
+    """Пишем правила тремя способами: региональный хост, токен в заголовке, алиас."""
     body = RULES.read_bytes()
-    request = urllib.request.Request(
-        f"{url}/.settings/rules.json?access_token={urllib.parse.quote(token)}",
-        data=body,
-        method="PUT",
-        headers={"Content-Type": "application/json"},
-    )
-    try:
-        with urllib.request.urlopen(request, timeout=45) as response:
-            reply = response.read().decode("utf-8", "replace")
-            print(f"{url} -> HTTP {response.status} {reply[:200]}")
-            return response.status == 200
-    except urllib.error.HTTPError as failure:
-        body = failure.read().decode("utf-8", "replace")[:300]
-        LAST_ERROR["code"] = failure.code
-        LAST_ERROR["body"] = body.replace("%", "%25").replace("\n", " ")
-        print(f"{url} -> HTTP {failure.code} {body}")
-        return False
-    except Exception as failure:  # noqa: BLE001 - сеть в CI бывает недоступна
-        LAST_ERROR["body"] = str(failure).replace("%", "%25").replace("\n", " ")
-        print(f"{url} -> {failure}")
-        return False
+    host = urllib.parse.urlparse(url).netloc
+    attempts = [
+        ("query", f"{url}/.settings/rules.json?access_token={urllib.parse.quote(token)}",
+         {"Content-Type": "application/json"}),
+        ("bearer", f"{url}/.settings/rules.json",
+         {"Content-Type": "application/json", "Authorization": f"Bearer {token}"}),
+        ("alias", f"https://{host.split('.')[0]}.firebaseio.com/.settings/rules.json"
+                  f"?access_token={urllib.parse.quote(token)}",
+         {"Content-Type": "application/json"}),
+    ]
+    for name, target, headers in attempts:
+        request = urllib.request.Request(target, data=body, method="PUT", headers=headers)
+        try:
+            with urllib.request.urlopen(request, timeout=45) as response:
+                reply = response.read().decode("utf-8", "replace")
+                RESULTS.append(f"{name}:{response.status}")
+                print(f"{name} {target} -> HTTP {response.status} {reply[:200]}")
+                if response.status == 200:
+                    return True
+        except urllib.error.HTTPError as failure:
+            detail = failure.read().decode("utf-8", "replace")[:200]
+            RESULTS.append(f"{name}:{failure.code}")
+            LAST_ERROR["code"] = failure.code
+            LAST_ERROR["body"] = detail.replace("%", "%25").replace("\n", " ")
+            print(f"{name} {target} -> HTTP {failure.code} {detail}")
+        except Exception as failure:  # noqa: BLE001 - сеть в CI бывает недоступна
+            RESULTS.append(f"{name}:сеть")
+            LAST_ERROR["body"] = str(failure).replace("%", "%25").replace("\n", " ")
+            print(f"{name} {target} -> {failure}")
+    return False
 
 
 def main() -> int:
@@ -135,14 +148,12 @@ def main() -> int:
         print("не удалось получить OAuth2 токен:", failure)
         return 0
     print("ключ:", key.get("client_email"), "| база:", HOST)
-    # Пробуем и региональный адрес, и классический алиас: правила уезжают в ту же базу.
-    for url in (DATABASE, f"https://{HOST.split('.')[0]}.firebaseio.com"):
-        if publish(token, url):
-            print("::notice title=Правила базы::database.rules.json опубликован")
-            return 0
-    # Причину печатаем прямо в аннотацию: журнал шага в CI читать не всегда удобно.
+    if publish(token, DATABASE):
+        print("::notice title=Правила базы::database.rules.json опубликован")
+        return 0
+    # Все попытки и причину печатаем в аннотацию: журнал шага в CI читать не всегда удобно.
     reason = f"{LAST_ERROR['code'] or 'сеть'} {LAST_ERROR['body']}".strip()
-    print(f"::warning title=Правила базы::не удалось опубликовать database.rules.json — {reason[:220]}")
+    print(f"::warning title=Правила базы::не опубликованы [{', '.join(RESULTS)}] — {reason[:200]}")
     return 0
 
 
