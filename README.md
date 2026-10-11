@@ -1,50 +1,38 @@
 # Lsmsnksoslalql
 
-## 3D-модель: скелет и анимации
+## Готовая 3D-модель — файлы, без эмулятора
 
-Исходный ZIP девушки Tripo находится в `handoff/`. Автоматическая обработка выполняется
-workflow [Rig and animate the 3D girl](.github/workflows/rig-model.yml) **только в ветке
-`arena/1e52fcec-lsmsnksoslalql`**.
+Модель девушки Tripo обработана через GitHub Actions. Результаты сохранены в ветке
+`arena/1e52fcec-lsmsnksoslalql`, в папке [`handoff/rigged`](handoff/rigged/).
 
-### Файлы результата
+- **[Скачать GLB с костями и анимациями](https://github.com/KamiSakyy/Lsmsnksoslalql/raw/refs/heads/arena/1e52fcec-lsmsnksoslalql/handoff/rigged/anime-girl-rigged.glb)** — около 18 МБ, 160 000 треугольников, встроенные текстуры.
+- **[Скачать FBX](https://github.com/KamiSakyy/Lsmsnksoslalql/raw/refs/heads/arena/1e52fcec-lsmsnksoslalql/handoff/rigged/anime-girl-rigged.fbx)** — около 11 МБ, скелет, текстуры и клипы.
+- **[Полный пакет: исходная детализация GLB + Blender + FBX](https://github.com/KamiSakyy/Lsmsnksoslalql/actions/runs/38112065533/artifacts/11692127202)** — артефакт `anime-girl-rigged`. Полный GLB сохраняет исходные 1 159 795 вершин, 1 981 742 треугольника и текстуры без упрощения. Артефакт GitHub хранится 90 дней; скачайте его для долговременного хранения.
+- [Инструкция и ограничения](handoff/rigged/README_RU.md).
 
-- [`handoff/rigged/`](handoff/rigged/) — GLB со скелетом и пятью клипами, превью,
-  отчёт проверок и русская инструкция.
-- [GitHub Actions](https://github.com/KamiSakyy/Lsmsnksoslalql/actions) → успешный запуск
-  **Rig and animate the 3D girl** → **Artifacts / anime-girl-rigged** — полный GLB
-  с исходной геометрией, редактируемая сцена Blender и FBX. Артефакт хранится 90 дней.
-- [`viewer/`](viewer/README_RU.md) — интерактивный 3D-просмотр: выбор клипа,
-  пауза/скорость, настоящие кости поверх модели, исходная поза, скачивание GLB.
+**48 костей**, включая тело, волосы и одежду. **Пять процедурных клипов**:
+`Idle`, `Walk_InPlace`, `Run_InPlace`, `Wave`, `Dance`. Для скачивания и использования
+модели сайт или эмулятор не требуется.
 
-### Запуск просмотра
+[Итоговая сборка Actions](https://github.com/KamiSakyy/Lsmsnksoslalql/actions/runs/38112065533)
+завершилась успешно. Оба GLB проверены официальным валидатором Khronos: **0 ошибок**.
+Непривязанных вершин — **0**, не более четырёх влияний на вершину.
+Машинные отчёты: [rig-report.json](handoff/rigged/rig-report.json),
+[khronos-validation.json](handoff/rigged/khronos-validation.json).
 
-```sh
-npm ci --prefix viewer
-npm start --prefix viewer
-```
+## Инструменты и повторная сборка
 
-Просмотрщик слушает `0.0.0.0:3000`, не использует CDN и не публикует остальные файлы
-репозитория. Сначала дождитесь генерации `handoff/rigged` в Actions.
+Blender 4.2 LTS (`bpy`), NumPy и SciPy: скелет под исходную асимметричную позу,
+геодезическая привязка по поверхности, капсульные веса, сглаживание и перенос весов
+на исходную высокодетализированную модель. Нулевые/неортогональные касательные
+экспорта исправляются без удаления нормал-карты.
 
-### Пайплайн
+Workflow: [rig-model.yml](.github/workflows/rig-model.yml), только текущая ветка.
+Изменение скриптов/профиля запускает сборку; `workflow_dispatch` поддерживает
+необязательный `render_previews`. По умолчанию генерируются файлы модели без рендеров.
+Скрипты — [`tools/rigging/`](tools/rigging/); 18 тестов — [`tests/rigging/`](tests/rigging/).
 
-Blender 4.2 LTS (`bpy`), NumPy, SciPy и Pillow. 48 костей тела/волос/одежды,
-геодезическая привязка по связности поверхности и анатомические капсульные веса,
-сглаживание по поверхности, четыре влияния на вершину,
-перенос весов на исходный high-poly, процедурные клипы **Idle, Walk_InPlace,
-Run_InPlace, Wave, Dance**, проверка skin/bind-матриц и официальный валидатор glTF Khronos.
-
-Профиль скелета подобран под исходную **асимметричную позу именно этой модели**;
-это не универсальный авториггер. Получается автоматический стартовый FK-риг,
-без мимики, отдельных пальцев и физической симуляции ткани. Экстремальные движения
-могут потребовать ручной коррекции весов и корректирующих форм. Исходник не заменяется
-упрощённой копией: полноразмерный GLB в артефакте сохраняет исходные геометрию и текстуры.
-
-Скрипты: [`tools/rigging/`](tools/rigging/). Тесты:
-
-```sh
-python -m pip install -r tools/rigging/requirements.txt
-python -m unittest discover -s tests/rigging -v
-```
-
-Существующий код сервера и его конфигурация этим пайплайном не изменяются и не используются.
+Это стартовый автоматический FK-риг, не ручной production-риг: нет мимики, отдельных
+костей пальцев и физической симуляции ткани. Большие движения могут требовать
+коррекции весов и корректирующих форм. Клипы процедурные, не motion capture Mixamo.
+Исходный ZIP, код сервера и его конфигурация не изменены и не используются пайплайном.
