@@ -127,14 +127,12 @@ public final class P2pCall implements PeerLink.Listener {
         this.videoCall = video;
         this.incoming = false;
         this.finished.set(false);
-        link = new PeerLink(null);
         callRef = FirebaseDatabase.getInstance().getReference("chats").child(chatId).child("calls").push();
         callId = callRef.getKey();
-        if (link != null && callId != null) {
-            link = new PeerLink(callId);
-        }
+        link = new PeerLink(callId);
         mirrorRef = mirror(chatId, myUid, callId);
         peerMirrorRef = mirror(chatId, peerUid, callId);
+        peerRef = callRef.child("p2p").child(peerUid);
         Map<String, Object> call = new HashMap<>();
         call.put("from", myUid);
         call.put("to", peerUid);
@@ -167,6 +165,7 @@ public final class P2pCall implements PeerLink.Listener {
         callRef = FirebaseDatabase.getInstance().getReference("chats").child(chatId).child("calls").child(callId);
         mirrorRef = mirror(chatId, myUid, callId);
         peerMirrorRef = mirror(chatId, peerUid, callId);
+        peerRef = callRef.child("p2p").child(peerUid);
         NetworkPriority.refresh(this.context);
         CallService.start(this.context);
         armRingTimeout();
@@ -228,7 +227,6 @@ public final class P2pCall implements PeerLink.Listener {
                 self.put("endpoint", join(candidates));
                 self.put("at", ServerValue.TIMESTAMP);
                 publishSelf(self);
-                current.setPeerEndpoints(candidates);
             } catch (Throwable ignored) { }
         }, "tsuyu-p2p-stun");
         worker.setDaemon(true);
@@ -252,7 +250,9 @@ public final class P2pCall implements PeerLink.Listener {
             @Override public void onCancelled(DatabaseError error) { }
         };
         if (peerRef != null) peerRef.addValueEventListener(peerListener);
-        if (peerMirrorRef != null) peerMirrorRef.addValueEventListener(peerListener);
+        if (peerMirrorRef != null) {
+            peerMirrorRef.child("p2p").child(peerUid).addValueEventListener(peerListener);
+        }
     }
 
     /** Состояние разговора: отбой, отказ или «пропущен» приходят от собеседника. */
@@ -278,6 +278,7 @@ public final class P2pCall implements PeerLink.Listener {
         };
         if (callRef != null) callRef.addValueEventListener(stateListener);
         if (peerMirrorRef != null) peerMirrorRef.addValueEventListener(stateListener);
+        // Если собеседник уже ждёт ответа — начальный снимок сразу расскажет его данные.
     }
 
     private void publish(Map<String, Object> values) {
@@ -487,9 +488,7 @@ public final class P2pCall implements PeerLink.Listener {
     }
 
     public void finish() {
-        if (!finished.getAndSet(true)) {
-            // Если ещё не завершали — сообщаем собеседнику.
-        }
+        finished.set(true);
         cancelRingTimeout();
         try {
             if (stateListener != null && callRef != null) callRef.removeEventListener(stateListener);
@@ -498,7 +497,9 @@ public final class P2pCall implements PeerLink.Listener {
         stateListener = null;
         try {
             if (peerListener != null && peerRef != null) peerRef.removeEventListener(peerListener);
-            if (peerListener != null && peerMirrorRef != null) peerMirrorRef.removeEventListener(peerListener);
+            if (peerListener != null && peerMirrorRef != null) {
+                peerMirrorRef.child("p2p").child(peerUid).removeEventListener(peerListener);
+            }
         } catch (Throwable ignored) { }
         peerListener = null;
         try {

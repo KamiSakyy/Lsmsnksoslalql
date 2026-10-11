@@ -73,9 +73,13 @@ public final class Stun {
     /**
      * Спрашивает серверы по очереди, пока кто-нибудь не ответит: свой публичный адрес
      * узнаём через тот же сокет, которым потом будем говорить с собеседником.
+     *
+     * <p>Ответы приходят в общий «ящик» (им пользуется и приём P2P): так один и тот же
+     * порт служит и для знакомства с сетью, и для разговора с собеседником.
      */
-    public static Endpoint discover(DatagramSocket socket) {
-        if (socket == null || socket.isClosed()) return null;
+    public static Endpoint discover(DatagramSocket socket,
+                                    java.util.concurrent.BlockingQueue<byte[]> inbox) {
+        if (socket == null || socket.isClosed() || inbox == null) return null;
         byte[] transaction = new byte[12];
         new SecureRandom().nextBytes(transaction);
         byte[] request = bindingRequest(transaction);
@@ -89,23 +93,20 @@ public final class Stun {
                     port = Integer.parseInt(server.substring(colon + 1));
                 }
                 InetAddress address = InetAddress.getByName(host);
-                socket.setSoTimeout(1200);
                 socket.send(new DatagramPacket(request, request.length, address, port));
-                byte[] buffer = new byte[512];
-                DatagramPacket answer = new DatagramPacket(buffer, buffer.length);
-                socket.receive(answer);
-                Endpoint endpoint = parseResponse(answer, transaction);
-                if (endpoint != null) {
-                    socket.setSoTimeout(0);
-                    return endpoint;
+                long deadline = System.currentTimeMillis() + 1200L;
+                while (true) {
+                    long left = deadline - System.currentTimeMillis();
+                    if (left <= 0) break;
+                    byte[] answer = inbox.poll(left, java.util.concurrent.TimeUnit.MILLISECONDS);
+                    if (answer == null) break;
+                    Endpoint endpoint = parseResponse(answer, transaction);
+                    if (endpoint != null) return endpoint;
                 }
             } catch (Exception ignored) {
                 // Сервер молчит или недоступен — пробуем следующий.
             }
         }
-        try {
-            socket.setSoTimeout(0);
-        } catch (Exception ignored) { }
         return null;
     }
 
@@ -118,7 +119,7 @@ public final class Stun {
                 if (network.isLoopback() || !network.isUp()) continue;
                 for (java.net.InterfaceAddress address : network.getInterfaceAddresses()) {
                     InetAddress host = address.getAddress();
-                    if (host == null || host.isLoopback()) continue;
+                    if (host == null || host.isLoopbackAddress()) continue;
                     if (host instanceof java.net.Inet6Address) continue;
                     found.add(new Endpoint(host.getHostAddress(), 0));
                 }
@@ -140,9 +141,8 @@ public final class Stun {
         return message;
     }
 
-    private static Endpoint parseResponse(DatagramPacket answer, byte[] transaction) {
-        byte[] data = answer.getData();
-        int length = answer.getLength();
+    private static Endpoint parseResponse(byte[] data, byte[] transaction) {
+        int length = data.length;
         if (length < 20) return null;
         int type = ((data[0] & 0xff) << 8) | (data[1] & 0xff);
         if (type != BINDING_RESPONSE) return null;

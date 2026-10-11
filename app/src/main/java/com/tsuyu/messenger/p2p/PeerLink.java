@@ -49,7 +49,6 @@ public final class PeerLink {
     private final AtomicBoolean running = new AtomicBoolean(false);
     private final AtomicBoolean connected = new AtomicBoolean(false);
     private final AtomicInteger sequence = new AtomicInteger();
-    private final AtomicInteger lastSeenSequence = new AtomicInteger();
     private final List<InetSocketAddress> targets = Collections.synchronizedList(new ArrayList<>());
     private final SecureRandom random = new SecureRandom();
 
@@ -57,9 +56,17 @@ public final class PeerLink {
     private volatile Listener listener;
     private volatile InetSocketAddress peer;
     private volatile SecretKeySpec key;
-    private volatile byte[] ivPrefix = new byte[8];
+    /** Своя метка для исходящих пакетов и метка собеседника — для входящих (у каждого она своя). */
+    private volatile byte[] ivOut = new byte[8];
+    private volatile byte[] ivIn = new byte[8];
     private volatile byte[] peerNonce;
     private volatile long lastPacketAt;
+    /** Ответы STUN приходят в этот «ящик»: приём P2P и знакомство с сетью делят один порт. */
+    private final java.util.concurrent.BlockingQueue<byte[]> stunInbox =
+            new java.util.concurrent.LinkedBlockingQueue<>();
+    /** Недавно принятые номера — чтобы повтор не сбивал буфер переупорядочивания. */
+    private final java.util.LinkedHashSet<Integer> recentSequences = new java.util.LinkedHashSet<>();
+    private final AtomicInteger highestSequence = new AtomicInteger();
     private volatile boolean announced;
     private Thread receiveThread;
     private Thread keepAliveThread;
@@ -67,7 +74,6 @@ public final class PeerLink {
     public PeerLink(String callId) {
         this.callId = callId == null ? "call" : callId;
         random.nextBytes(ownNonce);
-        random.nextBytes(ivPrefix);
     }
 
     public String ownNonceHex() {
@@ -107,7 +113,7 @@ public final class PeerLink {
     public Stun.Endpoint discoverOwnEndpoint() {
         DatagramSocket current = socket;
         if (current == null) return null;
-        return Stun.discover(current);
+        return Stun.discover(current, stunInbox);
     }
 
     /** Адреса собеседника: публичный из базы плюс возможные локальные. */
@@ -155,10 +161,29 @@ public final class PeerLink {
             byte[] keyBytes = new byte[32];
             System.arraycopy(material, 0, keyBytes, 0, 32);
             key = new SecretKeySpec(keyBytes, "AES");
-            byte[] prefix = new byte[8];
-            System.arraycopy(material, 0, prefix, 0, 8);
-            ivPrefix = prefix;
+            ivOut = directionStamp(ownNonce, peerNonce);
+            ivIn = directionStamp(peerNonce, ownNonce);
         } catch (Exception ignored) { }
+    }
+
+    /**
+     * Метка направления: у каждой стороны она своя (своё число идёт первым), поэтому один и
+     * тот же счётчик в двух направлениях никогда не даёт одинаковый «номер шифрования».
+     */
+    private byte[] directionStamp(byte[] mine, byte[] theirs) {
+        try {
+            MessageDigest digest = MessageDigest.getInstance("SHA-256");
+            digest.update("tsuyu-p2p-iv".getBytes("UTF-8"));
+            digest.update(callId.getBytes("UTF-8"));
+            digest.update(mine);
+            digest.update(theirs);
+            byte[] full = digest.digest();
+            byte[] stamp = new byte[8];
+            System.arraycopy(full, 0, stamp, 0, 8);
+            return stamp;
+        } catch (Exception ignored) {
+            return new byte[8];
+        }
     }
 
     /** Отправка полезной нагрузки: тип, шифрование, счётчик. */
@@ -181,7 +206,7 @@ public final class PeerLink {
             SecretKeySpec secret = key;
             if (secret == null) return;
             byte[] iv = new byte[12];
-            System.arraycopy(ivPrefix, 0, iv, 0, 8);
+            System.arraycopy(ivOut, 0, iv, 0, 8);
             writeInt(iv, 8, number);
             Cipher cipher = Cipher.getInstance("AES/GCM/NoPadding");
             cipher.init(Cipher.ENCRYPT_MODE, secret, new GCMParameterSpec(128, iv));
@@ -237,10 +262,22 @@ public final class PeerLink {
         if (packet.getLength() < 5) return;
         byte[] data = packet.getData();
         int type = data[0] & 0xff;
+        if (type == 0x0101) { // ответ STUN на запрос «как меня видит интернет»
+            byte[] copy = new byte[packet.getLength()];
+            System.arraycopy(data, 0, copy, 0, copy.length);
+            stunInbox.offer(copy);
+            return;
+        }
         int number = readInt(data, 1);
         InetSocketAddress from = new InetSocketAddress(packet.getAddress(), packet.getPort());
         lastPacketAt = System.currentTimeMillis();
         if (type == HELLO) {
+            // В «привете» сразу приходит и его число для ключа — не ждём базы.
+            if (packet.getLength() >= 21) {
+                byte[] nonce = new byte[16];
+                System.arraycopy(data, 5, nonce, 0, 16);
+                setPeerNonce(hex(nonce));
+            }
             // Собеседник проявился: запоминаем адрес и сразу отвечаем тем же.
             if (!from.equals(peer)) {
                 peer = from;
@@ -259,11 +296,7 @@ public final class PeerLink {
             return;
         }
         if (type == PONG || type == BYE) {
-            if (type == BYE) {
-                Listener target = listener;
-                if (target != null) target.onClosed("peer");
-                close("peer");
-            }
+            if (type == BYE) close("peer");
             return;
         }
         if (type != AUDIO && type != VIDEO) return;
@@ -273,16 +306,15 @@ public final class PeerLink {
         }
         SecretKeySpec secret = key;
         if (secret == null) return;
-        if (number <= lastSeenSequence.get()) return; // защита от повторов
+        if (!acceptSequence(number)) return; // повтор или слишком старый пакет
         byte[] iv = new byte[12];
-        System.arraycopy(ivPrefix, 0, iv, 0, 8);
+        System.arraycopy(ivIn, 0, iv, 0, 8);
         writeInt(iv, 8, number);
         try {
             Cipher cipher = Cipher.getInstance("AES/GCM/NoPadding");
             cipher.init(Cipher.DECRYPT_MODE, secret, new GCMParameterSpec(128, iv));
             cipher.updateAAD(new byte[]{(byte) type});
             byte[] plain = cipher.doFinal(data, 5, packet.getLength() - 5);
-            lastSeenSequence.set(number);
             markConnected();
             Listener target = listener;
             if (target == null) return;
@@ -290,6 +322,28 @@ public final class PeerLink {
             else target.onVideo(number, plain);
         } catch (Exception ignored) {
             // Чужой или испорченный пакет: молча отбрасываем.
+        }
+    }
+
+    /**
+     * Пускаем пакет, если он новый и не слишком старый: лёгкий беспорядок в сети не мешает,
+     * а повтор или чужой «отравленный» номер отбрасывается. Возвращает true — можно читать.
+     */
+    private boolean acceptSequence(int number) {
+        synchronized (recentSequences) {
+            if (recentSequences.contains(number)) return false;
+            int highest = highestSequence.get();
+            if (highest > 0 && number < highest - 400) return false;
+            recentSequences.add(number);
+            if (recentSequences.size() > 1024) {
+                java.util.Iterator<Integer> oldest = recentSequences.iterator();
+                if (oldest.hasNext()) {
+                    oldest.next();
+                    oldest.remove();
+                }
+            }
+            if (number > highest) highestSequence.set(number);
+            return true;
         }
     }
 
