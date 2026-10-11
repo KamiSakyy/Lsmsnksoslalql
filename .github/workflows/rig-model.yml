@@ -29,12 +29,12 @@ jobs:
       SOURCE_ARCHIVE: handoff/d247d7c3_46ba_414e_b821_b731d4b67026_ab2fefced0df785fa9f396410d0b5905.zip
     steps:
       - name: Check out the same working branch
-        uses: actions/checkout@v4
+        uses: actions/checkout@v7.0.1
         with:
           ref: arena/1e52fcec-lsmsnksoslalql
 
       - name: Set up Python 3.11
-        uses: actions/setup-python@v5
+        uses: actions/setup-python@v7.0.0
         with:
           python-version: '3.11'
           cache: pip
@@ -48,6 +48,16 @@ jobs:
             libsm6 libice6 libgl1 libegl1
           python -m pip install -r tools/rigging/requirements.txt
 
+      - name: Set up Node for official Khronos glTF validation
+        uses: actions/setup-node@v7.1.0
+        with:
+          node-version: '24'
+          cache: npm
+          cache-dependency-path: tools/rigging/package-lock.json
+
+      - name: Install the official Khronos validator
+        run: npm ci --prefix tools/rigging --no-audit --no-fund
+
       - name: Test ZIP safety, skinning and inverse kinematics
         run: python -m unittest discover -s tests/rigging -v
 
@@ -59,24 +69,10 @@ jobs:
             --archive "$SOURCE_ARCHIVE" \
             --output build/rigged \
             --target-triangles 160000 \
-            --render 2>&1 | tee build/rigging.log
-
-      - name: Set up Node for official Khronos glTF validation
-        uses: actions/setup-node@v4
-        with:
-          node-version: '22'
-          cache: npm
-          cache-dependency-path: tools/rigging/package-lock.json
-
-      - name: Validate both GLBs with the Khronos validator
-        run: |
-          npm ci --prefix tools/rigging --no-audit --no-fund
-          node tools/rigging/validate-glb.cjs \
-            build/rigged/anime-girl-rigged.glb \
-            build/rigged/anime-girl-full.glb
+            --validate-gltf --render 2>&1 | tee build/rigging.log
 
       - name: Upload complete editable and full-resolution results
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7.0.2
         with:
           name: anime-girl-rigged
           retention-days: 90
@@ -126,10 +122,29 @@ jobs:
           if test -f build/rigging.log; then
             tail -n 300 build/rigging.log > handoff/rigging-diagnostics/last-run.log
           fi
+          for report in khronos-validation.json rig-report.json; do
+            if test -f "build/rigged/$report"; then
+              cp "build/rigged/$report" handoff/rigging-diagnostics/
+            fi
+          done
           printf 'Run: %s/%s/actions/runs/%s\n' "$GITHUB_SERVER_URL" "$GITHUB_REPOSITORY" "$GITHUB_RUN_ID" > handoff/rigging-diagnostics/run.txt
           find build/rigged -maxdepth 1 -type f -printf '%f %s bytes\n' >> handoff/rigging-diagnostics/run.txt 2>/dev/null || true
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
           git add -- handoff/rigging-diagnostics
-          git commit -m "Save rigging failure diagnostics for this working branch"
-          git push origin HEAD:arena/1e52fcec-lsmsnksoslalql
+          if ! git diff --cached --quiet; then
+            git commit -m "Save rigging failure diagnostics for this working branch"
+            git push origin HEAD:arena/1e52fcec-lsmsnksoslalql
+          fi
+
+      - name: Upload diagnostic reports and logs even if validation fails
+        if: always() && !cancelled()
+        uses: actions/upload-artifact@v7.0.2
+        with:
+          name: rigging-diagnostics-${{ github.run_id }}
+          retention-days: 30
+          if-no-files-found: ignore
+          path: |
+            build/rigging.log
+            build/rigged/rig-report.json
+            build/rigged/khronos-validation.json

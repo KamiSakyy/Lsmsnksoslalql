@@ -10,6 +10,7 @@ import io
 import json
 import math
 import os
+import subprocess
 import time
 from pathlib import Path
 
@@ -579,6 +580,8 @@ def main():
     parser.add_argument('--output', type=Path, default=Path('build/rigged'))
     parser.add_argument('--target-triangles', type=int, default=160000)
     parser.add_argument('--render', action='store_true')
+    parser.add_argument('--validate-gltf', action='store_true',
+                        help='Require Khronos validation before rendering or saving the final scene')
     args = parser.parse_args()
     if not 10000 <= args.target_triangles <= 500000:
         parser.error('triangle budget must be 10000..500000')
@@ -652,6 +655,11 @@ def main():
                         'Hair/clothing motion is skeletal/procedural, not physical simulation.',
                         'Extreme poses may need manual weights and corrective shapes.']}
     (output / 'rig-report.json').write_text(json.dumps(report, ensure_ascii=False, indent=2) + '\n')
+    if args.validate_gltf:
+        log('Checking both exports with the official Khronos validator before rendering')
+        subprocess.run(['node', str(Path(__file__).with_name('validate-glb.cjs')),
+                        str(output / 'anime-girl-rigged.glb'),
+                        str(output / 'anime-girl-full.glb')], check=True)
     camera = add_studio(height, origin)
     if args.render:
         render_previews(rig, bones, actions, camera, output)
