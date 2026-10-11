@@ -78,7 +78,7 @@
                     android:fontFamily="sans-serif-medium"
                     android:maxLines="1"
                     android:textColor="@color/tsuyu_white"
-                    android:textSize="15sp" />
+                    android:textSize="16sp" />
 
                 <TextView
                     android:id="@+id/chat_time"
@@ -86,7 +86,7 @@
                     android:layout_height="wrap_content"
                     android:layout_marginStart="@dimen/space_sm"
                     android:textColor="@color/tsuyu_time"
-                    android:textSize="11sp" />
+                    android:textSize="12sp" />
             </LinearLayout>
 
             <LinearLayout
@@ -112,7 +112,7 @@
                     android:ellipsize="end"
                     android:maxLines="1"
                     android:textColor="@color/tsuyu_preview"
-                    android:textSize="13sp" />
+                    android:textSize="14sp" />
 
                 <ImageView
                     android:id="@+id/chat_pin"
@@ -127,14 +127,14 @@
                 <TextView
                     android:id="@+id/chat_unread"
                     android:layout_width="wrap_content"
-                    android:layout_height="20dp"
+                    android:layout_height="22dp"
                     android:layout_marginStart="@dimen/space_xs"
                     android:background="@drawable/bg_unread_badge"
                     android:fontFamily="sans-serif-medium"
                     android:gravity="center"
-                    android:minWidth="20dp"
+                    android:minWidth="22dp"
                     android:textColor="@color/tsuyu_white"
-                    android:textSize="11sp"
+                    android:textSize="12sp"
                     android:visibility="gone" />
             </LinearLayout>
         </LinearLayout>

@@ -47,7 +47,7 @@
     <dimen name="online_dot">13dp</dimen>
 
     <!-- List rows -->
-    <dimen name="row_min_height">74dp</dimen>
+    <dimen name="row_min_height">72dp</dimen>
     <dimen name="row_settings_height">68dp</dimen>
     <dimen name="row_sheet_action_height">60dp</dimen>
     <dimen name="row_icon_tile">40dp</dimen>
@@ -62,6 +62,8 @@
     <dimen name="bubble_padding_bottom">8dp</dimen>
     <dimen name="message_gap_group">2dp</dimen>
     <dimen name="message_gap_block">6dp</dimen>
+    <!-- Геометрия серии сообщений как в ТГ: соседние пузыри «поджаты», хвост у последнего. -->
+    <dimen name="bubble_group_radius">6dp</dimen>
     <dimen name="media_width">224dp</dimen>
     <dimen name="media_height_image">168dp</dimen>
     <dimen name="media_height_gallery">128dp</dimen>
@@ -84,7 +86,7 @@
     <dimen name="avatar_chat">56dp</dimen>
 
     <!-- Web-client parity metrics (values mirror the VK Tsuyu web client CSS) -->
-    <dimen name="avatar_dialog">50dp</dimen>
+    <dimen name="avatar_dialog">54dp</dimen>
     <dimen name="avatar_chat_header">38dp</dimen>
     <dimen name="online_dot_web">14dp</dimen>
     <dimen name="header_button">38dp</dimen>

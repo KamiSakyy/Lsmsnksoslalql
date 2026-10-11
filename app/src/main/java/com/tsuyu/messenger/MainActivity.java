@@ -3518,16 +3518,17 @@ public final class MainActivity extends AppCompatActivity {
     private void addFilterChip(String label, String key, boolean folderChip) {
         TextView chip = new TextView(this);
         chip.setText(label);
-        chip.setTextSize(13f);
+        chip.setTextSize(14f);
         chip.setTypeface(Typeface.create("sans-serif-medium", Typeface.NORMAL));
         chip.setGravity(android.view.Gravity.CENTER);
         chip.setTag(key);
+        // Строка папок как в ТГ: подпись и подчёркивание у выбранной папки.
         LinearLayout.LayoutParams params = new LinearLayout.LayoutParams(
-                LinearLayout.LayoutParams.WRAP_CONTENT, dp(30));
-        params.setMarginEnd(dp(4));
+                LinearLayout.LayoutParams.WRAP_CONTENT, dp(44));
+        params.setMarginEnd(dp(20));
         chip.setLayoutParams(params);
-        chip.setPadding(dp(14), 0, dp(14), 0);
-        chip.setBackgroundResource(R.drawable.bg_filter_idle);
+        chip.setPadding(dp(2), 0, dp(2), 0);
+        chip.setBackground(folderTabBackground(false));
         chip.setTextColor(getColor(R.color.tsuyu_secondary));
         if ("new".equals(key)) {
             chip.setContentDescription(getString(R.string.folder_new));
@@ -3747,8 +3748,21 @@ public final class MainActivity extends AppCompatActivity {
 
     private void styleFilterChip(TextView chip, boolean selected) {
         if (chip == null) return;
-        chip.setBackgroundResource(selected ? R.drawable.bg_filter_selected : R.drawable.bg_filter_idle);
+        chip.setBackground(folderTabBackground(selected));
         chip.setTextColor(getColor(selected ? R.color.tsuyu_white : R.color.tsuyu_secondary));
+    }
+
+    /** Подпись папки с подчёркиванием снизу — вкладочная строка как в ТГ. */
+    private android.graphics.drawable.Drawable folderTabBackground(boolean selected) {
+        android.graphics.drawable.GradientDrawable line = new android.graphics.drawable.GradientDrawable();
+        line.setColor(selected ? getColor(R.color.tsuyu_blue) : 0x00000000);
+        line.setCornerRadius(dp(2));
+        android.graphics.drawable.GradientDrawable empty = new android.graphics.drawable.GradientDrawable();
+        empty.setColor(0x00000000);
+        android.graphics.drawable.LayerDrawable layers = new android.graphics.drawable.LayerDrawable(
+                new android.graphics.drawable.Drawable[]{empty, line});
+        layers.setLayerInset(1, dp(2), dp(41), dp(2), 0);
+        return layers;
     }
 
     private void applyEmptyStateCopy(String mode) {

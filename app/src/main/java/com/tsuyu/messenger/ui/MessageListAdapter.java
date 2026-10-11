@@ -339,6 +339,7 @@ public final class MessageListAdapter extends RecyclerView.Adapter<RecyclerView.
         holder.edited.setVisibility(View.GONE);
         holder.status.setVisibility(View.GONE);
         resetBubbleChrome(holder, outgoing);
+        applyGroupShape(holder, outgoing, position);
         if (message.id != null && selectedKeys.contains(message.id)
                 || message.clientId != null && selectedKeys.contains(message.clientId)) {
             holder.bubble.setStrokeColor(holder.itemView.getContext().getColor(R.color.tsuyu_blue));
@@ -488,7 +489,7 @@ public final class MessageListAdapter extends RecyclerView.Adapter<RecyclerView.
         }
         if (row.reactionCount > 0) {
             holder.reaction.setVisibility(View.VISIBLE);
-            holder.reaction.setText(Integer.toString(row.reactionCount));
+            holder.reaction.setText("\u2764\uFE0F " + row.reactionCount);
             holder.reaction.setContentDescription(holder.itemView.getResources().getQuantityString(
                     R.plurals.message_reactions, row.reactionCount, row.reactionCount));
             holder.reaction.setOnClickListener(v -> listener.onReact(message));
@@ -792,6 +793,52 @@ public final class MessageListAdapter extends RecyclerView.Adapter<RecyclerView.
                 }
             }
         });
+    }
+
+    /**
+     * Геометрия серии сообщений как в ТГ: у соседей по серии углы «поджаты», хвост
+     * остаётся только у последнего пузыря, поэтому подряд идущие сообщения читаются
+     * как одна связка, а не как случайные пузыри.
+     */
+    private void applyGroupShape(Holder holder, boolean outgoing, int position) {
+        boolean first = isFirstInGroup(position);
+        boolean last = isLastInGroup(position);
+        android.content.Context context = holder.itemView.getContext();
+        float radius = context.getResources().getDimension(R.dimen.bubble_radius_web);
+        float tail = context.getResources().getDimension(R.dimen.bubble_tail_radius_web);
+        float tight = context.getResources().getDimension(R.dimen.bubble_group_radius);
+        float topStart = radius;
+        float topEnd = radius;
+        float bottomStart = radius;
+        float bottomEnd = radius;
+        if (outgoing) {
+            topEnd = first ? radius : tight;
+            bottomEnd = last ? tail : tight;
+        } else {
+            topStart = first ? radius : tight;
+            bottomStart = last ? tail : tight;
+        }
+        holder.bubble.setShapeAppearanceModel(ShapeAppearanceModel.builder()
+                .setTopLeftCornerSize(topStart)
+                .setTopRightCornerSize(topEnd)
+                .setBottomLeftCornerSize(bottomStart)
+                .setBottomRightCornerSize(bottomEnd)
+                .build());
+    }
+
+    /** Есть ли под этой строкой продолжение серии от того же автора. */
+    private boolean isLastInGroup(int position) {
+        if (position < 0 || position >= rows.size() - 1) return true;
+        Row nextRow = rows.get(position + 1);
+        if (nextRow.isDate() || nextRow.message == null) return true;
+        ChatMessage next = nextRow.message;
+        ChatMessage current = rows.get(position).message;
+        boolean sameAuthor = next.senderUid == null
+                ? current.senderUid == null
+                : next.senderUid.equals(current.senderUid);
+        if (!sameAuthor) return true;
+        if (next.sentAt <= 0 || current.sentAt <= 0) return true;
+        return next.sentAt - current.sentAt > GROUP_WINDOW_MS;
     }
 
     private boolean isFirstInGroup(int position) {
