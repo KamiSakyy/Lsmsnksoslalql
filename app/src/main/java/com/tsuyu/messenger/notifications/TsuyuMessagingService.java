@@ -88,7 +88,8 @@ public final class TsuyuMessagingService extends FirebaseMessagingService {
         NotificationCenter.post(this, chatId, peerUid,
                 data.get("senderName") == null ? getString(R.string.app_name) : data.get("senderName"),
                 null, NotificationCenter.decrypting(this), sent, messageId, true);
-        new Thread(() -> deliver(database, accountUid, chatId, peerUid, messageId, 0)).start();
+        com.tsuyu.messenger.util.Background.io()
+                .execute(() -> deliver(database, accountUid, chatId, peerUid, messageId, 0));
     }
 
     /**
@@ -151,8 +152,9 @@ public final class TsuyuMessagingService extends FirebaseMessagingService {
         if (!decrypted && attempt + 1 < MAX_ATTEMPTS) {
             // The session material may still be syncing: retry, then update the same notification.
             final int nextAttempt = attempt + 1;
-            new android.os.Handler(getMainLooper()).postDelayed(() ->
-                    new Thread(() -> deliver(database, uid, chatId, peerUid, messageId, nextAttempt)).start(),
+            com.tsuyu.messenger.util.Background.postDelayed(() ->
+                            com.tsuyu.messenger.util.Background.io().execute(
+                                    () -> deliver(database, uid, chatId, peerUid, messageId, nextAttempt)),
                     4000L * nextAttempt);
             return;
         }

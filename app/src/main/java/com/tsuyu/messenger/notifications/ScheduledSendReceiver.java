@@ -26,7 +26,8 @@ public final class ScheduledSendReceiver extends BroadcastReceiver {
     public void onReceive(Context context, Intent intent) {
         if (context == null) return;
         final Context app = context.getApplicationContext();
-        new Thread(() -> flush(app)).start();
+        // Отправка идёт в общем фоновом пуле: свои потоки на каждое срабатывание не нужны.
+        com.tsuyu.messenger.util.Background.io().execute(() -> flush(app));
     }
 
     /** Отправляет всё, что уже пора, и переносит будильник на следующее сообщение. */

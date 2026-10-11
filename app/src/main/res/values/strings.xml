@@ -291,6 +291,8 @@
     <string name="crash_copy">Копировать</string>
     <string name="crash_close">Понятно</string>
     <string name="settings_version">Версия</string>
+    <string name="settings_dynamic_colors_title">Цвета системы (Material You)</string>
+    <string name="settings_dynamic_colors_hint">Подстраивать оформление под обои телефона</string>
     <string name="settings_logs_title">Логи и сбои</string>
     <string name="settings_logs_hint">Копирование и отправка журнала</string>
     <string name="logs_title">Журнал приложения</string>

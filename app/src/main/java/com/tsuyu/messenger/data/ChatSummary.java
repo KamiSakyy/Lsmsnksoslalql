@@ -21,6 +21,8 @@ public final class ChatSummary {
     public int lastState = 1;
     public long lastSeen;
     public long peerReadAt;
+    /** Готовая подпись строки: считается в фоне, поэтому список листается без запинок. */
+    public String previewText;
 
     public ChatSummary(String chatId, String peerUid, Profile peer, long lastAt, String encryptedPreview) {
         this.chatId = chatId;

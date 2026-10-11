@@ -211,7 +211,7 @@ public final class P2pCall implements PeerLink.Listener {
     private void announceSelf() {
         final PeerLink current = link;
         if (current == null) return;
-        Thread worker = new Thread(() -> {
+        P2pThreads.work(() -> {
             try {
                 Stun.Endpoint external = current.discoverOwnEndpoint();
                 String port = current.localPort();
@@ -228,9 +228,7 @@ public final class P2pCall implements PeerLink.Listener {
                 self.put("at", ServerValue.TIMESTAMP);
                 publishSelf(self);
             } catch (Throwable ignored) { }
-        }, "tsuyu-p2p-stun");
-        worker.setDaemon(true);
-        worker.start();
+        });
     }
 
     /** Слушаем данные собеседника: его адреса, его число для ключа и режим видео. */
@@ -367,9 +365,7 @@ public final class P2pCall implements PeerLink.Listener {
         if (!reconnecting) {
             reconnecting = true;
             notifyState("connecting", "reconnect");
-            Thread worker = new Thread(this::reconnect, "tsuyu-p2p-reconnect");
-            worker.setDaemon(true);
-            worker.start();
+            P2pThreads.work(this::reconnect);
             return;
         }
         notifyState("failed", null);

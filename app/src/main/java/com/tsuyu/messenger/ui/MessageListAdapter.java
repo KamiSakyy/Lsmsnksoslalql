@@ -166,14 +166,39 @@ public final class MessageListAdapter extends RecyclerView.Adapter<RecyclerView.
         }
     }
 
+    /** Номер последней отправки: устаревшие сравнения не должны трогать экран. */
+    private final java.util.concurrent.atomic.AtomicInteger submitGeneration =
+            new java.util.concurrent.atomic.AtomicInteger();
+
     /**
-     * Переписка перерисовывается одним движением и мгновенно, без анимаций и без «умных»
-     * сравнений: так не бывает ни дублей, ни пропавших сообщений.
+     * Переписка обновляется точно и мгновенно: сравнение строк идёт в фоне, на экран
+     * отдаётся готовый результат. Каждое сообщение опознаётся по своему номеру, поэтому
+     * дублей не бывает.
      */
     public void submit(List<Row> next) {
-        rows.clear();
-        if (next != null) rows.addAll(next);
-        notifyDataSetChanged();
+        final List<Row> incoming = next == null ? new ArrayList<>() : new ArrayList<>(next);
+        final List<Row> current = new ArrayList<>(rows);
+        final int generation = submitGeneration.incrementAndGet();
+        com.tsuyu.messenger.util.Background.diff().execute(() -> {
+            final androidx.recyclerview.widget.DiffUtil.DiffResult result =
+                    androidx.recyclerview.widget.DiffUtil.calculateDiff(
+                            new androidx.recyclerview.widget.DiffUtil.Callback() {
+                                @Override public int getOldListSize() { return current.size(); }
+                                @Override public int getNewListSize() { return incoming.size(); }
+                                @Override public boolean areItemsTheSame(int oldPos, int newPos) {
+                                    return rowKey(current.get(oldPos)).equals(rowKey(incoming.get(newPos)));
+                                }
+                                @Override public boolean areContentsTheSame(int oldPos, int newPos) {
+                                    return sameContents(current.get(oldPos), incoming.get(newPos));
+                                }
+                            });
+            com.tsuyu.messenger.util.Background.main(() -> {
+                if (generation != submitGeneration.get()) return; // уже есть более свежие данные
+                rows.clear();
+                rows.addAll(incoming);
+                result.dispatchUpdatesTo(this);
+            });
+        });
     }
 
     private static String rowKey(Row row) {
@@ -742,13 +767,9 @@ public final class MessageListAdapter extends RecyclerView.Adapter<RecyclerView.
      * Фото в переписке показываем уменьшенным: большая картинка иначе съедает всю память
      * телефона. Здесь же ловим и переполнение памяти — такое сообщение не роняет приложение.
      */
-    /** Кадры готовятся в фоне: прокрутка списка не спотыкается о большие фото. */
+    /** Кадры готовятся в общем фоновом пуле картинок: прокрутка не спотыкается о большие фото. */
     private static final java.util.concurrent.ExecutorService IMAGE_QUEUE =
-            java.util.concurrent.Executors.newFixedThreadPool(2, runnable -> {
-                Thread thread = new Thread(runnable, "tsuyu-image");
-                thread.setPriority(Thread.NORM_PRIORITY - 1);
-                return thread;
-            });
+            com.tsuyu.messenger.util.Background.images();
 
     private void bindImage(ShapeableImageView image, String encoded) {
         try {

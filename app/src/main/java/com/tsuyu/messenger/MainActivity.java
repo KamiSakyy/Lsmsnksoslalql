@@ -171,8 +171,10 @@ public final class MainActivity extends AppCompatActivity {
     private long lastTypingWrite;
 
     private final Handler ui = new Handler(Looper.getMainLooper());
-    private final ExecutorService cryptoQueue = Executors.newSingleThreadExecutor();
-    private final ExecutorService dataQueue = Executors.newFixedThreadPool(3);
+    // Очереди работы: расшифровка — отдельный пул, всё остальное (сеть, база, диск) — общий.
+    // Один единственный поток для шифрования заставлял сообщения ждать друг друга.
+    private final ExecutorService cryptoQueue = com.tsuyu.messenger.util.Background.crypto();
+    private final ExecutorService dataQueue = com.tsuyu.messenger.util.Background.io();
     private final Set<String> decrypting = ConcurrentHashMap.newKeySet();
     private final Set<String> decryptFailures = ConcurrentHashMap.newKeySet();
     private final Set<String> loadingSummaryIds = ConcurrentHashMap.newKeySet();
@@ -261,10 +263,19 @@ public final class MainActivity extends AppCompatActivity {
     /** Готовые тексты сообщений этого чата, прочитанные с диска одним заходом. */
     private final java.util.concurrent.ConcurrentHashMap<String, String> payloadIndex =
             new java.util.concurrent.ConcurrentHashMap<>();
+    /** Какие тексты сейчас дочитываются в фоне: лишние повторы не нужны. */
+    private final java.util.Set<String> payloadLoading =
+            java.util.Collections.newSetFromMap(new java.util.concurrent.ConcurrentHashMap<String, Boolean>());
 
     @Override
     protected void onCreate(Bundle savedInstanceState) {
         super.onCreate(savedInstanceState);
+        // Material You: если человек включил «Цвета системы», берём палитру обоев телефона.
+        if (com.tsuyu.messenger.util.Settings.getBoolean("dynamic_colors", false)) {
+            try {
+                com.google.android.material.color.DynamicColors.applyToActivityIfAvailable(this);
+            } catch (Throwable ignored) { }
+        }
         setContentView(R.layout.activity_main);
         screenHost = findViewById(R.id.screen_host);
         drawerLayout = findViewById(R.id.drawer_layout);
@@ -398,6 +409,8 @@ public final class MainActivity extends AppCompatActivity {
     protected void onStop() {
         super.onStop();
         visible = false;
+        // Приложение ушло с экрана: лишние подписки снимаем, сеть и батарея отдыхают.
+        detachSummaryWatches();
         detachCallInbox();
         com.tsuyu.messenger.crypto.PinLock.onBackground();
         if (auth != null && authListener != null) auth.removeAuthStateListener(authListener);
@@ -425,6 +438,8 @@ public final class MainActivity extends AppCompatActivity {
         if (accountUid == null || accountUid.equals(uid) && !page.isEmpty()) return;
         page = "loading";
         uid = accountUid;
+        // Настройки этого аккаунта читаем один раз и держим в памяти.
+        com.tsuyu.messenger.util.Settings.init(this, accountUid);
         com.tsuyu.messenger.crypto.PinLock.requireUnlock(this, uid, new com.tsuyu.messenger.crypto.PinLock.Callback() {
             @Override public void onUnlocked() { pinUnlocked = true; }
             @Override public void onCancelled() { finishAndRemoveTask(); }
@@ -609,6 +624,14 @@ public final class MainActivity extends AppCompatActivity {
         chatList = root.findViewById(R.id.chats_list);
         chatList.setLayoutManager(new LinearLayoutManager(this));
         chatList.setItemAnimator(null); // список чатов появляется мгновенно, без анимаций
+        // Плавная прокрутка без лишних событий: подписки «в сети» и «печатает» следуют за
+        // видимыми строками, а не висят на всех чатах сразу.
+        chatList.setItemViewCacheSize(12);
+        chatList.addOnScrollListener(new androidx.recyclerview.widget.RecyclerView.OnScrollListener() {
+            @Override public void onScrolled(androidx.recyclerview.widget.RecyclerView view, int dx, int dy) {
+                updateSummaryWatches();
+            }
+        });
         chatListAdapter = new ChatListAdapter(new ChatListAdapter.Listener() {
             @Override public void onChatSelected(ChatSummary summary) { openChat(summary); }
             @Override public void onChatLongPress(ChatSummary summary) { showChatMenu(summary); }
@@ -774,6 +797,7 @@ public final class MainActivity extends AppCompatActivity {
                 cachePreview(summary);
                 persistSummary(summary);
             }
+            refreshSummaryPreview(summary);
         } catch (Throwable error) {
             android.util.Log.w("Tsuyu", "Could not load chat summary " + chatId, error);
         } finally {
@@ -793,6 +817,17 @@ public final class MainActivity extends AppCompatActivity {
     }
 
     private void watchSummaryRealtime(String chatId, String peerUid) {
+        watchSummaryMeta(chatId);
+        watchPresenceTyping(chatId, peerUid);
+    }
+
+    /**
+     * «В сети» и «печатает» слушаем только у строк, которые видно на экране: раньше на каждый
+     * чат висело по три постоянных подписки, и список из десятков чатов «долбил» экран
+     * событиями даже когда в нём ничего не происходило.
+     */
+    private void watchPresenceTyping(String chatId, String peerUid) {
+        if (peerUid == null) return;
         if (!summaryPresenceListeners.containsKey(chatId)) {
             DatabaseReference ref = chatRepository.presence(peerUid).child("online");
             ValueEventListener listener = new ValueEventListener() {
@@ -801,7 +836,7 @@ public final class MainActivity extends AppCompatActivity {
                     if (summary != null) {
                         summary.online = Boolean.TRUE.equals(snapshot.getValue(Boolean.class));
                         if (store != null) store.setPresence(chatId, summary.online, 0L);
-                        renderChatList();
+                        requestChatListRender();
                     }
                 }
                 @Override public void onCancelled(DatabaseError error) { }
@@ -819,7 +854,7 @@ public final class MainActivity extends AppCompatActivity {
                     long at = number(snapshot.child("at").getValue());
                     summary.typing = Boolean.TRUE.equals(snapshot.child("typing").getValue(Boolean.class))
                             && System.currentTimeMillis() - at <= 5500;
-                    renderChatList();
+                    requestChatListRender();
                 }
                 @Override public void onCancelled(DatabaseError error) { }
             };
@@ -827,15 +862,24 @@ public final class MainActivity extends AppCompatActivity {
             summaryTypingListeners.put(chatId, listener);
             ref.addValueEventListener(listener);
         }
-        if (!summaryMetaListeners.containsKey(chatId)) {
-            DatabaseReference ref = chatRepository.chatMeta(chatId);
-            ValueEventListener listener = new ValueEventListener() {
-                @Override public void onDataChange(DataSnapshot snapshot) {
-                    ChatSummary summary = summaries.get(chatId);
+    }
+
+    /**
+     * Данные строки чата (последнее сообщение, счётчик непрочитанных). Тяжёлая часть —
+     * чтение кэша, разбор текста, запись в базу — уходит в фоновый поток: событие из сети
+     * больше не заставляет главный поток ждать.
+     */
+    private void watchSummaryMeta(String chatId) {
+        if (summaryMetaListeners.containsKey(chatId)) return;
+        DatabaseReference ref = chatRepository.chatMeta(chatId);
+        ValueEventListener listener = new ValueEventListener() {
+            @Override public void onDataChange(DataSnapshot snapshot) {
+                final ChatMessage last = snapshot.child("lastMessage").getValue(ChatMessage.class);
+                if (last != null) last.id = snapshot.child("lastMessageId").getValue(String.class);
+                final long remoteAt = number(snapshot.child("lastAt").getValue());
+                dataQueue.execute(() -> {
+                    final ChatSummary summary = summaries.get(chatId);
                     if (summary == null) return;
-                    ChatMessage last = snapshot.child("lastMessage").getValue(ChatMessage.class);
-                    if (last != null) last.id = snapshot.child("lastMessageId").getValue(String.class);
-                    long remoteAt = number(snapshot.child("lastAt").getValue());
                     ChatMessage current = summary.lastMessage;
                     boolean sameOptimisticMessage = last != null && current != null
                             && current.clientId != null && current.clientId.equals(last.clientId);
@@ -846,38 +890,46 @@ public final class MainActivity extends AppCompatActivity {
                     summary.lastMessage = preserveLocalPreview ? current : last;
                     summary.encryptedPreview = summary.lastMessage == null || preserveLocalPreview
                             ? null : summary.lastMessage.cipher;
-                    if (summary.lastMessage != null && !preserveLocalPreview) maybeDecryptPreview(summary, summary.lastMessage);
-                    if (store != null) {
-                        ChatMessage newest = summary.lastMessage;
-                        if (newest != null && newest.id != null) {
-                            String payload = newest.localPayload;
-                            if (payload == null && messageCache != null) payload = messageCache.get(chatId, newest.id);
-                            if (payload != null) {
-                                summary.lastPreview = previewFromJson(payload);
-                                summary.lastKind = kindFromJson(payload);
-                                store.updatePayload(newest.id, payload);
+                    if (summary.lastMessage != null && !preserveLocalPreview) {
+                        maybeDecryptPreview(summary, summary.lastMessage);
+                    }
+                    ChatMessage newest = summary.lastMessage;
+                    if (newest != null && newest.id != null) {
+                        String payload = newest.localPayload;
+                        if (payload == null && messageCache != null) {
+                            payload = payloadIndex.get(newest.id);
+                            if (payload == null) {
+                                payload = messageCache.get(chatId, newest.id);
+                                if (payload != null) payloadIndex.put(newest.id, payload);
                             }
-                            if (!preserveLocalPreview) countIncoming(summary, newest);
                         }
+                        if (payload == null && newest.clientId != null) {
+                            ChatMessage local = optimisticMessages.get(newest.clientId);
+                            if (local != null) payload = local.localPayload;
+                        }
+                        if (payload != null) {
+                            summary.lastPreview = previewFromJson(payload);
+                            summary.lastKind = kindFromJson(payload);
+                            if (store != null) store.updatePayload(newest.id, payload);
+                        }
+                    }
+                    if (store != null) {
+                        if (newest != null && !preserveLocalPreview) countIncoming(summary, newest);
                         persistSummary(summary);
                     }
-                    renderChatList();
-                }
-                @Override public void onCancelled(DatabaseError error) { }
-            };
-            summaryMetaRefs.put(chatId, ref);
-            summaryMetaListeners.put(chatId, listener);
-            ref.addValueEventListener(listener);
-        }
+                    refreshSummaryPreview(summary);
+                    requestChatListRender();
+                });
+            }
+            @Override public void onCancelled(DatabaseError error) { }
+        };
+        summaryMetaRefs.put(chatId, ref);
+        summaryMetaListeners.put(chatId, listener);
+        ref.addValueEventListener(listener);
     }
 
     private void removeSummaryRealtime(String chatId) {
-        DatabaseReference presenceRef = summaryPresenceRefs.remove(chatId);
-        ValueEventListener presenceListener = summaryPresenceListeners.remove(chatId);
-        if (presenceRef != null && presenceListener != null) presenceRef.removeEventListener(presenceListener);
-        DatabaseReference typingRef = summaryTypingRefs.remove(chatId);
-        ValueEventListener typingListener = summaryTypingListeners.remove(chatId);
-        if (typingRef != null && typingListener != null) typingRef.removeEventListener(typingListener);
+        removePresenceTyping(chatId);
         DatabaseReference metaRef = summaryMetaRefs.remove(chatId);
         ValueEventListener metaListener = summaryMetaListeners.remove(chatId);
         if (metaRef != null && metaListener != null) metaRef.removeEventListener(metaListener);
@@ -930,6 +982,67 @@ public final class MainActivity extends AppCompatActivity {
         optimisticMessages.remove(serverMessage.clientId, local);
     }
 
+    /** Перерисовку списка собираем в одну на кадр: поток событий из сети больше не «долбит» экран. */
+    private final java.util.concurrent.atomic.AtomicBoolean chatListRenderQueued =
+            new java.util.concurrent.atomic.AtomicBoolean();
+
+    private void requestChatListRender() {
+        if (!chatListRenderQueued.compareAndSet(false, true)) return;
+        ui.post(() -> {
+            chatListRenderQueued.set(false);
+            renderChatList();
+        });
+    }
+
+    /**
+     * Подписки «в сети», «печатает» держим только для видимых строк (и пары соседних):
+     * список из десятков чатов больше не тянет десятки постоянных подписок.
+     */
+    private void updateSummaryWatches() {
+        if (chatList == null || !"home".equals(page)) return;
+        android.view.View parent = (android.view.View) chatList.getParent();
+        if (parent != null && parent.getVisibility() != android.view.View.VISIBLE) return;
+        Set<String> wanted = new HashSet<>();
+        try {
+            androidx.recyclerview.widget.LinearLayoutManager manager =
+                    (androidx.recyclerview.widget.LinearLayoutManager) chatList.getLayoutManager();
+            if (manager != null && chatListAdapter != null && chatListAdapter.getItemCount() > 0) {
+                int first = Math.max(0, manager.findFirstVisibleItemPosition() - 2);
+                int last = Math.min(chatListAdapter.getItemCount() - 1,
+                        manager.findLastVisibleItemPosition() + 2);
+                for (int position = first; position <= last; position++) {
+                    ChatSummary summary = chatListAdapter.summaryAt(position);
+                    if (summary != null && summary.chatId != null) wanted.add(summary.chatId);
+                }
+            }
+        } catch (Throwable ignored) { }
+        for (String chatId : new ArrayList<>(summaryPresenceListeners.keySet())) {
+            if (!wanted.contains(chatId)) removePresenceTyping(chatId);
+        }
+        for (String chatId : new ArrayList<>(summaryTypingListeners.keySet())) {
+            if (!wanted.contains(chatId)) removePresenceTyping(chatId);
+        }
+        for (String chatId : wanted) {
+            ChatSummary summary = summaries.get(chatId);
+            if (summary != null && summary.peerUid != null) watchPresenceTyping(chatId, summary.peerUid);
+        }
+    }
+
+    /** Снимает подписки «в сети» и «печатает» — например, когда список уходит с экрана. */
+    private void detachSummaryWatches() {
+        for (String chatId : new ArrayList<>(summaryPresenceListeners.keySet())) removePresenceTyping(chatId);
+        for (String chatId : new ArrayList<>(summaryTypingListeners.keySet())) removePresenceTyping(chatId);
+    }
+
+    private void removePresenceTyping(String chatId) {
+        DatabaseReference presenceRef = summaryPresenceRefs.remove(chatId);
+        ValueEventListener presenceListener = summaryPresenceListeners.remove(chatId);
+        if (presenceRef != null && presenceListener != null) presenceRef.removeEventListener(presenceListener);
+        DatabaseReference typingRef = summaryTypingRefs.remove(chatId);
+        ValueEventListener typingListener = summaryTypingListeners.remove(chatId);
+        if (typingRef != null && typingListener != null) typingRef.removeEventListener(typingListener);
+    }
+
     private void renderChatList() {
         if (!"home".equals(page) || chatList == null || chatListAdapter == null) return;
         Set<String> folderFilter = null;
@@ -976,25 +1089,55 @@ public final class MainActivity extends AppCompatActivity {
             if (homeNewChat != null) homeNewChat.setVisibility(View.VISIBLE);
         }
         setSkeletonShimmer(homeLoadingState != null && homeLoadingState.getVisibility() == View.VISIBLE);
+        updateSummaryWatches();
     }
 
+    /**
+     * Текст-подпись строки списка. Здесь нет ни чтения диска, ни разбора JSON: готовая
+     * подпись готовится заранее в фоне ({@link #refreshSummaryPreview}), поэтому список
+     * листается без запинок.
+     */
     private String previewFor(ChatSummary summary) {
-        ChatMessage message = summary.lastMessage;
-        if (message == null) {
-            if (summary.typing) return "печатает…";
-            if (summary.lastPreview != null && !summary.lastPreview.isEmpty()) return summary.lastPreview;
-            return summary.lastAt > 0 ? "Сообщение" : "Начните переписку";
+        if (summary.typing) return "печатает…";
+        if (summary.previewText != null && !summary.previewText.isEmpty()) return summary.previewText;
+        if (summary.lastMessage != null && summary.lastMessage.failed) {
+            return "Не отправлено · нажмите, чтобы повторить";
         }
-        if (message.localPayload != null) return previewFromJson(message.localPayload);
-        String cached = message.id == null || messageCache == null ? null : messageCache.get(summary.chatId, message.id);
-        if (cached != null) return previewFromJson(cached);
-        if (message.clientId != null) {
-            ChatMessage local = optimisticMessages.get(message.clientId);
-            if (local != null && local.localPayload != null) return previewFromJson(local.localPayload);
-        }
-        if (message.failed) return "Не отправлено · нажмите, чтобы повторить";
         if (summary.lastPreview != null && !summary.lastPreview.isEmpty()) return summary.lastPreview;
-        return "";
+        return summary.lastAt > 0 ? "Сообщение" : "Начните переписку";
+    }
+
+    /**
+     * Готовит подпись строки в фоне: расшифровка-из-кэша и разбор JSON выполняются вне
+     * главного потока, результат складывается в строку чата.
+     */
+    private void refreshSummaryPreview(final ChatSummary summary) {
+        if (summary == null || summary.chatId == null) return;
+        final String chatId = summary.chatId;
+        final ChatMessage last = summary.lastMessage;
+        dataQueue.execute(() -> {
+            String text = null;
+            try {
+                String payload = last == null ? null : last.localPayload;
+                if (payload == null && last != null && last.id != null && messageCache != null) {
+                    payload = payloadIndex.get(last.id);
+                    if (payload == null) {
+                        payload = messageCache.get(chatId, last.id);
+                        if (payload != null) payloadIndex.put(last.id, payload);
+                    }
+                }
+                if (payload == null && last != null && last.clientId != null) {
+                    ChatMessage local = optimisticMessages.get(last.clientId);
+                    if (local != null) payload = local.localPayload;
+                }
+                if (payload != null) text = previewFromJson(payload);
+            } catch (Throwable ignored) { }
+            final String ready = text;
+            ui.post(() -> {
+                summary.previewText = ready == null ? "" : ready;
+                if (chatId.equals(activeChatId) || "home".equals(page)) renderChatList();
+            });
+        });
     }
 
     private void openChat(ChatSummary summary) { showChat(summary.chatId, summary.peerUid); }
@@ -1415,9 +1558,8 @@ public final class MainActivity extends AppCompatActivity {
             @Override public void onDataChange(DataSnapshot snapshot) {
                 if (!"chat".equals(page) || !chatId.equals(activeChatId)) return;
                 peerReadAt = number(snapshot.getValue());
-                if (messagesListener != null) chatRepository.messages(chatId).get().addOnSuccessListener(data -> {
-                    if ("chat".equals(page) && chatId.equals(activeChatId)) renderMessagesFromSnapshot(data, peerUid);
-                });
+                // Прочитано — просто помечаем галочки: перечитывать всю историю не нужно.
+                requestMessageRender();
             }
             @Override public void onCancelled(DatabaseError error) { }
         };
@@ -1425,12 +1567,24 @@ public final class MainActivity extends AppCompatActivity {
     }
 
     private void renderMessagesFromSnapshot(DataSnapshot snapshot, String peerUid) {
-        List<ChatMessage> messages = new ArrayList<>();
-        for (DataSnapshot child : snapshot.getChildren()) {
-            ChatMessage message = child.getValue(ChatMessage.class);
-            if (message != null) { message.id = child.getKey(); messages.add(message); }
-        }
-        renderMessages(messages, peerUid);
+        // Разбор снимка — в фоне: главный поток занят только экраном.
+        dataQueue.execute(() -> {
+            List<ChatMessage> messages = new ArrayList<>();
+            try {
+                for (DataSnapshot child : snapshot.getChildren()) {
+                    ChatMessage message = child.getValue(ChatMessage.class);
+                    if (message != null) { message.id = child.getKey(); messages.add(message); }
+                }
+            } catch (Throwable error) {
+                com.tsuyu.messenger.TsuyuLogs.crash(this, "разбор истории", error);
+                return;
+            }
+            ui.post(() -> {
+                if ("chat".equals(page) && peerUid != null && peerUid.equals(activePeerUid)) {
+                    renderMessages(messages, peerUid);
+                }
+            });
+        });
     }
 
     private void attachReactionsListener(String chatId) {
@@ -1515,12 +1669,25 @@ public final class MainActivity extends AppCompatActivity {
         for (ChatMessage message : visible) {
             visibleIndex++;
             String payload = message.localPayload;
-            // Тексты этого чата уже прочитаны с диска одним заходом — берём готовое,
-            // а не расшифровываем по одному на главном потоке.
+            // Тексты этого чата уже прочитаны с диска одним заходом — берём готовое.
             if (payload == null && message.id != null) payload = payloadIndex.get(message.id);
             if (payload == null && activeCache != null && message.id != null) {
-                payload = activeCache.get(renderChatId, message.id);
-                if (payload != null) payloadIndex.put(message.id, payload);
+                // Не нашли — дочитываем в фоне и перерисуем: главный поток диск не читает.
+                final String missingId = message.id;
+                if (payloadLoading.add(missingId)) {
+                    dataQueue.execute(() -> {
+                        try {
+                            String loaded = activeCache.get(renderChatId, missingId);
+                            if (loaded != null) {
+                                payloadIndex.put(missingId, loaded);
+                                requestMessageRender();
+                            }
+                        } catch (Throwable ignored) {
+                        } finally {
+                            payloadLoading.remove(missingId);
+                        }
+                    });
+                }
             }
             if (payload != null) {
                 // Фото и кружочки сразу уходят файлами в кеш на диске: в памяти остаётся ссылка,
@@ -1604,7 +1771,7 @@ public final class MainActivity extends AppCompatActivity {
             });
         }
         messageListAdapter.setTextStyle(textSize(), isTextBold(),
-                getSharedPreferences("tsuyu_settings", MODE_PRIVATE).getBoolean("italic", false));
+                com.tsuyu.messenger.util.Settings.getBoolean("italic", false));
         try {
             messageListAdapter.setPollVotes(pollVotes);
         } catch (Throwable ignored) { }
@@ -1878,6 +2045,8 @@ public final class MainActivity extends AppCompatActivity {
         summary.lastPreview = previewFromJson(payloadJson);
         summary.lastKind = kindFromJson(payloadJson);
         summary.lastState = TsuyuStore.STATE_PENDING;
+        // Подпись строки уже есть (текст только что написан) — показываем её сразу.
+        summary.previewText = summary.lastPreview == null ? "" : summary.lastPreview;
         // Всё, что касается диска, уходит в фон: пузырь показывается сразу, без ожидания
         // записи в кэш и в базу.
         final ChatSummary pendingSummary = summary;
@@ -2468,6 +2637,7 @@ public final class MainActivity extends AppCompatActivity {
         page = "settings";
         View root = showScreen(R.layout.screen_settings);
         bindScreenGuardSwitch(root);
+        bindDynamicColorsSwitch(root);
         TextView versionView = root.findViewById(R.id.settings_version);
         if (versionView != null) {
             versionView.setText(versionLabel());
@@ -2808,8 +2978,9 @@ public final class MainActivity extends AppCompatActivity {
         messageReactions.clear();
     }
 
-    private int textSize() { return getSharedPreferences("tsuyu_settings", MODE_PRIVATE).getInt("text_size", 15); }
-    private boolean isTextBold() { return getSharedPreferences("tsuyu_settings", MODE_PRIVATE).getBoolean("bold", false); }
+    // Настройки берём из памяти: чтение файла настроек на каждую строку тормозило отрисовку.
+    private int textSize() { return com.tsuyu.messenger.util.Settings.getInt("text_size", 15); }
+    private boolean isTextBold() { return com.tsuyu.messenger.util.Settings.getBoolean("bold", false); }
     /** v3-дизайн: «Защита от скриншотов» — системный флаг, снимки и превью в задачах блокируются. */
     private void applyScreenGuard() {
         SharedPreferences guardPrefs = getSharedPreferences("tsuyu_settings", MODE_PRIVATE);
@@ -2822,6 +2993,25 @@ public final class MainActivity extends AppCompatActivity {
         }
         if (guarded) getWindow().addFlags(android.view.WindowManager.LayoutParams.FLAG_SECURE);
         else getWindow().clearFlags(android.view.WindowManager.LayoutParams.FLAG_SECURE);
+    }
+
+    /**
+     * Material You: оформление подстраивается под обои телефона. По умолчанию выключено —
+     * фирменные цвета Tsuyu остаются как есть, пока человек сам не включит.
+     */
+    private void bindDynamicColorsSwitch(View root) {
+        com.google.android.material.materialswitch.MaterialSwitch toggle =
+                root.findViewById(R.id.dynamic_colors_switch);
+        if (toggle == null) return;
+        toggle.setChecked(com.tsuyu.messenger.util.Settings.getBoolean("dynamic_colors", false));
+        toggle.setOnCheckedChangeListener((button, checked) -> {
+            com.tsuyu.messenger.util.Settings.putBoolean("dynamic_colors", checked);
+            toast(checked ? "Цвета системы: включены" : "Цвета Tsuyu: включены");
+            // Оформление применяется сразу: экран пересобирается с новыми цветами.
+            recreate();
+        });
+        View row = (View) toggle.getParent();
+        if (row != null) row.setOnClickListener(v -> toggle.setChecked(!toggle.isChecked()));
     }
 
     private void bindScreenGuardSwitch(View root) {
@@ -3043,6 +3233,7 @@ public final class MainActivity extends AppCompatActivity {
                 cachePreview(summary);
                 persistSummary(summary);
             }
+            refreshSummaryPreview(summary);
             runOnUiThread(this::renderChatList);
         } catch (Throwable error) {
             android.util.Log.w("Tsuyu", "Could not refresh chat summary " + chatId, error);

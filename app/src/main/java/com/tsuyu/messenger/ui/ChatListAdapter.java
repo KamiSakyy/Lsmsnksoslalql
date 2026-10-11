@@ -45,12 +45,41 @@ public final class ChatListAdapter extends RecyclerView.Adapter<ChatListAdapter.
 
     public ChatListAdapter(Listener listener) { this.listener = listener; }
 
+    /** Номер последней отправки: устаревшие сравнения не должны менять список. */
+    private final java.util.concurrent.atomic.AtomicInteger submitGeneration =
+            new java.util.concurrent.atomic.AtomicInteger();
+
+    /**
+     * Список чатов обновляется точно и без анимаций: сравнение старых и новых строк идёт
+     * в фоне, а на экран отдаётся готовый результат. Дубли невозможны — каждая строка
+     * опознаётся по своему номеру чата.
+     */
     public void submit(List<ChatSummary> summaries) {
-        // Список чатов показывается мгновенно: без анимаций и без «умных» сравнений,
-        // поэтому строки не задваиваются.
-        items.clear();
-        if (summaries != null) items.addAll(summaries);
-        notifyDataSetChanged();
+        final List<ChatSummary> next = summaries == null ? new ArrayList<>() : new ArrayList<>(summaries);
+        final List<ChatSummary> current = new ArrayList<>(items);
+        final int generation = submitGeneration.incrementAndGet();
+        com.tsuyu.messenger.util.Background.diff().execute(() -> {
+            final androidx.recyclerview.widget.DiffUtil.DiffResult result =
+                    androidx.recyclerview.widget.DiffUtil.calculateDiff(
+                            new androidx.recyclerview.widget.DiffUtil.Callback() {
+                                @Override public int getOldListSize() { return current.size(); }
+                                @Override public int getNewListSize() { return next.size(); }
+                                @Override public boolean areItemsTheSame(int oldPos, int newPos) {
+                                    String first = current.get(oldPos).chatId;
+                                    String second = next.get(newPos).chatId;
+                                    return first != null && first.equals(second);
+                                }
+                                @Override public boolean areContentsTheSame(int oldPos, int newPos) {
+                                    return sameContents(current.get(oldPos), next.get(newPos));
+                                }
+                            });
+            com.tsuyu.messenger.util.Background.main(() -> {
+                if (generation != submitGeneration.get()) return; // пришло более свежее обновление
+                items.clear();
+                items.addAll(next);
+                result.dispatchUpdatesTo(this);
+            });
+        });
     }
 
     /** Chat id at a list position, used by swipe gestures. */
@@ -140,13 +169,9 @@ public final class ChatListAdapter extends RecyclerView.Adapter<ChatListAdapter.
         return new SimpleDateFormat(sameYear ? "d MMM" : "d MMM yy", new Locale("ru")).format(new Date(at));
     }
 
-    /** Аватары готовятся в фоне: список чатов листается без рывков. */
+    /** Аватары готовятся в общем фоновом пуле картинок: список чатов листается без рывков. */
     private static final java.util.concurrent.ExecutorService AvatarQueue =
-            java.util.concurrent.Executors.newFixedThreadPool(2, runnable -> {
-                Thread thread = new Thread(runnable, "tsuyu-avatar");
-                thread.setPriority(Thread.NORM_PRIORITY - 1);
-                return thread;
-            });
+            com.tsuyu.messenger.util.Background.images();
 
     public static void bindAvatar(ShapeableImageView image, TextView initial, Profile profile, String displayName) {
         String label = profile == null ? "" : profile.displayName;
