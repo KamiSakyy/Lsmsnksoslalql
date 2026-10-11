@@ -2335,7 +2335,7 @@ public final class MainActivity extends AppCompatActivity {
     private void showImageDialog(String imageBase64) {
         try {
             byte[] bytes = Base64.decode(imageBase64, Base64.NO_WRAP);
-            Bitmap bitmap = BitmapFactory.decodeByteArray(bytes, 0, bytes.length);
+            Bitmap bitmap = com.tsuyu.messenger.TsuyuPhoto.decodeScaled(bytes, 2048);
             if (bitmap == null) return;
             View content = getLayoutInflater().inflate(R.layout.dialog_image_viewer, null, false);
             ZoomImageView image = content.findViewById(R.id.viewer_image);
@@ -2595,7 +2595,7 @@ public final class MainActivity extends AppCompatActivity {
         }
         try {
             byte[] bytes = Base64.decode(encoded, Base64.NO_WRAP);
-            Bitmap bitmap = BitmapFactory.decodeByteArray(bytes, 0, bytes.length);
+            Bitmap bitmap = com.tsuyu.messenger.TsuyuPhoto.decodeScaled(bytes, 512);
             if (bitmap == null) throw new IllegalArgumentException("Invalid avatar data");
             image.setImageBitmap(bitmap);
             image.setVisibility(View.VISIBLE);
@@ -4076,7 +4076,8 @@ public final class MainActivity extends AppCompatActivity {
         }
         try {
             byte[] bytes = Base64.decode(encoded, Base64.DEFAULT);
-            android.graphics.Bitmap bitmap = BitmapFactory.decodeByteArray(bytes, 0, bytes.length);
+            // Обои тоже уменьшаем: иначе большой снимок съедает память при входе в чат.
+            android.graphics.Bitmap bitmap = com.tsuyu.messenger.TsuyuPhoto.decodeScaled(bytes, 1440);
             if (bitmap == null) {
                 messageList.setBackground(null);
                 return;

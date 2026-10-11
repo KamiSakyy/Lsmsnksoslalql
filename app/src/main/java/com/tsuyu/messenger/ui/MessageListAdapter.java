@@ -227,7 +227,7 @@ public final class MessageListAdapter extends RecyclerView.Adapter<RecyclerView.
             bindMessage((Holder) holder, row, position);
         } catch (Throwable error) {
             // Одно «сломанное» сообщение не имеет права ронять весь экран переписки.
-            showFallback((Holder) holder);
+            try { showFallback((Holder) holder); } catch (Throwable ignored) { }
         }
     }
 
@@ -746,7 +746,7 @@ public final class MessageListAdapter extends RecyclerView.Adapter<RecyclerView.
     private static void bindImage(ShapeableImageView image, String encoded) {
         try {
             byte[] bytes = Base64.decode(encoded, Base64.NO_WRAP);
-            Bitmap bitmap = decodeScaled(bytes, 1280);
+            Bitmap bitmap = com.tsuyu.messenger.TsuyuPhoto.decodeScaled(bytes, 1280);
             if (bitmap == null) {
                 image.setImageDrawable(null);
                 return;
@@ -754,31 +754,6 @@ public final class MessageListAdapter extends RecyclerView.Adapter<RecyclerView.
             image.setImageBitmap(bitmap);
         } catch (Throwable ignored) {
             try { image.setImageDrawable(null); } catch (Throwable ignoredAgain) { }
-        }
-    }
-
-    /** Уменьшаем картинку ещё до создания: так память не переполнится даже на снимке 4000x3000. */
-    private static Bitmap decodeScaled(byte[] bytes, int maxSide) {
-        BitmapFactory.Options size = new BitmapFactory.Options();
-        size.inJustDecodeBounds = true;
-        BitmapFactory.decodeByteArray(bytes, 0, bytes.length, size);
-        int width = size.outWidth;
-        int height = size.outHeight;
-        if (width <= 0 || height <= 0) return null;
-        int sample = 1;
-        while (width / (sample * 2) >= maxSide || height / (sample * 2) >= maxSide) sample *= 2;
-        BitmapFactory.Options options = new BitmapFactory.Options();
-        options.inSampleSize = sample;
-        options.inPreferredConfig = android.graphics.Bitmap.Config.RGB_565;
-        try {
-            return BitmapFactory.decodeByteArray(bytes, 0, bytes.length, options);
-        } catch (OutOfMemoryError heavy) {
-            options.inSampleSize = sample * 4;
-            try {
-                return BitmapFactory.decodeByteArray(bytes, 0, bytes.length, options);
-            } catch (Throwable ignored) {
-                return null;
-            }
         }
     }
 

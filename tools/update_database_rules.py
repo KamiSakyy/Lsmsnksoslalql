@@ -84,6 +84,26 @@ def access_token(key: dict) -> str:
         return json.load(response)["access_token"]
 
 
+def check_expressions(document: dict) -> list[str]:
+    """Ищет правила со «сломанным» выражением: лишняя скобка ломает всю публикацию.
+
+    Такую ошибку Firebase показывает одной строкой без подробностей, поэтому проверяем
+    сами — до отправки.
+    """
+    problems: list[str] = []
+
+    def walk(node, path: str) -> None:
+        if isinstance(node, str):
+            if node.count("(") != node.count(")") or node.count("[") != node.count("]"):
+                problems.append(path or "/")
+        elif isinstance(node, dict):
+            for key, value in node.items():
+                walk(value, f"{path}/{key}")
+
+    walk(document.get("rules", {}), "")
+    return problems
+
+
 RESULTS: list[str] = []
 
 
@@ -137,7 +157,11 @@ def main() -> int:
     if not RULES.exists():
         print("database.rules.json не найден")
         return 0
-    json.loads(RULES.read_text(encoding="utf-8"))  # локальная проверка синтаксиса
+    document = json.loads(RULES.read_text(encoding="utf-8"))  # локальная проверка синтаксиса
+    problems = check_expressions(document)
+    if problems:
+        print("::warning title=Правила базы::в выражениях несбалансированные скобки: "
+              + ", ".join(problems[:10]))
     key_path = find_key()
     if key_path is None:
         print("ключ служебного аккаунта не найден — правила не опубликованы")
