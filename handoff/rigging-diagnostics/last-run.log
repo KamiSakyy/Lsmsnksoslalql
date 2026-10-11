@@ -1,26 +1,26 @@
-[    0.0s] Blender 4.2.23 LTS; source archive SHA-256 5b3a69491504d2a526c3a25f32012a102456663d7dbb3082d154287cfbab2eb5
-[    7.1s] Welded runtime topology: 1,117,173 → 990,818 vertices; UV corners preserved
-[   40.5s] Mesh: 1,117,173 source vertices; 79,947 runtime vertices / 160,000 triangles
-[   40.9s] Runtime surface topology: {'geometric_vertices': 79947, 'boundary_edges': 4, 'nonmanifold_edges': 2}
-[   41.1s] Solving surface-geodesic distances to avoid hand/coat/hair cross-binding
-[   46.5s] Solving pose-aware body / hair / clothing skin weights
-[   47.4s] Generating Idle: 121 keyframes
-[   47.9s] Generating Walk_InPlace: 37 keyframes
-[   48.1s] Generating Run_InPlace: 25 keyframes
-[   48.2s] Generating Wave: 91 keyframes
-[   48.6s] Generating Dance: 121 keyframes
-[   49.4s] Pose QA Idle: extent=1.000 H, 99.5-percentile edge stretch=1.118
-[   49.6s] Pose QA Walk_InPlace: extent=0.993 H, 99.5-percentile edge stretch=2.792
-[   49.7s] Pose QA Run_InPlace: extent=0.992 H, 99.5-percentile edge stretch=4.301
-[   49.9s] Pose QA Wave: extent=1.000 H, 99.5-percentile edge stretch=9.643
-[   50.1s] Pose QA Dance: extent=0.986 H, 99.5-percentile edge stretch=3.407
-[   50.1s] Exporting runtime GLB with five separate animation clips
-[   54.0s] Exporting FBX with actions (no extra leaf bones)
-[   56.2s] Exported tangent frames repaired: {'corrected_vertices': 92696, 'method': 'orthonormal fallback for degenerate UV tangents'}
-[   56.2s] Runtime GLB skin validated: {'joints': 48, 'vertices': 96614, 'unweighted_vertices': 0, 'max_influences': 4, 'rest_bind_error': 7.848589749934213e-07, 'animations': ['Dance', 'Idle', 'Run_InPlace', 'Walk_InPlace', 'Wave']}
-[   56.2s] Transferring skin weights to the original high-detail Blender mesh
-[   60.1s] Preserving original GLB geometry and textures; appending skeleton and animations
-[   62.2s] Checking both exports with the official Khronos validator before rendering
-anime-girl-rigged.glb: 0 errors, 1 warnings
-anime-girl-full.glb: 0 errors, 2 warnings
-[   65.9s] DONE: GLB (runtime + full), FBX, Blender scene, skin checks and preview files
+[    0.0s] Blender 4.2.23 LTS; archive SHA-256 5b3a69491504d2a526c3a25f32012a102456663d7dbb3082d154287cfbab2eb5
+[    0.6s] Joint depths fitted to the actual source: free hand, raised arm, backward leg and both ankles
+[    6.0s] Welded runtime topology: 1,117,173 → 990,818 vertices; UV corners preserved
+[   35.7s] Mesh: 1,117,173 source vertices; 79,947 runtime vertices / 160,000 triangles
+[   36.1s] libigl BBW: 79,947 vertices, 321 handles, 1 surface components
+[  178.8s] BBW solved in 142.7s; raw bounds [-0.0012442340623878116, 1.0017397627740305]
+[  179.4s] Generating Idle: 121 keyframes on the fitted skeleton
+[  179.9s] Generating Walk_InPlace: 37 keyframes on the fitted skeleton
+[  180.1s] Generating Run_InPlace: 25 keyframes on the fitted skeleton
+[  180.2s] Generating Wave: 91 keyframes on the fitted skeleton
+[  180.5s] Generating Dance: 121 keyframes on the fitted skeleton
+[  181.0s] Exporting the INTERNAL solver cage and sampled animation carriers; not the delivered model
+[  184.2s] Transferring skin to full-resolution Blender geometry using closest faces
+[  189.4s] Transferring skin to ALL original GLB vertices; geometry/UV/textures remain untouched
+[  191.7s] Auditing REAL EXPORTED FULL-resolution skin at 21 times per clip
+[  251.4s] FULL QA Dance: p99.5=1.277, p99.9=1.472, max=6.129, compression=0.709
+[  251.4s] FULL QA Idle: p99.5=1.090, p99.9=1.180, max=2.350, compression=0.921
+[  251.4s] FULL QA Run_InPlace: p99.5=1.322, p99.9=1.567, max=8.539, compression=0.612
+[  251.4s] FULL QA Walk_InPlace: p99.5=1.174, p99.9=1.289, max=4.658, compression=0.743
+[  251.4s] FULL QA Wave: p99.5=1.567, p99.9=2.825, max=8.495, compression=0.764
+anime-girl-rigged.glb: 0 errors, 2 warnings
+[  253.0s] Exporting FULL-resolution FBX with sampled clips, not an optimized replacement
+[  281.9s] Quality render: untouched high-poly source at rest
+[  297.8s] Quality render: the same high-poly geometry with its real skin at rest
+[  314.3s] Quality render: full high-poly Wave at the audited worst time 0.750s
+[  331.6s] DONE: original-detail GLB 84,393,664 bytes; original buffers verified; high-poly FBX/Blender; deformation gates passed

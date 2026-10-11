@@ -1,8 +1,8 @@
 {
-  "previews_generated": false,
   "toolchain": {
     "blender": "4.2.23 LTS",
-    "method": "Surface-geodesic anatomical binding + hair/cloth envelopes + diffusion + 4-influence normalization",
+    "libigl": "2.6.3",
+    "method": "Source-fitted 3D joints + libigl bounded biharmonic weights + compact arm/strand envelopes + barycentric surface transfer + 16-bit weights",
     "fps": 30
   },
   "source": {
@@ -11,41 +11,17 @@
     "glb_sha256": "c185de86a14426dd0ff7627c7f3f5d1409b48e4c7fa5ac674193b124f65f3eec",
     "vertices": 1159795,
     "triangles": 1981742,
+    "bytes": 69539272,
     "original_skins": 0,
     "original_animations": 0
   },
-  "runtime": {
+  "primary": {
     "file": "anime-girl-rigged.glb",
-    "vertices": 79947,
-    "triangles": 160000,
-    "skin": {
-      "joints": 48,
-      "vertices": 96614,
-      "unweighted_vertices": 0,
-      "max_influences": 4,
-      "rest_bind_error": 7.848589749934213e-07,
-      "animations": [
-        "Dance",
-        "Idle",
-        "Run_InPlace",
-        "Walk_InPlace",
-        "Wave"
-      ]
-    },
-    "topology": {
-      "geometric_vertices": 79947,
-      "boundary_edges": 4,
-      "nonmanifold_edges": 2
-    },
-    "tangent_repairs": {
-      "corrected_vertices": 92696,
-      "method": "orthonormal fallback for degenerate UV tangents"
-    },
-    "bytes": 18071540
-  },
-  "full_resolution": {
-    "file": "anime-girl-full.glb",
-    "geometry_and_textures_preserved": true,
+    "resolution": "original, NOT decimated",
+    "vertices": 1159795,
+    "triangles": 1981742,
+    "bytes": 84393664,
+    "sha256": "713e6ab6d67ad668d86b37e4832405498a3987e3f6b704570997a54544c3dfd7",
     "skin": {
       "joints": 48,
       "vertices": 1159795,
@@ -59,8 +35,874 @@
         "Walk_InPlace",
         "Wave"
       ]
+    }
+  },
+  "preservation": {
+    "geometry_and_textures_byte_identical": true,
+    "original_binary_bytes": 69537364,
+    "original_binary_sha256": "067c1f20e99356eda3ec5d685c14eeda950968c86259abf43d0b476baea58fa4",
+    "maximum_rest_position_error_world_units": 3.0365502456941584e-07
+  },
+  "joint_fitting": {
+    "method": "source-mesh cross-section fitting in three dimensions",
+    "leg_depth_order": "Left/+X is back; Right/-X is front",
+    "measurements": {
+      "LeftKnee": {
+        "points": 1263,
+        "center": [
+          0.03332946671861681,
+          0.29,
+          0.03692047297082223
+        ],
+        "bounds_p05": [
+          0.01513622165387005,
+          0.28644827800959083,
+          0.0018699910889128013
+        ],
+        "bounds_p95": [
+          0.05152271178336357,
+          0.2936398455502273,
+          0.07197095485273167
+        ]
+      },
+      "LeftAnkle": {
+        "points": 1588,
+        "center": [
+          0.029974535906263623,
+          0.076,
+          -0.08955723143102015
+        ],
+        "bounds_p05": [
+          0.013754243001981224,
+          0.0724092296194806,
+          -0.1256407015096609
+        ],
+        "bounds_p95": [
+          0.046194828810546026,
+          0.07965373357414211,
+          -0.05347376135237941
+        ]
+      },
+      "RightKnee": {
+        "points": 1214,
+        "center": [
+          -0.05027081599499537,
+          0.29,
+          0.042687133543887965
+        ],
+        "bounds_p05": [
+          -0.0754371195955473,
+          0.28644827800959083,
+          0.013922953019145418
+        ],
+        "bounds_p95": [
+          -0.02510451239444343,
+          0.2936935604409292,
+          0.0714513140686305
+        ]
+      },
+      "RightAnkle": {
+        "points": 1767,
+        "center": [
+          -0.043358817370466346,
+          0.076,
+          0.020776383841313185
+        ],
+        "bounds_p05": [
+          -0.059810366882677726,
+          0.0724917481472255,
+          -0.0038534414473480947
+        ],
+        "bounds_p95": [
+          -0.026907267858254966,
+          0.07971601170828922,
+          0.045406209129974465
+        ]
+      },
+      "RightElbow": {
+        "points": 1183,
+        "center": [
+          -0.11532314946971141,
+          0.651,
+          0.005624528390618675
+        ],
+        "bounds_p05": [
+          -0.1337952294949243,
+          0.6474637229868594,
+          -0.01478494346130679
+        ],
+        "bounds_p95": [
+          -0.0968510694444985,
+          0.6546054680201782,
+          0.02603400024254414
+        ]
+      },
+      "RightWrist": {
+        "points": 1280,
+        "center": [
+          -0.14974777355670424,
+          0.512,
+          0.0005304145420994121
+        ],
+        "bounds_p05": [
+          -0.16783178675966867,
+          0.5082868355701563,
+          -0.019670182238957307
+        ],
+        "bounds_p95": [
+          -0.1316637603537398,
+          0.5157220663106433,
+          0.02073101132315613
+        ]
+      },
+      "RightHandEnd": {
+        "points": 413,
+        "center": [
+          -0.15378495360279007,
+          0.448,
+          0.0083202785176685
+        ],
+        "bounds_p05": [
+          -0.16272809366631377,
+          0.4471414336426481,
+          0.0009437615676768699
+        ],
+        "bounds_p95": [
+          -0.14484181353926637,
+          0.45179983807685126,
+          0.015696795467660132
+        ]
+      },
+      "LeftElbow": {
+        "points": 1955,
+        "center": [
+          0.10212330653954468,
+          0.683,
+          0.0471920540125364
+        ],
+        "bounds_p05": [
+          0.0774483167509692,
+          0.6793765958771876,
+          0.022647459447446987
+        ],
+        "bounds_p95": [
+          0.12679829632812015,
+          0.6865230117705674,
+          0.07173664857762581
+        ]
+      },
+      "LeftWrist": {
+        "points": 2611,
+        "center": [
+          0.14585928255589461,
+          0.79,
+          0.07681913578384816
+        ],
+        "bounds_p05": [
+          0.1298343401631687,
+          0.7864171389425173,
+          0.05402046940562333
+        ],
+        "bounds_p95": [
+          0.16188422494862054,
+          0.7935946939029707,
+          0.099617802162073
+        ]
+      },
+      "LeftHandEnd": {
+        "points": 2321,
+        "center": [
+          0.13499175194838114,
+          0.841,
+          0.0780033896273335
+        ],
+        "bounds_p05": [
+          0.12139566058854782,
+          0.8373606526748458,
+          0.06533757789632248
+        ],
+        "bounds_p95": [
+          0.14858784330821448,
+          0.8444292209005418,
+          0.0906692013583445
+        ]
+      }
     },
-    "bytes": 79754500
+    "bones": [
+      {
+        "name": "Root",
+        "head": [
+          0.0,
+          0.0,
+          0.0
+        ],
+        "tail": [
+          0.0,
+          0.1,
+          0.0
+        ]
+      },
+      {
+        "name": "mixamorig:Hips",
+        "head": [
+          0.0,
+          0.535,
+          0.006
+        ],
+        "tail": [
+          0.0,
+          0.6,
+          0.009
+        ]
+      },
+      {
+        "name": "mixamorig:Spine",
+        "head": [
+          0.0,
+          0.6,
+          0.009
+        ],
+        "tail": [
+          0.0,
+          0.67,
+          0.009
+        ]
+      },
+      {
+        "name": "mixamorig:Spine1",
+        "head": [
+          0.0,
+          0.67,
+          0.009
+        ],
+        "tail": [
+          0.0,
+          0.74,
+          0.013
+        ]
+      },
+      {
+        "name": "mixamorig:Spine2",
+        "head": [
+          0.0,
+          0.74,
+          0.013
+        ],
+        "tail": [
+          0.0,
+          0.81,
+          0.01
+        ]
+      },
+      {
+        "name": "mixamorig:Neck",
+        "head": [
+          0.0,
+          0.81,
+          0.01
+        ],
+        "tail": [
+          0.0,
+          0.854,
+          0.016
+        ]
+      },
+      {
+        "name": "mixamorig:Head",
+        "head": [
+          0.0,
+          0.854,
+          0.016
+        ],
+        "tail": [
+          0.0,
+          0.988,
+          0.015
+        ]
+      },
+      {
+        "name": "mixamorig:LeftShoulder",
+        "head": [
+          0.02,
+          0.795,
+          0.012
+        ],
+        "tail": [
+          0.083,
+          0.788,
+          0.014
+        ]
+      },
+      {
+        "name": "mixamorig:LeftArm",
+        "head": [
+          0.083,
+          0.788,
+          0.014
+        ],
+        "tail": [
+          0.10212330653954468,
+          0.683,
+          0.0471920540125364
+        ]
+      },
+      {
+        "name": "mixamorig:LeftForeArm",
+        "head": [
+          0.10212330653954468,
+          0.683,
+          0.0471920540125364
+        ],
+        "tail": [
+          0.14585928255589461,
+          0.79,
+          0.07681913578384816
+        ]
+      },
+      {
+        "name": "mixamorig:LeftHand",
+        "head": [
+          0.14585928255589461,
+          0.79,
+          0.07681913578384816
+        ],
+        "tail": [
+          0.13499175194838114,
+          0.841,
+          0.0780033896273335
+        ]
+      },
+      {
+        "name": "mixamorig:LeftUpLeg",
+        "head": [
+          0.03332946671861681,
+          0.522,
+          0.007
+        ],
+        "tail": [
+          0.03332946671861681,
+          0.29,
+          0.03692047297082223
+        ]
+      },
+      {
+        "name": "mixamorig:LeftLeg",
+        "head": [
+          0.03332946671861681,
+          0.29,
+          0.03692047297082223
+        ],
+        "tail": [
+          0.029974535906263623,
+          0.076,
+          -0.08955723143102015
+        ]
+      },
+      {
+        "name": "mixamorig:LeftFoot",
+        "head": [
+          0.029974535906263623,
+          0.076,
+          -0.08955723143102015
+        ],
+        "tail": [
+          0.029974535906263623,
+          0.029,
+          -0.04
+        ]
+      },
+      {
+        "name": "mixamorig:LeftToeBase",
+        "head": [
+          0.029974535906263623,
+          0.029,
+          -0.04
+        ],
+        "tail": [
+          0.029974535906263623,
+          0.022,
+          -0.014
+        ]
+      },
+      {
+        "name": "mixamorig:RightShoulder",
+        "head": [
+          -0.02,
+          0.795,
+          0.012
+        ],
+        "tail": [
+          -0.083,
+          0.788,
+          0.014
+        ]
+      },
+      {
+        "name": "mixamorig:RightArm",
+        "head": [
+          -0.083,
+          0.788,
+          0.014
+        ],
+        "tail": [
+          -0.11532314946971141,
+          0.651,
+          0.005624528390618675
+        ]
+      },
+      {
+        "name": "mixamorig:RightForeArm",
+        "head": [
+          -0.11532314946971141,
+          0.651,
+          0.005624528390618675
+        ],
+        "tail": [
+          -0.14974777355670424,
+          0.512,
+          0.0005304145420994121
+        ]
+      },
+      {
+        "name": "mixamorig:RightHand",
+        "head": [
+          -0.14974777355670424,
+          0.512,
+          0.0005304145420994121
+        ],
+        "tail": [
+          -0.15378495360279007,
+          0.448,
+          0.0083202785176685
+        ]
+      },
+      {
+        "name": "mixamorig:RightUpLeg",
+        "head": [
+          -0.05027081599499537,
+          0.522,
+          0.007
+        ],
+        "tail": [
+          -0.05027081599499537,
+          0.29,
+          0.042687133543887965
+        ]
+      },
+      {
+        "name": "mixamorig:RightLeg",
+        "head": [
+          -0.05027081599499537,
+          0.29,
+          0.042687133543887965
+        ],
+        "tail": [
+          -0.043358817370466346,
+          0.076,
+          0.020776383841313185
+        ]
+      },
+      {
+        "name": "mixamorig:RightFoot",
+        "head": [
+          -0.043358817370466346,
+          0.076,
+          0.020776383841313185
+        ],
+        "tail": [
+          -0.043358817370466346,
+          0.021,
+          0.085
+        ]
+      },
+      {
+        "name": "mixamorig:RightToeBase",
+        "head": [
+          -0.043358817370466346,
+          0.021,
+          0.085
+        ],
+        "tail": [
+          -0.043358817370466346,
+          0.017,
+          0.122
+        ]
+      },
+      {
+        "name": "Hair.Back.L.01",
+        "head": [
+          0.052,
+          0.94,
+          -0.051
+        ],
+        "tail": [
+          0.052,
+          0.803,
+          -0.08
+        ]
+      },
+      {
+        "name": "Hair.Back.L.02",
+        "head": [
+          0.052,
+          0.803,
+          -0.08
+        ],
+        "tail": [
+          0.05824,
+          0.674,
+          -0.089
+        ]
+      },
+      {
+        "name": "Hair.Back.L.03",
+        "head": [
+          0.05824,
+          0.674,
+          -0.089
+        ],
+        "tail": [
+          0.06396,
+          0.535,
+          -0.058
+        ]
+      },
+      {
+        "name": "Hair.Back.C.01",
+        "head": [
+          0.0,
+          0.94,
+          -0.051
+        ],
+        "tail": [
+          0.0,
+          0.803,
+          -0.08
+        ]
+      },
+      {
+        "name": "Hair.Back.C.02",
+        "head": [
+          0.0,
+          0.803,
+          -0.08
+        ],
+        "tail": [
+          0.0,
+          0.674,
+          -0.089
+        ]
+      },
+      {
+        "name": "Hair.Back.C.03",
+        "head": [
+          0.0,
+          0.674,
+          -0.089
+        ],
+        "tail": [
+          0.0,
+          0.535,
+          -0.058
+        ]
+      },
+      {
+        "name": "Hair.Back.R.01",
+        "head": [
+          -0.052,
+          0.94,
+          -0.051
+        ],
+        "tail": [
+          -0.052,
+          0.803,
+          -0.08
+        ]
+      },
+      {
+        "name": "Hair.Back.R.02",
+        "head": [
+          -0.052,
+          0.803,
+          -0.08
+        ],
+        "tail": [
+          -0.05824,
+          0.674,
+          -0.089
+        ]
+      },
+      {
+        "name": "Hair.Back.R.03",
+        "head": [
+          -0.05824,
+          0.674,
+          -0.089
+        ],
+        "tail": [
+          -0.06396,
+          0.535,
+          -0.058
+        ]
+      },
+      {
+        "name": "Hair.Front.L.01",
+        "head": [
+          0.055,
+          0.92,
+          0.055
+        ],
+        "tail": [
+          0.055,
+          0.82,
+          0.073
+        ]
+      },
+      {
+        "name": "Hair.Front.L.02",
+        "head": [
+          0.055,
+          0.82,
+          0.073
+        ],
+        "tail": [
+          0.055,
+          0.745,
+          0.068
+        ]
+      },
+      {
+        "name": "Hair.Front.R.01",
+        "head": [
+          -0.055,
+          0.92,
+          0.055
+        ],
+        "tail": [
+          -0.055,
+          0.82,
+          0.073
+        ]
+      },
+      {
+        "name": "Hair.Front.R.02",
+        "head": [
+          -0.055,
+          0.82,
+          0.073
+        ],
+        "tail": [
+          -0.055,
+          0.745,
+          0.068
+        ]
+      },
+      {
+        "name": "Hair.Held.01",
+        "head": [
+          0.063,
+          0.935,
+          0.034
+        ],
+        "tail": [
+          0.111,
+          0.862,
+          0.058
+        ]
+      },
+      {
+        "name": "Hair.Held.02",
+        "head": [
+          0.111,
+          0.862,
+          0.058
+        ],
+        "tail": [
+          0.145,
+          0.831,
+          0.063
+        ]
+      },
+      {
+        "name": "Coat.L.01",
+        "head": [
+          0.087,
+          0.59,
+          -0.018
+        ],
+        "tail": [
+          0.10701,
+          0.49,
+          -0.039
+        ]
+      },
+      {
+        "name": "Coat.L.02",
+        "head": [
+          0.10701,
+          0.49,
+          -0.039
+        ],
+        "tail": [
+          0.12702,
+          0.376,
+          -0.043
+        ]
+      },
+      {
+        "name": "Coat.C.01",
+        "head": [
+          0.0,
+          0.59,
+          -0.018
+        ],
+        "tail": [
+          0.0,
+          0.49,
+          -0.039
+        ]
+      },
+      {
+        "name": "Coat.C.02",
+        "head": [
+          0.0,
+          0.49,
+          -0.039
+        ],
+        "tail": [
+          0.0,
+          0.376,
+          -0.043
+        ]
+      },
+      {
+        "name": "Coat.R.01",
+        "head": [
+          -0.087,
+          0.59,
+          -0.018
+        ],
+        "tail": [
+          -0.10701,
+          0.49,
+          -0.039
+        ]
+      },
+      {
+        "name": "Coat.R.02",
+        "head": [
+          -0.10701,
+          0.49,
+          -0.039
+        ],
+        "tail": [
+          -0.12702,
+          0.376,
+          -0.043
+        ]
+      },
+      {
+        "name": "Skirt.L.01",
+        "head": [
+          0.043,
+          0.575,
+          0.031
+        ],
+        "tail": [
+          0.05288999999999999,
+          0.503,
+          0.052
+        ]
+      },
+      {
+        "name": "Skirt.L.02",
+        "head": [
+          0.05288999999999999,
+          0.503,
+          0.052
+        ],
+        "tail": [
+          0.0688,
+          0.439,
+          0.066
+        ]
+      },
+      {
+        "name": "Skirt.R.01",
+        "head": [
+          -0.043,
+          0.575,
+          0.031
+        ],
+        "tail": [
+          -0.05288999999999999,
+          0.503,
+          0.052
+        ]
+      },
+      {
+        "name": "Skirt.R.02",
+        "head": [
+          -0.05288999999999999,
+          0.503,
+          0.052
+        ],
+        "tail": [
+          -0.0688,
+          0.439,
+          0.066
+        ]
+      }
+    ]
+  },
+  "solver": {
+    "method": "libigl bounded biharmonic weights",
+    "solver_vertices": 79947,
+    "solver_triangles": 160000,
+    "surface_components": 1,
+    "boundary_vertices": 321,
+    "raw_numerical_bounds": [
+      -0.0012442340623878116,
+      1.0017397627740305
+    ],
+    "locality_power": 1.5,
+    "max_active_set_iterations": 30,
+    "elapsed_seconds": 142.710180729,
+    "tail_suppression": "compact moving-arm/front-strand envelopes and smooth torso partition"
+  },
+  "solver_cage": {
+    "internal_only": true,
+    "vertices": 79947,
+    "triangles": 160000,
+    "topology": {
+      "geometric_vertices": 79947,
+      "boundary_edges": 4,
+      "nonmanifold_edges": 2
+    },
+    "tangent_repairs": {
+      "corrected_vertices": 92696,
+      "method": "orthonormal fallback for degenerate UV tangents"
+    }
+  },
+  "surface_transfer": {
+    "blender_original": {
+      "method": "nearest-face barycentric interpolation",
+      "target_vertices": 1117173,
+      "distance_median": 1.6728746973987096e-05,
+      "distance_p99": 7.653965637091475e-05,
+      "distance_max": 0.00037117846427955583,
+      "weight_precision_bits": 16,
+      "max_influences": 4
+    },
+    "glb_original": {
+      "method": "nearest-face barycentric interpolation",
+      "target_vertices": 1159795,
+      "distance_median": 1.676150588824044e-05,
+      "distance_p99": 7.696861185187912e-05,
+      "distance_max": 0.00037117846427955583,
+      "weight_precision_bits": 16,
+      "max_influences": 4
+    }
   },
   "bones": [
     {
@@ -342,36 +1184,62 @@
     }
   ],
   "pose_checks": {
-    "Idle": {
-      "sampled_frames": 5,
-      "maximum_extent_in_model_heights": 1.000086240619356,
-      "edge_stretch_p99_5": 1.1176471883058556
+    "Dance": {
+      "sampled_frames": 21,
+      "edge_stretch_p99_5": 1.2768613893465905,
+      "edge_stretch_p99_9": 1.4723580454063037,
+      "edge_stretch_max": 6.129281694622348,
+      "edge_compression_p00_5": 0.7090145367273722,
+      "maximum_extent_in_model_heights": 0.986053616502108,
+      "worst_time": 2.8000000000000003
     },
-    "Walk_InPlace": {
-      "sampled_frames": 5,
-      "maximum_extent_in_model_heights": 0.9929754035428473,
-      "edge_stretch_p99_5": 2.791955690383915
+    "Idle": {
+      "sampled_frames": 21,
+      "edge_stretch_p99_5": 1.089751580024016,
+      "edge_stretch_p99_9": 1.1801091741181045,
+      "edge_stretch_max": 2.3502457515203883,
+      "edge_compression_p00_5": 0.9213700126356543,
+      "maximum_extent_in_model_heights": 1.0000895171810915,
+      "worst_time": 0.2
     },
     "Run_InPlace": {
-      "sampled_frames": 5,
-      "maximum_extent_in_model_heights": 0.9923057311452949,
-      "edge_stretch_p99_5": 4.300987095832853
+      "sampled_frames": 21,
+      "edge_stretch_p99_5": 1.3223951637321736,
+      "edge_stretch_p99_9": 1.5672044231758506,
+      "edge_stretch_max": 8.53921853328182,
+      "edge_compression_p00_5": 0.6123843752273302,
+      "maximum_extent_in_model_heights": 0.9923890513361413,
+      "worst_time": 0.5600000083446502
+    },
+    "Walk_InPlace": {
+      "sampled_frames": 21,
+      "edge_stretch_p99_5": 1.1738343500544224,
+      "edge_stretch_p99_9": 1.2893283309578332,
+      "edge_stretch_max": 4.658047208642127,
+      "edge_compression_p00_5": 0.743154601378979,
+      "maximum_extent_in_model_heights": 0.9930362576750894,
+      "worst_time": 0.8400000333786011
     },
     "Wave": {
-      "sampled_frames": 5,
-      "maximum_extent_in_model_heights": 0.9999753076929065,
-      "edge_stretch_p99_5": 9.643318276405417
-    },
-    "Dance": {
-      "sampled_frames": 5,
-      "maximum_extent_in_model_heights": 0.9859753777558075,
-      "edge_stretch_p99_5": 3.4067509555816686
+      "sampled_frames": 21,
+      "edge_stretch_p99_5": 1.5667219653873288,
+      "edge_stretch_p99_9": 2.8246296565806794,
+      "edge_stretch_max": 8.495307067791547,
+      "edge_compression_p00_5": 0.7641488068696514,
+      "maximum_extent_in_model_heights": 1.0000272108952752,
+      "worst_time": 0.75
     }
   },
   "limitations": [
-    "Profile is fitted to this model, not a universal arbitrary-pose autorigger.",
-    "No facial blendshapes or individually articulated fingers.",
-    "Hair/clothing motion is skeletal/procedural, not physical simulation.",
-    "Extreme poses may need manual weights and corrective shapes."
-  ]
+    "Model-specific FK rig; not a universal arbitrary-pose autorigger.",
+    "No facial shapes or individually articulated fingers.",
+    "Skeletal secondary motion, not cloth/hair physics.",
+    "Strong contact poses may still need manual corrective shapes."
+  ],
+  "render_checks": {
+    "full_resolution_mesh": true,
+    "source_and_bound_rest_mean_pixel_difference": 7.308157635670082e-06,
+    "wave_time_seconds": 0.75,
+    "source_triangles": 1981742
+  }
 }
