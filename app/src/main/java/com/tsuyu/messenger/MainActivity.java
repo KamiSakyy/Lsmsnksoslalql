@@ -33,6 +33,8 @@ import android.widget.Toast;
 import androidx.activity.result.ActivityResultLauncher;
 import androidx.activity.result.contract.ActivityResultContracts;
 import androidx.appcompat.app.AppCompatActivity;
+import androidx.appcompat.widget.SwitchCompat;
+import androidx.drawerlayout.widget.DrawerLayout;
 import androidx.core.content.ContextCompat;
 import androidx.core.graphics.Insets;
 import androidx.core.view.ViewCompat;
@@ -44,7 +46,6 @@ import androidx.recyclerview.widget.RecyclerView;
 import androidx.transition.TransitionManager;
 
 import com.google.android.material.appbar.MaterialToolbar;
-import com.google.android.material.bottomnavigation.BottomNavigationView;
 import com.google.android.material.bottomsheet.BottomSheetDialog;
 import com.google.android.material.button.MaterialButton;
 import com.google.android.material.checkbox.MaterialCheckBox;
@@ -78,6 +79,7 @@ import com.tsuyu.messenger.notifications.NotificationSounds;
 import com.tsuyu.messenger.ui.ChatListAdapter;
 import com.tsuyu.messenger.ui.MessageListAdapter;
 import com.tsuyu.messenger.ui.ProfileSearchAdapter;
+import com.tsuyu.messenger.ui.CircleCameraDialog;
 import com.tsuyu.messenger.ui.ZoomImageView;
 
 import org.json.JSONArray;
@@ -129,6 +131,9 @@ public final class MainActivity extends AppCompatActivity {
     private View chatStickerButton;
     private View composerPanel;
     private TextView multiSelectCount;
+    private DrawerLayout drawerLayout;
+    private View drawerRoot;
+    private boolean pinUnlocked;
     private final Map<String, String> folderNames = new java.util.LinkedHashMap<>();
     private final Map<String, Set<String>> folderMembers = new java.util.LinkedHashMap<>();
     private long unreadDividerAt;
@@ -228,6 +233,17 @@ public final class MainActivity extends AppCompatActivity {
         super.onCreate(savedInstanceState);
         setContentView(R.layout.activity_main);
         screenHost = findViewById(R.id.screen_host);
+        drawerLayout = findViewById(R.id.drawer_layout);
+        drawerRoot = findViewById(R.id.drawer_root);
+        if (drawerRoot != null) {
+            ViewCompat.setOnApplyWindowInsetsListener(drawerRoot, (view, windowInsets) -> {
+                Insets bars = windowInsets.getInsets(WindowInsetsCompat.Type.systemBars());
+                view.setPadding(view.getPaddingLeft(), bars.top, view.getPaddingRight(), bars.bottom);
+                return WindowInsetsCompat.CONSUMED;
+            });
+            ViewCompat.requestApplyInsets(drawerRoot);
+        }
+        setupDrawer();
         WindowCompat.setDecorFitsSystemWindows(getWindow(), false);
         ViewCompat.setOnApplyWindowInsetsListener(screenHost, (view, windowInsets) -> {
             Insets systemBars = windowInsets.getInsets(WindowInsetsCompat.Type.systemBars());
@@ -315,6 +331,14 @@ public final class MainActivity extends AppCompatActivity {
     }
 
     @Override
+    protected void onResume() {
+        super.onResume();
+        com.tsuyu.messenger.crypto.PinLock.requireUnlock(this, uid, new com.tsuyu.messenger.crypto.PinLock.Callback() {
+            @Override public void onUnlocked() { pinUnlocked = true; }
+            @Override public void onCancelled() { finishAndRemoveTask(); }
+        });
+    }
+
     protected void onStart() {
         super.onStart();
         auth.addAuthStateListener(authListener);
@@ -323,6 +347,7 @@ public final class MainActivity extends AppCompatActivity {
     @Override
     protected void onStop() {
         super.onStop();
+        com.tsuyu.messenger.crypto.PinLock.onBackground();
         if (auth != null && authListener != null) auth.removeAuthStateListener(authListener);
     }
 
@@ -348,6 +373,10 @@ public final class MainActivity extends AppCompatActivity {
         if (accountUid == null || accountUid.equals(uid) && !page.isEmpty()) return;
         page = "loading";
         uid = accountUid;
+        com.tsuyu.messenger.crypto.PinLock.requireUnlock(this, uid, new com.tsuyu.messenger.crypto.PinLock.Callback() {
+            @Override public void onUnlocked() { pinUnlocked = true; }
+            @Override public void onCancelled() { finishAndRemoveTask(); }
+        });
         crypto = new SignalE2ee(this, uid);
         messageCache = new LocalMessageCache(this, uid);
         vault = new LocalVault(uid);
@@ -483,11 +512,12 @@ public final class MainActivity extends AppCompatActivity {
         activePeerUid = null;
         View root = showScreen(R.layout.screen_home);
         View menuButton = root.findViewById(R.id.home_menu_btn);
-        if (menuButton != null) menuButton.setOnClickListener(v -> showSettings());
+        if (menuButton != null) menuButton.setOnClickListener(v -> openDrawer());
         View encryptButton = root.findViewById(R.id.home_encrypt_btn);
         if (encryptButton != null) encryptButton.setOnClickListener(v -> showKeySettings());
         View titleBlock = root.findViewById(R.id.home_title_block);
-        if (titleBlock != null) titleBlock.setOnClickListener(v -> showProfileEditor(false));
+        if (titleBlock != null) titleBlock.setOnClickListener(v -> openDrawer());
+        bindDrawerHeader();
         homeSearchInput = root.findViewById(R.id.home_search_input);
         if (homeSearchInput != null) {
             homeSearchInput.setText(chatListQuery);
@@ -530,7 +560,6 @@ public final class MainActivity extends AppCompatActivity {
         homeOfflineBanner = root.findViewById(R.id.home_offline_banner);
         if (homeOfflineBanner != null) homeOfflineBanner.setVisibility(onlineNow ? View.GONE : View.VISIBLE);
         watchConnection();
-        setupBottomNavigation(root, R.id.nav_chats);
         attachUserChatsListener();
         renderChatList();
         if (getIntent() != null) handleNotificationIntent(getIntent());
@@ -906,7 +935,6 @@ public final class MainActivity extends AppCompatActivity {
                     @Override public void error(String error) { toast(error); }
                 }));
         searchResults.setAdapter(profileSearchAdapter);
-        setupBottomNavigation(root, R.id.nav_search);
         searchInput.addTextChangedListener(new TextWatcher() {
             private final Handler debounce = new Handler(Looper.getMainLooper());
             private Runnable pending;
@@ -971,6 +999,7 @@ public final class MainActivity extends AppCompatActivity {
         lastRemoteChatId = chatId;
         getSharedPreferences("tsuyu_settings", MODE_PRIVATE).edit().putString("active_chat", chatId).apply();
         page = "chat";
+        com.tsuyu.messenger.notifications.NotificationCenter.clear(this, chatId);
         exitSelectionMode();
         View root = showScreen(R.layout.screen_chat);
         root.findViewById(R.id.chat_back).setOnClickListener(v -> {
@@ -1082,10 +1111,7 @@ public final class MainActivity extends AppCompatActivity {
         chatVoiceButton = root.findViewById(R.id.chat_voice);
         if (chatVoiceButton != null) chatVoiceButton.setOnClickListener(v -> toggleVoiceRecord());
         chatCircleButton = root.findViewById(R.id.chat_circle);
-        if (chatCircleButton != null) chatCircleButton.setOnClickListener(v -> {
-            pendingMediaKind = "circle";
-            documentPicker.launch(new String[]{"video/*"});
-        });
+        if (chatCircleButton != null) chatCircleButton.setOnClickListener(v -> openCircleCamera());
         chatStickerButton = root.findViewById(R.id.chat_sticker);
         if (chatStickerButton != null) chatStickerButton.setOnClickListener(v -> {
             pendingMediaKind = "sticker";
@@ -1411,6 +1437,8 @@ public final class MainActivity extends AppCompatActivity {
             JSONObject object = new JSONObject(payload);
             String kind = object.optString("kind", "text");
             if ("image".equals(kind)) showImageDialog(object.optString("data", ""));
+            else if ("circle".equals(kind)) showVideoDialog(object.optString("data", ""), object.optString("mime", "video/mp4"));
+            else if ("sticker".equals(kind)) showImageDialog(object.optString("data", ""));
             else if ("video".equals(kind)) showVideoDialog(object.optString("data", ""), object.optString("mime", "video/mp4"));
             else if ("audio".equals(kind) || "voice".equals(kind)) playAudio(object.optString("data", ""), object.optString("mime", "audio/mp4"));
             else if ("collage".equals(kind)) {
@@ -2199,22 +2227,8 @@ public final class MainActivity extends AppCompatActivity {
                 .setNegativeButton("Отмена", null)
                 .setPositiveButton("Выйти", (dialog, which) -> { presenceManager.signOut(); auth.signOut(); })
                 .show());
-        setupBottomNavigation(root, R.id.nav_settings);
     }
 
-    private void setupBottomNavigation(View root, int selectedItem) {
-        BottomNavigationView navigation = root.findViewById(R.id.main_navigation);
-        if (navigation == null) return;
-        navigation.setSelectedItemId(selectedItem);
-        navigation.setOnItemSelectedListener(item -> {
-            int id = item.getItemId();
-            if (id == R.id.nav_chats) showHome();
-            else if (id == R.id.nav_search) showSearchScreen();
-            else if (id == R.id.nav_settings) showSettings();
-            else return false;
-            return true;
-        });
-    }
 
     private void showPrivacySettings() {
         String[] keys = {"messages", "lastSeen", "photo", "about", "displayName"};
@@ -2458,6 +2472,8 @@ public final class MainActivity extends AppCompatActivity {
             if ("video".equals(kind)) return "Видео";
             if ("voice".equals(kind)) return "Голосовое сообщение";
             if ("audio".equals(kind)) return "Аудиофайл";
+            if ("circle".equals(kind)) return "Кружочек";
+            if ("sticker".equals(kind)) return "Стикер";
             return "Сообщение";
         } catch (Exception e) { return "Сообщение"; }
     }
@@ -2472,6 +2488,8 @@ public final class MainActivity extends AppCompatActivity {
             if ("video".equals(kind)) return "Видео";
             if ("voice".equals(kind)) return "Голосовое сообщение";
             if ("audio".equals(kind)) return "Аудиофайл";
+            if ("circle".equals(kind)) return "Кружочек";
+            if ("sticker".equals(kind)) return "Стикер";
             return "Сообщение";
         } catch (Exception e) { return "Сообщение"; }
     }
@@ -3236,12 +3254,221 @@ public final class MainActivity extends AppCompatActivity {
                 }).show();
     }
 
+    // ------------------------------------------------------------------ drawer
+
+    /** The web client opens its sidebar from the header/title area. */
+    private void openDrawer() {
+        if (drawerLayout == null) drawerLayout = findViewById(R.id.drawer_layout);
+        if (drawerLayout == null) return;
+        bindDrawerHeader();
+        drawerLayout.openDrawer(androidx.core.view.GravityCompat.START);
+    }
+
+    private void closeDrawer() {
+        if (drawerLayout == null) drawerLayout = findViewById(R.id.drawer_layout);
+        if (drawerLayout != null && drawerLayout.isDrawerOpen(androidx.core.view.GravityCompat.START)) {
+            drawerLayout.closeDrawer(androidx.core.view.GravityCompat.START);
+        }
+    }
+
+    /** Wires every row and switch of view_drawer.xml, exactly as the drawer behaves on the site. */
+    private void setupDrawer() {
+        if (drawerRoot == null) return;
+        View.OnClickListener profile = v -> { closeDrawer(); showProfileEditor(false); };
+        click(drawerRoot, R.id.drawer_item_profile, profile);
+        click(drawerRoot, R.id.drawer_item_avatar, v -> {
+            closeDrawer();
+            editingAvatar = true;
+            avatarPicker.launch("image/*");
+        });
+        click(drawerRoot, R.id.drawer_avatar_frame, profile);
+        click(drawerRoot, R.id.drawer_avatar_edit, v -> {
+            closeDrawer();
+            editingAvatar = true;
+            avatarPicker.launch("image/*");
+        });
+        click(drawerRoot, R.id.drawer_status_row, v -> { closeDrawer(); showProfileEditor(false); });
+        click(drawerRoot, R.id.drawer_item_settings, v -> { closeDrawer(); showSettings(); });
+        click(drawerRoot, R.id.drawer_item_cloud, v -> { closeDrawer(); showKeySettings(); });
+        click(drawerRoot, R.id.drawer_item_cache, v -> {
+            clearLocalCache();
+            bindDrawerHeader();
+        });
+        click(drawerRoot, R.id.drawer_item_logout, v -> {
+            closeDrawer();
+            new AlertDialog.Builder(this)
+                    .setTitle(R.string.drawer_logout)
+                    .setMessage(getString(R.string.drawer_logout_confirm))
+                    .setNegativeButton(R.string.circle_cancel, null)
+                    .setPositiveButton(R.string.drawer_logout, (dialog, which) -> {
+                        if (presenceManager != null) presenceManager.signOut();
+                        if (auth != null) auth.signOut();
+                    })
+                    .show();
+        });
+        click(drawerRoot, R.id.drawer_item_pin, v -> showPinSetupDialog());
+    }
+
+    private void click(View root, int id, View.OnClickListener listener) {
+        View view = root.findViewById(id);
+        if (view != null) view.setOnClickListener(listener);
+    }
+
+    private void bindSwitch(int id, boolean checked, android.widget.CompoundButton.OnCheckedChangeListener listener) {
+        View view = drawerRoot == null ? null : drawerRoot.findViewById(id);
+        if (!(view instanceof SwitchCompat)) return;
+        SwitchCompat switchView = (SwitchCompat) view;
+        switchView.setOnCheckedChangeListener(null);
+        switchView.setChecked(checked);
+        switchView.setOnCheckedChangeListener(listener);
+    }
+
+    /** Pulls the signed-in profile into the drawer header: avatar, name, presence, status. */
+    private void bindDrawerHeader() {
+        if (drawerRoot == null) return;
+        ShapeableImageView avatar = drawerRoot.findViewById(R.id.drawer_avatar);
+        TextView initial = drawerRoot.findViewById(R.id.drawer_avatar_initial);
+        TextView name = drawerRoot.findViewById(R.id.drawer_name);
+        TextView status = drawerRoot.findViewById(R.id.drawer_status);
+        TextView presence = drawerRoot.findViewById(R.id.drawer_presence);
+        TextView cache = drawerRoot.findViewById(R.id.drawer_cache_label);
+        TextView pin = drawerRoot.findViewById(R.id.drawer_pin_label);
+        String title = myProfile == null ? null : myProfile.displayNameOrUsername();
+        bindAvatar(avatar, initial, myProfile, title, myProfile == null ? null : myProfile.avatarBase64);
+        if (name != null) name.setText(title == null ? getString(R.string.app_name) : title);
+        if (status != null) {
+            String about = myProfile == null || myProfile.about == null || myProfile.about.trim().isEmpty()
+                    ? getString(R.string.drawer_status_hint) : myProfile.about;
+            status.setText(about);
+        }
+        if (presence != null) presence.setText(getString(R.string.drawer_online));
+        if (cache != null) cache.setText(getString(R.string.drawer_cache, cacheSizeLabel()));
+        if (pin != null) {
+            boolean lock = uid != null && com.tsuyu.messenger.crypto.PinLock.isEnabled(this, uid);
+            pin.setText(getString(lock ? R.string.drawer_pin_on : R.string.drawer_pin));
+        }
+        bindSwitch(R.id.drawer_switch_stealth, presenceManager != null && presenceManager.isGhostMode(), null);
+        bindSwitch(R.id.drawer_switch_sound, NotificationSounds.isEnabled(this), null);
+        bindSwitch(R.id.drawer_switch_encrypt, true, null);
+        setupDrawerSwitchListeners();
+    }
+
+    private void setupDrawerSwitchListeners() {
+        bindSwitch(R.id.drawer_switch_stealth, presenceManager != null && presenceManager.isGhostMode(), checked -> {
+            if (presenceManager != null && uid != null) presenceManager.setGhostMode(uid, checked);
+            toast(getString(checked ? R.string.drawer_stealth_on : R.string.drawer_stealth_off));
+        });
+        bindSwitch(R.id.drawer_switch_sound, NotificationSounds.isEnabled(this), checked -> {
+            NotificationSounds.setEnabled(this, checked);
+            toast(getString(checked ? R.string.drawer_sound_on : R.string.drawer_sound_off));
+        });
+        bindSwitch(R.id.drawer_switch_encrypt, true, checked -> {
+            View view = drawerRoot.findViewById(R.id.drawer_switch_encrypt);
+            if (view instanceof SwitchCompat && !checked) {
+                ((SwitchCompat) view).setChecked(true);
+                toast(getString(R.string.drawer_encrypt_locked));
+            }
+        });
+    }
+
+    private String cacheSizeLabel() {
+        try {
+            java.io.File dir = new java.io.File(getCacheDir(), "tsuyu-media");
+            long bytes = 0L;
+            java.io.File[] files = dir.listFiles();
+            if (files != null) for (java.io.File file : files) bytes += file.length();
+            if (bytes <= 0) return "0 МБ";
+            return String.format(java.util.Locale.ROOT, "%.1f МБ", bytes / 1048576.0);
+        } catch (Exception e) {
+            return "0 МБ";
+        }
+    }
+
+    private void clearLocalCache() {
+        dataQueue.execute(() -> {
+            try {
+                java.io.File dir = new java.io.File(getCacheDir(), "tsuyu-media");
+                java.io.File[] files = dir.listFiles();
+                if (files != null) for (java.io.File file : files) file.delete();
+            } catch (Exception ignored) { }
+            runOnUiThread(() -> {
+                toast(getString(R.string.drawer_cache_cleared));
+                TextView cache = drawerRoot == null ? null : drawerRoot.findViewById(R.id.drawer_cache_label);
+                if (cache != null) cache.setText(getString(R.string.drawer_cache, cacheSizeLabel()));
+            });
+        });
+    }
+
+    /** Sets or removes the local PIN lock from the drawer row. */
+    private void showPinSetupDialog() {
+        if (uid == null) return;
+        final boolean enabled = com.tsuyu.messenger.crypto.PinLock.isEnabled(this, uid);
+        final EditText input = new EditText(this);
+        input.setInputType(android.text.InputType.TYPE_CLASS_NUMBER | android.text.InputType.TYPE_NUMBER_VARIATION_PASSWORD);
+        input.setHint(R.string.pin_enter_hint);
+        input.setMaxLines(1);
+        new AlertDialog.Builder(this)
+                .setTitle(enabled ? R.string.drawer_pin_on : R.string.drawer_pin)
+                .setMessage(enabled ? R.string.pin_remove_hint : R.string.pin_set_hint)
+                .setView(input)
+                .setNegativeButton(R.string.circle_cancel, null)
+                .setPositiveButton(R.string.pin_confirm, (dialog, which) -> {
+                    String value = input.getText() == null ? "" : input.getText().toString();
+                    if (enabled) {
+                        com.tsuyu.messenger.crypto.PinLock.clearPin(this, uid);
+                        toast(getString(R.string.pin_removed));
+                    } else if (value.length() < 4) {
+                        toast(getString(R.string.pin_too_short));
+                    } else {
+                        com.tsuyu.messenger.crypto.PinLock.setPin(this, uid, value);
+                        toast(getString(R.string.pin_saved));
+                    }
+                    bindDrawerHeader();
+                })
+                .show();
+    }
+
+    // ------------------------------------------------------------------ circle video notes
+
+    /** Records a real circular video note with the phone camera. */
+    private void openCircleCamera() {
+        if (activeChatId == null || activePeerUid == null) {
+            toast(getString(R.string.circle_need_chat));
+            return;
+        }
+        com.tsuyu.messenger.ui.CircleCameraDialog.show(this, this::sendCircleFile);
+    }
+
+    /** Encodes the freshly recorded MP4 and pushes it into the encrypted chat. */
+    private void sendCircleFile(java.io.File file) {
+        if (file == null || !file.exists() || activeChatId == null || activePeerUid == null) return;
+        String chatId = activeChatId;
+        String peerUid = activePeerUid;
+        String senderUid = uid;
+        dataQueue.execute(() -> {
+            try {
+                String base64 = readBase64(Uri.fromFile(file), 6_000_000);
+                String payload = new JSONObject().put("version", 1).put("kind", "circle")
+                        .put("mime", "video/mp4").put("data", base64).toString();
+                file.delete();
+                runOnUiThread(() -> enqueueOptimisticMessage(chatId, peerUid, senderUid, payload));
+            } catch (Exception error) {
+                file.delete();
+                runOnUiThread(() -> toast(getString(R.string.circle_failed)));
+            }
+        });
+    }
+
     private void toast(String text) { if (Looper.myLooper() == Looper.getMainLooper()) Toast.makeText(this, text, Toast.LENGTH_SHORT).show(); else runOnUiThread(() -> Toast.makeText(this, text, Toast.LENGTH_SHORT).show()); }
     private String authError(Exception e) { return "Не удалось войти. Проверьте почту и пароль или попробуйте позже."; }
     private static long number(Object value) { return value instanceof Number ? ((Number) value).longValue() : 0L; }
 
     @Override
     public void onBackPressed() {
+        if (drawerLayout != null && drawerLayout.isDrawerOpen(androidx.core.view.GravityCompat.START)) {
+            closeDrawer();
+            return;
+        }
         if (selecting) { exitSelectionMode(); return; }
         if ("chat".equals(page)) { detachChatListeners(); showHome(); return; }
         if ("profile_edit".equals(page)) {

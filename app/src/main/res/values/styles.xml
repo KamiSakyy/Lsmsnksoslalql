@@ -322,4 +322,45 @@
         <item name="android:textColor">@color/tsuyu_white</item>
         <item name="android:textSize">15sp</item>
     </style>
+
+    <!-- ==================== Drawer (web .drawer) ==================== -->
+
+    <style name="Widget.Tsuyu.DrawerRow" parent="">
+        <item name="android:layout_width">match_parent</item>
+        <item name="android:layout_height">wrap_content</item>
+        <item name="android:background">@drawable/bg_drawer_row</item>
+        <item name="android:clickable">true</item>
+        <item name="android:focusable">true</item>
+        <item name="android:gravity">center_vertical</item>
+        <item name="android:orientation">horizontal</item>
+        <item name="android:paddingStart">@dimen/sheet_item_padding_v</item>
+        <item name="android:paddingEnd">@dimen/sheet_item_padding_v</item>
+        <item name="android:paddingTop">@dimen/space_md</item>
+        <item name="android:paddingBottom">@dimen/space_md</item>
+    </style>
+
+    <style name="Widget.Tsuyu.DrawerIcon" parent="">
+        <item name="android:layout_width">20dp</item>
+        <item name="android:layout_height">20dp</item>
+        <item name="tint">@color/tsuyu_drawer_icon</item>
+    </style>
+
+    <style name="Widget.Tsuyu.DrawerLabel" parent="">
+        <item name="android:layout_width">0dp</item>
+        <item name="android:layout_height">wrap_content</item>
+        <item name="android:layout_weight">1</item>
+        <item name="android:layout_marginStart">14dp</item>
+        <item name="android:ellipsize">end</item>
+        <item name="android:maxLines">1</item>
+        <item name="android:textColor">@color/tsuyu_drawer_text</item>
+        <item name="android:textSize">15sp</item>
+    </style>
+
+    <style name="Widget.Tsuyu.DrawerSwitch" parent="Widget.Material3.CompoundButton.MaterialSwitch">
+        <item name="android:layout_width">wrap_content</item>
+        <item name="android:layout_height">wrap_content</item>
+        <item name="thumbTint">@color/tsuyu_switch_thumb</item>
+        <item name="trackTint">@color/tsuyu_switch_track</item>
+        <item name="trackDecorationTint">@android:color/transparent</item>
+    </style>
 </resources>

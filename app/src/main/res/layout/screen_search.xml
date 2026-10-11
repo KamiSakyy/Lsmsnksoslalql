@@ -93,22 +93,4 @@
         </LinearLayout>
     </FrameLayout>
 
-    <View
-        android:layout_width="match_parent"
-        android:layout_height="@dimen/hairline"
-        android:background="@color/tsuyu_border" />
-
-    <com.google.android.material.bottomnavigation.BottomNavigationView
-        android:id="@+id/main_navigation"
-        android:layout_width="match_parent"
-        android:layout_height="wrap_content"
-        android:background="@color/tsuyu_black"
-        android:elevation="0dp"
-        app:itemActiveIndicatorStyle="@null"
-        app:itemIconTint="@color/nav_item_tint"
-        app:itemTextAppearanceActive="@style/TextAppearance.Tsuyu.NavLabelActive"
-        app:itemTextAppearanceInactive="@style/TextAppearance.Tsuyu.NavLabel"
-        app:itemTextColor="@color/nav_item_tint"
-        app:labelVisibilityMode="labeled"
-        app:menu="@menu/main_navigation" />
 </LinearLayout>

@@ -7,7 +7,7 @@
     android:background="@color/tsuyu_black"
     android:orientation="vertical">
 
-    <!-- Header: menu · VK Tsuyu / Cloud E2EE · lock (web .header) -->
+    <!-- Header: drawer · Tsuyu · lock (web .header) -->
     <LinearLayout
         android:id="@+id/home_header"
         android:layout_width="match_parent"
@@ -49,18 +49,10 @@
                 android:fontFamily="sans-serif-medium"
                 android:letterSpacing="0.04"
                 android:maxLines="1"
-                android:text="@string/home_title"
+                android:text="@string/app_name"
                 android:textColor="@color/tsuyu_white"
                 android:textSize="20sp" />
 
-            <TextView
-                android:id="@+id/home_title_sub"
-                android:layout_width="match_parent"
-                android:layout_height="wrap_content"
-                android:ellipsize="end"
-                android:maxLines="1"
-                android:text="@string/home_subtitle"
-                android:textAppearance="@style/TextAppearance.Tsuyu.ToolbarSubtitle" />
         </LinearLayout>
 
         <ImageView
@@ -254,22 +246,4 @@
             app:tint="@color/tsuyu_white" />
     </FrameLayout>
 
-    <View
-        android:layout_width="match_parent"
-        android:layout_height="@dimen/hairline"
-        android:background="@color/tsuyu_divider_soft" />
-
-    <com.google.android.material.bottomnavigation.BottomNavigationView
-        android:id="@+id/main_navigation"
-        android:layout_width="match_parent"
-        android:layout_height="wrap_content"
-        android:background="@color/tsuyu_header"
-        android:elevation="0dp"
-        app:itemActiveIndicatorStyle="@null"
-        app:itemIconTint="@color/nav_item_tint"
-        app:itemTextAppearanceActive="@style/TextAppearance.Tsuyu.NavLabelActive"
-        app:itemTextAppearanceInactive="@style/TextAppearance.Tsuyu.NavLabel"
-        app:itemTextColor="@color/nav_item_tint"
-        app:labelVisibilityMode="labeled"
-        app:menu="@menu/main_navigation" />
 </LinearLayout>
