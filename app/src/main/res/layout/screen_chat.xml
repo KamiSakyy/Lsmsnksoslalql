@@ -7,22 +7,27 @@
     android:background="@color/tsuyu_black"
     android:orientation="vertical">
 
-    <com.google.android.material.appbar.MaterialToolbar
-        android:id="@+id/chat_toolbar"
+    <FrameLayout
         android:layout_width="match_parent"
-        android:layout_height="64dp"
-        android:background="@color/tsuyu_header"
-        android:elevation="0dp"
-        app:menu="@menu/chat_toolbar"
-        app:navigationIcon="@drawable/ic_arrow_back"
-        app:title=""
-        app:titleTextColor="@color/tsuyu_white">
+        android:layout_height="56dp"
+        android:background="@color/tsuyu_header">
+        <com.google.android.material.appbar.MaterialToolbar
+            android:id="@+id/chat_toolbar"
+            android:layout_width="match_parent"
+            android:layout_height="match_parent"
+            android:background="@android:color/transparent"
+            android:elevation="0dp"
+            app:menu="@menu/chat_toolbar"
+            app:navigationIcon="@drawable/ic_arrow_back"
+            app:title=""
+            app:titleTextColor="@color/tsuyu_white" />
+
         <FrameLayout
             android:id="@+id/chat_peer_avatar_frame"
             android:layout_width="42dp"
             android:layout_height="42dp"
             android:layout_gravity="start|center_vertical"
-            android:layout_marginStart="52dp"
+            android:layout_marginStart="64dp"
             android:clickable="true"
             android:focusable="true">
             <TextView
@@ -49,19 +54,20 @@
                 android:background="@drawable/bg_online_dot"
                 android:visibility="gone" />
         </FrameLayout>
+
         <LinearLayout
             android:id="@+id/chat_peer_header_text"
-            android:layout_width="wrap_content"
+            android:layout_width="match_parent"
             android:layout_height="wrap_content"
             android:layout_gravity="start|center_vertical"
-            android:layout_marginStart="102dp"
+            android:layout_marginStart="116dp"
+            android:layout_marginEnd="56dp"
             android:orientation="vertical">
             <TextView
                 android:id="@+id/chat_peer_name"
-                android:layout_width="wrap_content"
+                android:layout_width="match_parent"
                 android:layout_height="wrap_content"
                 android:ellipsize="end"
-                android:maxWidth="190dp"
                 android:maxLines="1"
                 android:text="Собеседник"
                 android:textColor="@color/tsuyu_white"
@@ -69,14 +75,15 @@
                 android:textStyle="bold" />
             <TextView
                 android:id="@+id/chat_peer_status"
-                android:layout_width="wrap_content"
+                android:layout_width="match_parent"
                 android:layout_height="wrap_content"
-                android:layout_marginTop="2dp"
+                android:ellipsize="end"
+                android:maxLines="1"
                 android:text=""
                 android:textColor="@color/tsuyu_secondary"
                 android:textSize="12sp" />
         </LinearLayout>
-    </com.google.android.material.appbar.MaterialToolbar>
+    </FrameLayout>
 
     <FrameLayout
         android:layout_width="match_parent"
@@ -192,26 +199,29 @@
             android:layout_marginStart="7dp"
             android:layout_marginEnd="7dp"
             android:layout_weight="1"
-            android:hint="@string/chat_message_hint"
+            app:hintEnabled="false"
             app:boxBackgroundColor="@color/tsuyu_input"
-            app:boxBackgroundMode="outline"
-            app:boxCornerRadiusBottomEnd="22dp"
-            app:boxCornerRadiusBottomStart="22dp"
-            app:boxCornerRadiusTopEnd="22dp"
-            app:boxCornerRadiusTopStart="22dp"
-            app:boxStrokeColor="@color/tsuyu_blue"
-            app:hintTextColor="@color/tsuyu_secondary">
+            app:boxBackgroundMode="filled"
+            app:boxCornerRadiusBottomEnd="24dp"
+            app:boxCornerRadiusBottomStart="24dp"
+            app:boxCornerRadiusTopEnd="24dp"
+            app:boxCornerRadiusTopStart="24dp"
+            app:boxStrokeColor="@color/tsuyu_input"
+            app:boxStrokeWidth="0dp"
+            app:boxStrokeWidthFocused="0dp">
             <com.google.android.material.textfield.TextInputEditText
                 android:id="@+id/chat_composer"
                 android:layout_width="match_parent"
                 android:layout_height="wrap_content"
+                android:hint="@string/chat_message_hint"
                 android:imeOptions="actionSend"
                 android:inputType="textCapSentences|textMultiLine"
                 android:maxLines="4"
                 android:minHeight="48dp"
-                android:paddingStart="14dp"
-                android:paddingEnd="14dp"
+                android:paddingStart="15dp"
+                android:paddingEnd="15dp"
                 android:textColor="@color/tsuyu_white"
+                android:textColorHint="@color/tsuyu_secondary"
                 android:textSize="14sp" />
         </com.google.android.material.textfield.TextInputLayout>
         <com.google.android.material.button.MaterialButton

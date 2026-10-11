@@ -69,6 +69,7 @@
                         android:contentDescription="Изменить фото"
                         app:backgroundTint="@color/tsuyu_blue"
                         app:fabSize="mini"
+                        app:shapeAppearanceOverlay="@style/TsuyuCircleShape"
                         app:srcCompat="@drawable/ic_photo"
                         app:tint="@color/tsuyu_white" />
                 </FrameLayout>

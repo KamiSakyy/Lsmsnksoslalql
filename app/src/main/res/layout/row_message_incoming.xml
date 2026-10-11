@@ -18,6 +18,8 @@
         app:cardBackgroundColor="@color/tsuyu_incoming"
         app:cardCornerRadius="18dp"
         app:cardElevation="0dp"
+        app:strokeColor="@android:color/transparent"
+        app:strokeWidth="0dp"
         app:shapeAppearanceOverlay="@style/TsuyuMessageIncomingShape">
         <LinearLayout
             android:layout_width="wrap_content"

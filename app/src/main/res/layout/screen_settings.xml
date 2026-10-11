@@ -243,6 +243,7 @@
         android:layout_height="wrap_content"
         android:background="@color/tsuyu_black"
         android:elevation="0dp"
+        app:itemActiveIndicatorStyle="@null"
         app:itemIconTint="@color/nav_item_tint"
         app:itemTextColor="@color/nav_item_tint"
         app:labelVisibilityMode="labeled"
