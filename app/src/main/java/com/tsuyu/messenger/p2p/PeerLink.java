@@ -68,8 +68,8 @@ public final class PeerLink {
     private final java.util.LinkedHashSet<Integer> recentSequences = new java.util.LinkedHashSet<>();
     private final AtomicInteger highestSequence = new AtomicInteger();
     private volatile boolean announced;
-    private Thread receiveThread;
-    private Thread keepAliveThread;
+    private java.util.concurrent.ExecutorService receiveLoop;
+    private java.util.concurrent.ExecutorService keepAliveLoop;
 
     public PeerLink(String callId) {
         this.callId = callId == null ? "call" : callId;
@@ -100,12 +100,12 @@ public final class PeerLink {
         } catch (Exception error) {
             return false;
         }
-        receiveThread = new Thread(this::receiveLoop, "tsuyu-p2p-rx");
-        receiveThread.setDaemon(true);
-        receiveThread.start();
-        keepAliveThread = new Thread(this::keepAliveLoop, "tsuyu-p2p-keepalive");
-        keepAliveThread.setDaemon(true);
-        keepAliveThread.start();
+        // Циклы приёма и «пробивки» живут на своих управляемых потоках: закрытие канала
+        // гасит их, поэтому потоки не накапливаются от звонка к звонку.
+        receiveLoop = P2pThreads.loop("tsuyu-p2p-rx");
+        receiveLoop.execute(this::receiveLoop);
+        keepAliveLoop = P2pThreads.loop("tsuyu-p2p-keepalive");
+        keepAliveLoop.execute(this::keepAliveLoop);
         return true;
     }
 
@@ -238,6 +238,10 @@ public final class PeerLink {
     }
 
     public void close(String reason) {
+        P2pThreads.shutdown(receiveLoop);
+        receiveLoop = null;
+        P2pThreads.shutdown(keepAliveLoop);
+        keepAliveLoop = null;
         if (!running.getAndSet(false)) return;
         try {
             send(BYE, null);

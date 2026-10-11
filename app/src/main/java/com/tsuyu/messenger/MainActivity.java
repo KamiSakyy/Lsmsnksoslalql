@@ -274,6 +274,9 @@ public final class MainActivity extends AppCompatActivity {
     @Override
     protected void onCreate(Bundle savedInstanceState) {
         super.onCreate(savedInstanceState);
+        // Настройки подключаются один раз при старте экрана: дальше они берутся из памяти,
+        // а не читаются из файла в главном потоке.
+        com.tsuyu.messenger.util.Settings.ensure(this);
         // Данные экранов берём из моделей: они переживают пересоздание экрана и не мешаются
         // с кодом разметки.
         homeModel = new androidx.lifecycle.ViewModelProvider(this)
@@ -487,10 +490,9 @@ public final class MainActivity extends AppCompatActivity {
         // Один раз на версию: убираем из базы старые «тяжёлые» строки, чтобы кеш читался мгновенно.
         dataQueue.execute(() -> {
             try {
-                android.content.SharedPreferences prefs = getSharedPreferences("tsuyu_settings", MODE_PRIVATE);
-                if (prefs.getBoolean("heavy_rows_purged_125", false)) return;
+                if (com.tsuyu.messenger.util.Settings.getBoolean("heavy_rows_purged_125", false)) return;
                 int removed = store.purgeHeavyRows();
-                prefs.edit().putBoolean("heavy_rows_purged_125", true).apply();
+                com.tsuyu.messenger.util.Settings.putBoolean("heavy_rows_purged_125", true);
                 com.tsuyu.messenger.TsuyuLogs.log(this, "КЕШ", "убрано тяжёлых строк: " + removed);
             } catch (Throwable ignored) { }
         });
@@ -1287,7 +1289,7 @@ public final class MainActivity extends AppCompatActivity {
         replyToText = null;
         conversationModel.lastRemoteMessages = new ArrayList<>();
         lastRemoteChatId = chatId;
-        getSharedPreferences("tsuyu_settings", MODE_PRIVATE).edit().putString("active_chat", chatId).apply();
+        com.tsuyu.messenger.util.Settings.putString("active_chat", chatId);
         page = "chat";
         com.tsuyu.messenger.notifications.NotificationCenter.clear(this, chatId);
         // Тексты этого чата читаем с диска одним заходом — в фоне, пока рисуется экран.
@@ -1357,7 +1359,7 @@ public final class MainActivity extends AppCompatActivity {
         messageRowsAnimator.setSupportsChangeAnimations(false);
         messageList.setItemAnimator(messageRowsAnimator);
         messageListAdapter = new MessageListAdapter(uid, textSize(), isTextBold(),
-                getSharedPreferences("tsuyu_settings", MODE_PRIVATE).getBoolean("italic", false),
+                com.tsuyu.messenger.util.Settings.getBoolean("italic", false),
                 new MessageListAdapter.Listener() {
                     @Override public void onOpenPayload(String payload) { openPayload(payload); }
                     @Override public void onMessageMenu(View anchor, ChatMessage message, String payload) { showMessageMenu(message, payload); }
@@ -2307,9 +2309,9 @@ public final class MainActivity extends AppCompatActivity {
             showFolderPicker(chatId);
         });
         TextView guardSubtitle = content.findViewById(R.id.chat_menu_guard_subtitle);
-        SharedPreferences guardPrefs = getSharedPreferences("tsuyu_settings", MODE_PRIVATE);
-        boolean guardedChat = guardPrefs.getStringSet("screen_guard_exceptions", Collections.emptySet())
-                .contains(chatId);
+        SharedPreferences guardPrefs = com.tsuyu.messenger.util.Settings.raw();
+        boolean guardedChat = guardPrefs != null && guardPrefs
+                .getStringSet("screen_guard_exceptions", Collections.emptySet()).contains(chatId);
         if (guardSubtitle != null) {
             guardSubtitle.setText(guardedChat ? R.string.guard_exception_on : R.string.guard_exception_off);
         }
@@ -2726,9 +2728,9 @@ public final class MainActivity extends AppCompatActivity {
         profileCard.setOnClickListener(v -> showProfileEditor(false));
 
         MaterialSwitch syncSwitch = root.findViewById(R.id.background_sync_switch);
-        syncSwitch.setChecked(getSharedPreferences("tsuyu_settings", MODE_PRIVATE).getBoolean("background_sync", true));
+        syncSwitch.setChecked(com.tsuyu.messenger.util.Settings.getBoolean("background_sync", true));
         syncSwitch.setOnCheckedChangeListener((button, checked) -> {
-            getSharedPreferences("tsuyu_settings", MODE_PRIVATE).edit().putBoolean("background_sync", checked).apply();
+            com.tsuyu.messenger.util.Settings.putBoolean("background_sync", checked);
             if (checked) startBackgroundSync(); else stopBackgroundSync();
         });
         root.findViewById(R.id.setting_privacy).setOnClickListener(v -> showPrivacySettings());
@@ -2747,7 +2749,7 @@ public final class MainActivity extends AppCompatActivity {
     private void showPrivacySettings() {
         String[] keys = {"messages", "lastSeen", "photo", "about", "displayName"};
         Map<String, String> initial = new HashMap<>();
-        for (String key : keys) initial.put(key, getSharedPreferences("tsuyu_settings", MODE_PRIVATE).getString("privacy_" + key, "Все"));
+        for (String key : keys) initial.put(key, com.tsuyu.messenger.util.Settings.getString("privacy_" + key, "Все"));
         DatabaseReference settingsRef = database.getReference("users").child(uid).child("publicSettings");
         settingsRef.child("privacy").get().addOnSuccessListener(privacySnapshot -> {
             for (DataSnapshot child : privacySnapshot.getChildren()) {
@@ -2795,8 +2797,7 @@ public final class MainActivity extends AppCompatActivity {
                 .setPositiveButton("Сохранить", (dialog, which) -> {
                     Map<String, Object> publicSettings = new HashMap<>();
                     for (Map.Entry<String, Object> entry : privacy.entrySet()) {
-                        getSharedPreferences("tsuyu_settings", MODE_PRIVATE).edit()
-                                .putString("privacy_" + entry.getKey(), String.valueOf(entry.getValue())).apply();
+                        com.tsuyu.messenger.util.Settings.putString("privacy_" + entry.getKey(), String.valueOf(entry.getValue()));
                         if ("messages".equals(entry.getKey())) publicSettings.put("messages", entry.getValue());
                         else publicSettings.put("privacy/" + entry.getKey(), entry.getValue());
                     }
@@ -2816,19 +2817,18 @@ public final class MainActivity extends AppCompatActivity {
     private void showCustomization() {
         View body = getLayoutInflater().inflate(R.layout.dialog_customization, null, false);
         Slider size = body.findViewById(R.id.customization_text_size);
-        int current = getSharedPreferences("tsuyu_settings", MODE_PRIVATE).getInt("text_size", 15);
+        int current = com.tsuyu.messenger.util.Settings.getInt("text_size", 15);
         size.setValue(Math.max(12, Math.min(22, current)));
         MaterialCheckBox bold = body.findViewById(R.id.customization_bold);
         MaterialCheckBox italic = body.findViewById(R.id.customization_italic);
         bold.setChecked(isTextBold());
-        italic.setChecked(getSharedPreferences("tsuyu_settings", MODE_PRIVATE).getBoolean("italic", false));
+        italic.setChecked(com.tsuyu.messenger.util.Settings.getBoolean("italic", false));
         new AlertDialog.Builder(this).setTitle("Кастомизация").setView(body)
                 .setNegativeButton("Отмена", null)
                 .setPositiveButton("Сохранить", (dialog, which) -> {
-                    getSharedPreferences("tsuyu_settings", MODE_PRIVATE).edit()
-                            .putInt("text_size", Math.round(size.getValue()))
-                            .putBoolean("bold", bold.isChecked())
-                            .putBoolean("italic", italic.isChecked()).apply();
+                    com.tsuyu.messenger.util.Settings.putInt("text_size", Math.round(size.getValue()));
+                    com.tsuyu.messenger.util.Settings.putBoolean("bold", bold.isChecked());
+                    com.tsuyu.messenger.util.Settings.putBoolean("italic", italic.isChecked());
                     if (messageListAdapter != null && messageList != null && "chat".equals(page)) {
                         renderMessages(conversationModel.lastRemoteMessages, activePeerUid);
                     }
@@ -3069,10 +3069,10 @@ public final class MainActivity extends AppCompatActivity {
     private boolean isTextBold() { return com.tsuyu.messenger.util.Settings.getBoolean("bold", false); }
     /** v3-дизайн: «Защита от скриншотов» — системный флаг, снимки и превью в задачах блокируются. */
     private void applyScreenGuard() {
-        SharedPreferences guardPrefs = getSharedPreferences("tsuyu_settings", MODE_PRIVATE);
-        boolean guarded = guardPrefs.getBoolean("screen_guard", false);
+        SharedPreferences guardPrefs = com.tsuyu.messenger.util.Settings.raw();
+        boolean guarded = com.tsuyu.messenger.util.Settings.getBoolean("screen_guard", false);
         // Исключение: в отмеченных чатах защита снимается, остальное приложение остаётся закрытым.
-        if (guarded && activeChatId != null && "chat".equals(page)
+        if (guarded && guardPrefs != null && activeChatId != null && "chat".equals(page)
                 && guardPrefs.getStringSet("screen_guard_exceptions", Collections.emptySet())
                         .contains(activeChatId)) {
             guarded = false;
@@ -3103,11 +3103,9 @@ public final class MainActivity extends AppCompatActivity {
     private void bindScreenGuardSwitch(View root) {
         com.google.android.material.materialswitch.MaterialSwitch guard = root.findViewById(R.id.screen_guard_switch);
         if (guard == null) return;
-        guard.setChecked(getSharedPreferences("tsuyu_settings", MODE_PRIVATE)
-                .getBoolean("screen_guard", false));
+        guard.setChecked(com.tsuyu.messenger.util.Settings.getBoolean("screen_guard", false));
         guard.setOnCheckedChangeListener((button, checked) -> {
-            getSharedPreferences("tsuyu_settings", MODE_PRIVATE).edit()
-                    .putBoolean("screen_guard", checked).apply();
+            com.tsuyu.messenger.util.Settings.putBoolean("screen_guard", checked);
             applyScreenGuard();
         });
         View row = (View) guard.getParent();
@@ -3244,13 +3242,12 @@ public final class MainActivity extends AppCompatActivity {
     }
 
     private void markNoActiveChat() {
-        getSharedPreferences("tsuyu_settings", MODE_PRIVATE).edit().remove("active_chat").apply();
+        com.tsuyu.messenger.util.Settings.remove("active_chat");
         applyScreenGuard();
     }
     private void startBackgroundSync() {
-        android.content.SharedPreferences prefs = getSharedPreferences("tsuyu_settings", MODE_PRIVATE);
-        if (uid == null || !prefs.getBoolean("background_sync", true)) return;
-        prefs.edit().putString("sync_uid", uid).apply();
+        if (uid == null || !com.tsuyu.messenger.util.Settings.getBoolean("background_sync", true)) return;
+        com.tsuyu.messenger.util.Settings.putString("sync_uid", uid);
         try {
             Intent service = new Intent(this, com.tsuyu.messenger.notifications.TsuyuSyncService.class)
                     .putExtra(com.tsuyu.messenger.notifications.TsuyuSyncService.EXTRA_UID, uid);
@@ -3258,7 +3255,7 @@ public final class MainActivity extends AppCompatActivity {
         } catch (Throwable e) { toast("Фоновая синхронизация недоступна. Проверьте уведомления в настройках Android."); }
     }
     private void stopBackgroundSync() {
-        getSharedPreferences("tsuyu_settings", MODE_PRIVATE).edit().remove("sync_uid").apply();
+        com.tsuyu.messenger.util.Settings.remove("sync_uid");
         try { stopService(new Intent(this, com.tsuyu.messenger.notifications.TsuyuSyncService.class)); }
         catch (Throwable ignored) { }
     }
@@ -3826,9 +3823,8 @@ public final class MainActivity extends AppCompatActivity {
             if (chatPinnedBar != null) chatPinnedBar.setVisibility(View.GONE);
             return;
         }
-        android.content.SharedPreferences prefs = getSharedPreferences("tsuyu_settings", MODE_PRIVATE);
-        String id = prefs.getString(pinIdKey(chatId), null);
-        String text = prefs.getString(pinTextKey(chatId), null);
+        String id = com.tsuyu.messenger.util.Settings.getString(pinIdKey(chatId), null);
+        String text = com.tsuyu.messenger.util.Settings.getString(pinTextKey(chatId), null);
         if (id == null || text == null) {
             if (chatPinnedBar != null) chatPinnedBar.setVisibility(View.GONE);
             return;
@@ -3847,17 +3843,16 @@ public final class MainActivity extends AppCompatActivity {
         String text = payload == null ? "" : textFromPayload(payload);
         if (text == null || text.trim().isEmpty()) text = "Сообщение";
         if (text.length() > 160) text = text.substring(0, 160) + "…";
-        getSharedPreferences("tsuyu_settings", MODE_PRIVATE).edit()
-                .putString(pinIdKey(activeChatId), message.id)
-                .putString(pinTextKey(activeChatId), text).apply();
+        com.tsuyu.messenger.util.Settings.putString(pinIdKey(activeChatId), message.id);
+        com.tsuyu.messenger.util.Settings.putString(pinTextKey(activeChatId), text);
         restorePinnedMessage(activeChatId);
         toast(getString(R.string.pinned_message_toast));
     }
 
     private void unpinMessage() {
         if (activeChatId == null) return;
-        getSharedPreferences("tsuyu_settings", MODE_PRIVATE).edit()
-                .remove(pinIdKey(activeChatId)).remove(pinTextKey(activeChatId)).apply();
+        com.tsuyu.messenger.util.Settings.remove(pinIdKey(activeChatId));
+        com.tsuyu.messenger.util.Settings.remove(pinTextKey(activeChatId));
         restorePinnedMessage(activeChatId);
         toast(getString(R.string.unpinned_message_toast));
     }
@@ -4490,7 +4485,7 @@ public final class MainActivity extends AppCompatActivity {
                         avatarPicker.launch("image/*");
                     } else {
                         String key = global ? "wallpaper_global" : "wallpaper_" + chatId;
-                        getSharedPreferences("tsuyu_settings", MODE_PRIVATE).edit().remove(key).apply();
+                        com.tsuyu.messenger.util.Settings.remove(key);
                         if (chatId != null) applyChatWallpaper(chatId);
                         toast(getString(R.string.wallpaper_cleared));
                     }
@@ -4502,7 +4497,7 @@ public final class MainActivity extends AppCompatActivity {
         dataQueue.execute(() -> {
             try {
                 String encoded = imageToBase64(uri, 1080, 1_400_000);
-                getSharedPreferences("tsuyu_settings", MODE_PRIVATE).edit().putString(key, encoded).apply();
+                com.tsuyu.messenger.util.Settings.putString(key, encoded);
                 runOnUiThread(() -> {
                     if (activeChatId != null) applyChatWallpaper(activeChatId);
                     toast(getString(R.string.wallpaper_set));
@@ -4516,7 +4511,7 @@ public final class MainActivity extends AppCompatActivity {
     /** Обои чата перекрывают общие: фон ставится списку сообщений, под затемнением. */
     private void applyChatWallpaper(String chatId) {
         if (messageList == null) return;
-        SharedPreferences prefs = getSharedPreferences("tsuyu_settings", MODE_PRIVATE);
+        SharedPreferences prefs = com.tsuyu.messenger.util.Settings.raw();
         String encoded = prefs.getString("wallpaper_" + chatId, null);
         if (encoded == null || encoded.isEmpty()) encoded = prefs.getString("wallpaper_global", null);
         if (encoded == null || encoded.isEmpty()) {
@@ -4545,7 +4540,7 @@ public final class MainActivity extends AppCompatActivity {
     // ---- Исключения режима защиты ----
 
     private void toggleGuardException(String chatId) {
-        SharedPreferences prefs = getSharedPreferences("tsuyu_settings", MODE_PRIVATE);
+        SharedPreferences prefs = com.tsuyu.messenger.util.Settings.raw();
         Set<String> set = new HashSet<>(prefs.getStringSet("screen_guard_exceptions", Collections.emptySet()));
         boolean now = !set.contains(chatId);
         if (now) set.add(chatId); else set.remove(chatId);

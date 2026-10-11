@@ -31,6 +31,26 @@ public final class P2pThreads {
 
     private P2pThreads() { }
 
+    /**
+     * Отдельный поток для непрерывного цикла (приём пакетов, запись звука, разбор видео).
+     * Поток именованный и живёт ровно столько, сколько канал: закрытие канала гасит его.
+     */
+    public static ExecutorService loop(String name) {
+        return Executors.newSingleThreadExecutor(runnable -> {
+            Thread thread = new Thread(runnable, name);
+            thread.setDaemon(true);
+            return thread;
+        });
+    }
+
+    /** Гасит поток цикла вместе с каналом. */
+    public static void shutdown(ExecutorService executor) {
+        if (executor == null) return;
+        try {
+            executor.shutdownNow();
+        } catch (Throwable ignored) { }
+    }
+
     public static void work(Runnable task) {
         if (task == null) return;
         try {

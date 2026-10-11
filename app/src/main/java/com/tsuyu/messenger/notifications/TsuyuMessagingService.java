@@ -32,6 +32,7 @@ public final class TsuyuMessagingService extends FirebaseMessagingService {
 
     @Override
     public void onCreate() {
+        com.tsuyu.messenger.util.Settings.ensure(this);
         super.onCreate();
         NotificationSounds.ensureChannel(this);
     }
@@ -73,7 +74,7 @@ public final class TsuyuMessagingService extends FirebaseMessagingService {
         String chatId = data.get("chatId");
         String peerUid = data.get("senderUid");
         String messageId = data.get("messageId");
-        if (chatId != null && chatId.equals(getSharedPreferences("tsuyu_settings", MODE_PRIVATE).getString("active_chat", ""))) return;
+        if (chatId != null && chatId.equals(com.tsuyu.messenger.util.Settings.getString("active_chat", ""))) return;
         if (chatId == null || peerUid == null || messageId == null) {
             NotificationCenter.post(this, chatId == null ? "tsuyu" : chatId, peerUid,
                     getString(R.string.app_name), null, getString(R.string.notification_new),

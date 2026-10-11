@@ -43,6 +43,8 @@ public final class VideoEngine {
 
     private final PeerLink link;
     private final AtomicBoolean running = new AtomicBoolean(false);
+    private java.util.concurrent.ExecutorService encoderDrain;
+    private java.util.concurrent.ExecutorService decoderDrain;
     private final AtomicBoolean failed = new AtomicBoolean(false);
     private final AtomicInteger frameCounter = new AtomicInteger();
     private final List<Chunk> pending = new ArrayList<>();
@@ -147,9 +149,8 @@ public final class VideoEngine {
             encoder.configure(format, null, null, MediaCodec.CONFIGURE_FLAG_ENCODE);
             encoderSurface = encoder.createInputSurface();
             encoder.start();
-            Thread drain = new Thread(this::drainEncoder, "tsuyu-video-tx");
-            drain.setDaemon(true);
-            drain.start();
+            encoderDrain = P2pThreads.loop("tsuyu-video-tx");
+            encoderDrain.execute(this::drainEncoder);
             if (!openCamera()) return false;
             return true;
         } catch (Throwable error) {
@@ -336,9 +337,8 @@ public final class VideoEngine {
             decoder = MediaCodec.createDecoderByType(MIME);
             decoder.configure(format, remoteSurface, null, 0);
             decoder.start();
-            Thread drain = new Thread(this::drainDecoder, "tsuyu-video-rx");
-            drain.setDaemon(true);
-            drain.start();
+            decoderDrain = P2pThreads.loop("tsuyu-video-rx");
+            decoderDrain.execute(this::drainDecoder);
         } catch (Throwable error) {
             decoder = null;
             // Без приёма видео голос всё равно продолжается.
@@ -421,6 +421,11 @@ public final class VideoEngine {
 
     public void stop() {
         running.set(false);
+        // Разбор кадров идёт на своих управляемых потоках: конец звонка их гасит.
+        P2pThreads.shutdown(encoderDrain);
+        encoderDrain = null;
+        P2pThreads.shutdown(decoderDrain);
+        decoderDrain = null;
         try {
             if (session != null) session.close();
         } catch (Throwable ignored) { }

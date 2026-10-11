@@ -66,15 +66,17 @@ public final class TsuyuSyncService extends Service {
     }
 
     @Override public int onStartCommand(Intent intent, int flags, int startId) {
+        com.tsuyu.messenger.util.Settings.ensure(this);
         if (intent != null && ACTION_STOP.equals(intent.getAction())) {
-            getSharedPreferences("tsuyu_settings", MODE_PRIVATE).edit().remove("sync_uid").apply();
+            com.tsuyu.messenger.util.Settings.remove("sync_uid");
             stopSelf();
             return START_NOT_STICKY;
         }
-        android.content.SharedPreferences settings = getSharedPreferences("tsuyu_settings", MODE_PRIVATE);
-        uid = intent == null ? settings.getString("sync_uid", null) : intent.getStringExtra(EXTRA_UID);
+        android.content.SharedPreferences settings = com.tsuyu.messenger.util.Settings.raw();
+        uid = intent == null ? com.tsuyu.messenger.util.Settings.getString("sync_uid", null)
+                : intent.getStringExtra(EXTRA_UID);
         if (uid == null || uid.isEmpty()) { stopSelf(); return START_NOT_STICKY; }
-        settings.edit().putString("sync_uid", uid).apply();
+        com.tsuyu.messenger.util.Settings.putString("sync_uid", uid);
         FirebaseApp app;
         try { app = FirebaseApp.getInstance(); }
         catch (IllegalStateException e) { stopSelf(); return START_NOT_STICKY; }
@@ -134,7 +136,7 @@ public final class TsuyuSyncService extends Service {
     }
 
     private void notifyIncoming(String chatId, String messageId, ChatMessage message) {
-        String active = getSharedPreferences("tsuyu_settings", MODE_PRIVATE).getString("active_chat", "");
+        String active = com.tsuyu.messenger.util.Settings.getString("active_chat", "");
         if (chatId.equals(active)) return;
         if (!NotificationSounds.claimNotification(this, chatId, messageId)) return;
         worker.execute(() -> renderIncoming(chatId, messageId, message, 0));

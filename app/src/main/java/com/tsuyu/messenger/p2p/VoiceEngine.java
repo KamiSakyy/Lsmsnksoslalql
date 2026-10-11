@@ -31,8 +31,8 @@ public final class VoiceEngine {
 
     private AudioRecord recorder;
     private AudioTrack player;
-    private Thread captureThread;
-    private Thread playbackThread;
+    private java.util.concurrent.ExecutorService captureLoop;
+    private java.util.concurrent.ExecutorService playbackLoop;
     private int expectedSequence = -1;
 
     public VoiceEngine(PeerLink link) {
@@ -79,12 +79,12 @@ public final class VoiceEngine {
             running.set(true);
             recorder.startRecording();
             player.play();
-            captureThread = new Thread(this::captureLoop, "tsuyu-voice-tx");
-            captureThread.setDaemon(true);
-            captureThread.start();
-            playbackThread = new Thread(this::playbackLoop, "tsuyu-voice-rx");
-            playbackThread.setDaemon(true);
-            playbackThread.start();
+            // Запись и воспроизведение идут на своих управляемых потоках: конец разговора
+            // их гасит, лишних потоков после звонка не остаётся.
+            captureLoop = com.tsuyu.messenger.p2p.P2pThreads.loop("tsuyu-voice-tx");
+            captureLoop.execute(this::captureLoop);
+            playbackLoop = com.tsuyu.messenger.p2p.P2pThreads.loop("tsuyu-voice-rx");
+            playbackLoop.execute(this::playbackLoop);
             return true;
         } catch (Throwable error) {
             stop();
@@ -171,12 +171,10 @@ public final class VoiceEngine {
             jitter.clear();
             bufferLock.notifyAll();
         }
-        Thread capture = captureThread;
-        captureThread = null;
-        if (capture != null) capture.interrupt();
-        Thread playback = playbackThread;
-        playbackThread = null;
-        if (playback != null) playback.interrupt();
+        com.tsuyu.messenger.p2p.P2pThreads.shutdown(captureLoop);
+        captureLoop = null;
+        com.tsuyu.messenger.p2p.P2pThreads.shutdown(playbackLoop);
+        playbackLoop = null;
         try {
             if (recorder != null) {
                 recorder.stop();

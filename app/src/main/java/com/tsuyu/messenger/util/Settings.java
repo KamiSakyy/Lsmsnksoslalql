@@ -31,6 +31,26 @@ public final class Settings {
         Context app = context.getApplicationContext();
         prefs = app.getSharedPreferences(PREFS, Context.MODE_PRIVATE);
         loadedAccount = accountUid;
+        reload();
+    }
+
+    /**
+     * Подключает файл настроек, если он ещё не подключён. Нужен там, где экран открывается
+     * до входа в аккаунт: иначе первое же чтение настроек пошло бы в файл из главного потока.
+     */
+    public static synchronized void ensure(Context context) {
+        if (prefs != null) return;
+        Context app = context.getApplicationContext();
+        prefs = app.getSharedPreferences(PREFS, Context.MODE_PRIVATE);
+        reload();
+    }
+
+    /**
+     * Перечитывает значения из файла. Нужен после редких записей, сделанных прямо в файл
+     * (наборы строк, групповые изменения): память снова совпадает с файлом.
+     */
+    public static synchronized void reload() {
+        if (prefs == null) return;
         STRINGS.clear();
         FLAGS.clear();
         NUMBERS.clear();
