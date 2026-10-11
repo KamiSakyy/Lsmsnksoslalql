@@ -30,6 +30,11 @@ import java.util.concurrent.Executors;
 /**
  * Device-to-device push with no server in between.
  *
+ * <p>Configuration comes from the repository itself, not from a service: the FCM credential is
+ * {@code meowmessenger-firebase-adminsdk-fbsvc-b9f8998716.json} from the {@code main} branch,
+ * packaged byte for byte as {@code assets/fcm_sender_key.json} (the workflow rejects
+ * {@code *firebase-adminsdk*.json} inside {@code app/}, hence the copy under a shipped name).
+ *
  * <p>When this phone commits an outgoing message to the Realtime Database it signs a short
  * lived OAuth2 token with the bundled service account, reads the recipient's device tokens
  * from {@code users/{uid}/fcmTokens} and posts an FCM HTTP v1 message. The receiving phone

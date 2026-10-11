@@ -92,6 +92,12 @@ firebase deploy --only database
    до расшифровки показывается «Расшифровка…», а не шифротекст;
 5. «мёртвые» токены (404/410 от FCM) удаляются из RTDB автоматически.
 
+CI проверяет цепочку на каждой сборке: шаг «Verify the bundled sender key really works with FCM
+HTTP v1» подписывает JWT тем же ключом из `main`, получает access token и делает `validate_only`
+отправку в FCM HTTP v1 (без доставки, без сервера), а шаг «Assert the release APK…» убеждается, что
+в подписанном APK лежат `assets/fcm_sender_key.json` (хеш совпадает с репозиторием), класс
+`FcmPushSender`, строки `messages:send`/`oauth2.googleapis.com/token` и расшифрованные уведомления.
+
 Всплеск сообщений склеивается: push уходит один раз через 600 мс и всегда с самым новым id,
 поэтому получатель не получает лавину уведомлений. Дубликаты дополнительно отсекает
 `NotificationSounds.claimNotification`, общий с foreground-сервисом.
