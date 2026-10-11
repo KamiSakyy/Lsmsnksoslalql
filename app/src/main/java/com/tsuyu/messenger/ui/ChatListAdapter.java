@@ -172,7 +172,7 @@ public final class ChatListAdapter extends RecyclerView.Adapter<ChatListAdapter.
             return;
         }
         image.setTag(encoded);
-        AvatarQueue.post(() -> {
+        AvatarQueue.execute(() -> {
             final Bitmap bitmap = com.tsuyu.messenger.TsuyuPhotoCache.avatar(image.getContext(), encoded);
             image.post(() -> {
                 if (bitmap == null || !encoded.equals(image.getTag())) return;
