@@ -95,13 +95,24 @@ public final class MessageListAdapter extends RecyclerView.Adapter<RecyclerView.
         public boolean isDate() { return dateLabel != null; }
     }
 
+    /** Формат «ЧЧ:ММ» создаётся один раз: в отрисовке строки нет новых объектов на каждый кадр. */
+    private static SimpleDateFormat clockFormat;
+
+    static String clockText(long at) {
+        SimpleDateFormat format = clockFormat;
+        if (format == null) {
+            format = new SimpleDateFormat("HH:mm", Locale.getDefault());
+            clockFormat = format;
+        }
+        return format.format(new Date(at));
+    }
+
     /** Consecutive messages from one author inside this window form a visual group. */
     private static final long GROUP_WINDOW_MS = 5 * 60 * 1000L;
 
     private final String ownUid;
     private final Listener listener;
     private final List<Row> rows = new ArrayList<>();
-    private final Set<String> animatedIds = new HashSet<>();
     private final Set<String> selectedKeys = new HashSet<>();
     private boolean selectionMode;
     /** Голоса опросов: messageId -> (uid -> номер варианта). Заполняет экран чата. */
@@ -171,14 +182,38 @@ public final class MessageListAdapter extends RecyclerView.Adapter<RecyclerView.
             new java.util.concurrent.atomic.AtomicInteger();
 
     /**
-     * Переписка обновляется точно и мгновенно: сравнение строк идёт в фоне, на экран
-     * отдаётся готовый результат. Каждое сообщение опознаётся по своему номеру, поэтому
-     * дублей не бывает.
+     * Переписка обновляется мгновенно. Обычные случаи — сообщение дописано в конец или
+     * строка сменила состояние — применяются прямо на экране, без фонового пересчёта.
+     * Полный пересчёт запускается только когда состав строк реально перестроился
+     * (например, добавился разделитель даты).
      */
     public void submit(List<Row> next) {
         final List<Row> incoming = next == null ? new ArrayList<>() : new ArrayList<>(next);
+        if (android.os.Looper.myLooper() != android.os.Looper.getMainLooper()) {
+            com.tsuyu.messenger.util.Background.main(() -> submit(incoming));
+            return;
+        }
+        submitGeneration.incrementAndGet();
+        if (rows.size() == incoming.size() && sameKeys(rows, incoming)) {
+            // Тот же состав строк: обновляем только те, что изменились.
+            for (int position = 0; position < incoming.size(); position++) {
+                Row fresh = incoming.get(position);
+                if (!sameContents(rows.get(position), fresh)) {
+                    rows.set(position, fresh);
+                    notifyItemChanged(position);
+                }
+            }
+            return;
+        }
+        if (incoming.size() > rows.size() && sameKeys(rows, incoming.subList(0, rows.size()))) {
+            // Дописывание в конец: новые строки появляются сразу, без фонового пересчёта.
+            int from = rows.size();
+            rows.addAll(incoming.subList(from, incoming.size()));
+            notifyItemRangeInserted(from, incoming.size() - from);
+            return;
+        }
         final List<Row> current = new ArrayList<>(rows);
-        final int generation = submitGeneration.incrementAndGet();
+        final int generation = submitGeneration.get();
         com.tsuyu.messenger.util.Background.diff().execute(() -> {
             final androidx.recyclerview.widget.DiffUtil.DiffResult result =
                     androidx.recyclerview.widget.DiffUtil.calculateDiff(
@@ -201,12 +236,22 @@ public final class MessageListAdapter extends RecyclerView.Adapter<RecyclerView.
         });
     }
 
+    private static boolean sameKeys(List<Row> first, List<Row> second) {
+        for (int index = 0; index < first.size(); index++) {
+            if (!rowKey(first.get(index)).equals(rowKey(second.get(index)))) return false;
+        }
+        return true;
+    }
+
     private static String rowKey(Row row) {
         if (row.unreadDivider) return "unread-divider";
         if (row.isDate()) return "date:" + row.dateLabel;
         ChatMessage message = row.message;
+        // Номер, который выдал отправитель, важнее серверного: пока серверный ключ не пришёл,
+        // это то же самое сообщение. Так строка не «прыгает» и не двоится при подтверждении.
+        if (message.clientId != null && !message.clientId.isEmpty()) return "client:" + message.clientId;
         if (message.id != null) return "id:" + message.id;
-        return "client:" + message.clientId;
+        return "at:" + message.sentAt + ":" + message.senderUid;
     }
 
     private static boolean sameContents(Row first, Row second) {
@@ -397,7 +442,7 @@ public final class MessageListAdapter extends RecyclerView.Adapter<RecyclerView.
             holder.body.setText("Сообщение");
         }
 
-        if (message.sentAt > 0) holder.time.setText(new SimpleDateFormat("HH:mm", Locale.getDefault()).format(new Date(message.sentAt)));
+        if (message.sentAt > 0) holder.time.setText(clockText(message.sentAt));
         else holder.time.setText("");
         int burn = burnSeconds(payload);
         try {
@@ -416,13 +461,13 @@ public final class MessageListAdapter extends RecyclerView.Adapter<RecyclerView.
         }
         if (message.edited) holder.edited.setVisibility(View.VISIBLE);
         if (outgoing && message.pending) {
-            holder.status.setImageResource(R.drawable.ic_clock);
-            holder.status.setColorFilter(holder.itemView.getContext().getColor(R.color.tsuyu_blue));
+            // Пузырь сразу выглядит отправленным: часики больше не «висят» на экране, а
+            // серверный номер подставляется молча, когда приходит подтверждение.
+            holder.status.clearAnimation();
+            holder.status.setImageResource(R.drawable.ic_check);
+            holder.status.setColorFilter(0xB3F2F2F7);
             holder.status.setVisibility(View.VISIBLE);
             holder.status.setContentDescription(holder.itemView.getResources().getString(R.string.sending_message));
-            if (holder.status.getAnimation() == null) {
-                holder.status.clearAnimation();
-            }
         } else if (outgoing && !message.failed) {
             holder.status.clearAnimation();
             holder.status.setImageResource(row.read ? R.drawable.ic_checks : R.drawable.ic_check);

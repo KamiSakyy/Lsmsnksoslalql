@@ -267,6 +267,7 @@ public final class MainActivity extends AppCompatActivity {
     /** Когда по каждому чату последний раз спрашивали «в сети» и «печатает». */
     /** Готовые тексты сообщений этого чата, прочитанные с диска одним заходом. */
     /** Какие тексты сейчас дочитываются в фоне: лишние повторы не нужны. */
+    private boolean renderingMessages;
     /** Фрагмент, который сейчас показан (экраны живут отдельными классами). */
     private com.tsuyu.messenger.ui.screens.TsuyuScreen currentScreenFragment;
 
@@ -644,7 +645,12 @@ public final class MainActivity extends AppCompatActivity {
         }
         chatList = root.findViewById(R.id.chats_list);
         chatList.setLayoutManager(new LinearLayoutManager(this));
-        chatList.setItemAnimator(null); // список чатов появляется мгновенно, без анимаций
+        // Штатные анимации списка включены: новая строка появляется плавно. Смена содержимого
+        // строки рисуется без «мигания», поэтому перерисовка одной строки остаётся мгновенной.
+        androidx.recyclerview.widget.DefaultItemAnimator chatRowsAnimator =
+                new androidx.recyclerview.widget.DefaultItemAnimator();
+        chatRowsAnimator.setSupportsChangeAnimations(false);
+        chatList.setItemAnimator(chatRowsAnimator);
         // Плавная прокрутка без лишних событий: подписки «в сети» и «печатает» следуют за
         // видимыми строками, а не висят на всех чатах сразу.
         chatList.setItemViewCacheSize(12);
@@ -1001,6 +1007,9 @@ public final class MainActivity extends AppCompatActivity {
             messageCache.put(chatId, serverMessage.id, local.localPayload);
         }
         optimisticMessages.remove(serverMessage.clientId, local);
+        // Подтверждение пришло: черновая копия уходит с экрана в тот же миг, а не со
+        // следующим снимком из сети.
+        if (!renderingMessages && chatId.equals(activeChatId)) requestMessageRender();
     }
 
     /** Перерисовку списка собираем в одну на кадр: поток событий из сети больше не «долбит» экран. */
@@ -1008,6 +1017,13 @@ public final class MainActivity extends AppCompatActivity {
             new java.util.concurrent.atomic.AtomicBoolean();
 
     private void requestChatListRender() {
+        if (android.os.Looper.myLooper() == android.os.Looper.getMainLooper()) {
+            // Список чатов обновляется в тот же кадр: и новый чат, и изменившаяся строка.
+            if (!chatListRenderQueued.compareAndSet(false, true)) return;
+            chatListRenderQueued.set(false);
+            renderChatList();
+            return;
+        }
         if (!chatListRenderQueued.compareAndSet(false, true)) return;
         ui.post(() -> {
             chatListRenderQueued.set(false);
@@ -1334,7 +1350,12 @@ public final class MainActivity extends AppCompatActivity {
         LinearLayoutManager messageLayout = new LinearLayoutManager(this);
         messageLayout.setStackFromEnd(true);
         messageList.setLayoutManager(messageLayout);
-        messageList.setItemAnimator(null); // сообщения появляются мгновенно
+        // Анимации появления сообщений вернулись: пузырь вставляется плавно, а смена его
+        // состояния (отправлено, прочитано) проходит без «мигания».
+        androidx.recyclerview.widget.DefaultItemAnimator messageRowsAnimator =
+                new androidx.recyclerview.widget.DefaultItemAnimator();
+        messageRowsAnimator.setSupportsChangeAnimations(false);
+        messageList.setItemAnimator(messageRowsAnimator);
         messageListAdapter = new MessageListAdapter(uid, textSize(), isTextBold(),
                 getSharedPreferences("tsuyu_settings", MODE_PRIVATE).getBoolean("italic", false),
                 new MessageListAdapter.Listener() {
@@ -1638,11 +1659,16 @@ public final class MainActivity extends AppCompatActivity {
         conversationModel.lastRemoteMessages = new ArrayList<>(messages);
 
         Set<String> serverClientIds = new HashSet<>();
-        for (ChatMessage message : conversationModel.lastRemoteMessages) {
-            if (message.clientId != null) {
-                serverClientIds.add(message.clientId);
-                reconcileOptimisticMessage(renderChatId, message);
+        renderingMessages = true;
+        try {
+            for (ChatMessage message : conversationModel.lastRemoteMessages) {
+                if (message.clientId != null) {
+                    serverClientIds.add(message.clientId);
+                    reconcileOptimisticMessage(renderChatId, message);
+                }
             }
+        } finally {
+            renderingMessages = false;
         }
         List<ChatMessage> visible = new ArrayList<>(conversationModel.lastRemoteMessages);
         for (ChatMessage local : optimisticMessages.values()) {
@@ -1661,8 +1687,10 @@ public final class MainActivity extends AppCompatActivity {
         // «отправляемое», на экране оно будет один раз.
         java.util.LinkedHashMap<String, ChatMessage> unique = new java.util.LinkedHashMap<>();
         for (ChatMessage message : visible) {
-            String uniqueKey = message.id != null && !message.id.isEmpty() ? "id:" + message.id
-                    : message.clientId != null && !message.clientId.isEmpty() ? "client:" + message.clientId
+            // Номер отправителя важнее серверного: черновая копия и серверная копия одного
+            // сообщения — это одна строка, а не две.
+            String uniqueKey = message.clientId != null && !message.clientId.isEmpty() ? "client:" + message.clientId
+                    : message.id != null && !message.id.isEmpty() ? "id:" + message.id
                     : "at:" + message.sentAt + ":" + message.senderUid;
             ChatMessage known = unique.get(uniqueKey);
             if (known == null) {
@@ -3183,6 +3211,12 @@ public final class MainActivity extends AppCompatActivity {
      * опрос) собираются в одну перерисовку — экран обновляется ровно один раз.
      */
     private void requestMessageRender() {
+        if (android.os.Looper.myLooper() == android.os.Looper.getMainLooper()) {
+            // Мы уже на главном потоке — рисуем в тот же кадр, без ожидания очереди.
+            ui.removeCallbacks(renderPending);
+            renderPending.run();
+            return;
+        }
         ui.removeCallbacks(renderPending);
         ui.post(renderPending);
     }

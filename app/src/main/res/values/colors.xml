@@ -10,14 +10,13 @@
     <color name="tsuyu_border">#2C2C2E</color>
     <color name="tsuyu_white">#F2F2F7</color>
     <color name="tsuyu_secondary">#8E8E93</color>
-    <!-- Синий пузырь и кнопки: тот же тон, но темнее — белый текст на нём читается
-         по норме контраста (раньше было около 3,6:1). -->
-    <color name="tsuyu_blue">#0B57D0</color>
+    <!-- Синий пузырь и кнопки — тот же яркий тон, что был до затемнения. -->
+    <color name="tsuyu_blue">#1F80E0</color>
     <color name="tsuyu_green">#34C759</color>
     <color name="tsuyu_red">#FF453A</color>
     <color name="tsuyu_incoming">#1C1C1E</color>
-    <color name="tsuyu_outgoing">#0B57D0</color>
-    <color name="tsuyu_accent_tint">#1A0B57D0</color>
+    <color name="tsuyu_outgoing">#1F80E0</color>
+    <color name="tsuyu_accent_tint">#1A1F80E0</color>
     <color name="tsuyu_avatar_fallback">#244A6B</color>
 
     <!-- Named tokens for values that were previously inline literals (same values) -->
@@ -44,7 +43,7 @@
     <color name="tsuyu_header_btn_strong">#14FFFFFF</color>
     <color name="tsuyu_header_btn_active">#26FFFFFF</color>
     <color name="tsuyu_unread_line">#80FF3B30</color>
-    <color name="tsuyu_accent_tint_strong">#330B57D0</color>
+    <color name="tsuyu_accent_tint_strong">#331F80E0</color>
     <color name="tsuyu_drawer_text">#DDDDDD</color>
     <color name="tsuyu_drawer_icon">#AAAAAA</color>
     <color name="tsuyu_drawer_border">#222222</color>

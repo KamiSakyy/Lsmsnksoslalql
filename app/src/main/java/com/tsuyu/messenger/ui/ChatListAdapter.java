@@ -41,7 +41,7 @@ public final class ChatListAdapter extends RecyclerView.Adapter<ChatListAdapter.
 
     private final Listener listener;
     private final List<ChatSummary> items = new ArrayList<>();
-    private final java.util.Set<String> animated = new java.util.HashSet<>();
+    private final List<String> signatures = new ArrayList<>();
 
     public ChatListAdapter(Listener listener) { this.listener = listener; }
 
@@ -56,8 +56,27 @@ public final class ChatListAdapter extends RecyclerView.Adapter<ChatListAdapter.
      */
     public void submit(List<ChatSummary> summaries) {
         final List<ChatSummary> next = summaries == null ? new ArrayList<>() : new ArrayList<>(summaries);
+        if (android.os.Looper.myLooper() != android.os.Looper.getMainLooper()) {
+            com.tsuyu.messenger.util.Background.main(() -> submit(next));
+            return;
+        }
+        submitGeneration.incrementAndGet();
+        if (next.size() == items.size() && sameOrder(next)) {
+            // Состав и порядок те же: перерисовываем только те строки, что реально изменились.
+            for (int position = 0; position < next.size(); position++) {
+                ChatSummary fresh = next.get(position);
+                String freshSignature = signature(fresh);
+                boolean changed = !freshSignature.equals(signatures.get(position));
+                items.set(position, fresh);
+                if (changed) {
+                    signatures.set(position, freshSignature);
+                    notifyItemChanged(position);
+                }
+            }
+            return;
+        }
         final List<ChatSummary> current = new ArrayList<>(items);
-        final int generation = submitGeneration.incrementAndGet();
+        final int generation = submitGeneration.get();
         com.tsuyu.messenger.util.Background.diff().execute(() -> {
             final androidx.recyclerview.widget.DiffUtil.DiffResult result =
                     androidx.recyclerview.widget.DiffUtil.calculateDiff(
@@ -77,6 +96,8 @@ public final class ChatListAdapter extends RecyclerView.Adapter<ChatListAdapter.
                 if (generation != submitGeneration.get()) return; // пришло более свежее обновление
                 items.clear();
                 items.addAll(next);
+                signatures.clear();
+                for (ChatSummary summary : next) signatures.add(signature(summary));
                 result.dispatchUpdatesTo(this);
             });
         });
@@ -85,6 +106,24 @@ public final class ChatListAdapter extends RecyclerView.Adapter<ChatListAdapter.
     /** Chat id at a list position, used by swipe gestures. */
     public ChatSummary summaryAt(int position) {
         return position >= 0 && position < items.size() ? items.get(position) : null;
+    }
+
+    private boolean sameOrder(List<ChatSummary> next) {
+        for (int position = 0; position < next.size(); position++) {
+            String first = items.get(position).chatId;
+            String second = next.get(position).chatId;
+            if (first == null ? second != null : !first.equals(second)) return false;
+        }
+        return true;
+    }
+
+    /** Подпись строки: если она не изменилась, строку перерисовывать не нужно. */
+    private String signature(ChatSummary summary) {
+        String avatar = summary.peer == null ? null : summary.peer.avatarBase64;
+        return titleOf(summary) + '\u0001' + summary.lastAt + '\u0001' + summary.typing + '\u0001'
+                + summary.online + '\u0001' + summary.pinned + '\u0001' + summary.unread + '\u0001'
+                + listener.ownMessageState(summary) + '\u0001' + previewOf(summary) + '\u0001'
+                + (avatar == null ? 0 : avatar.length());
     }
 
     private boolean sameContents(ChatSummary first, ChatSummary second) {
@@ -156,18 +195,35 @@ public final class ChatListAdapter extends RecyclerView.Adapter<ChatListAdapter.
 
     /** Today shows the clock, yesterday a word, older messages a short date — like Telegram. */
     private static String formatStamp(long at) {
-        Calendar now = Calendar.getInstance();
-        Calendar then = Calendar.getInstance();
-        then.setTimeInMillis(at);
-        boolean sameYear = now.get(Calendar.YEAR) == then.get(Calendar.YEAR);
-        boolean sameDay = sameYear && now.get(Calendar.DAY_OF_YEAR) == then.get(Calendar.DAY_OF_YEAR);
-        if (sameDay) return new SimpleDateFormat("HH:mm", Locale.getDefault()).format(new Date(at));
-        Calendar yesterday = Calendar.getInstance();
-        yesterday.add(Calendar.DAY_OF_YEAR, -1);
-        boolean isYesterday = sameYear && yesterday.get(Calendar.DAY_OF_YEAR) == then.get(Calendar.DAY_OF_YEAR);
-        if (isYesterday) return "вчера";
-        return new SimpleDateFormat(sameYear ? "d MMM" : "d MMM yy", new Locale("ru")).format(new Date(at));
+        SimpleDateFormat clock = clockFormat;
+        if (clock == null) {
+            // Форматтеры и календари создаются один раз: листание списка не мусорит объектами.
+            clock = new SimpleDateFormat("HH:mm", Locale.getDefault());
+            dayFormat = new SimpleDateFormat("d MMM", new Locale("ru"));
+            dayYearFormat = new SimpleDateFormat("d MMM yy", new Locale("ru"));
+            clockFormat = clock;
+        }
+        stampNow.setTimeInMillis(System.currentTimeMillis());
+        stampThen.setTimeInMillis(at);
+        boolean sameYear = stampNow.get(Calendar.YEAR) == stampThen.get(Calendar.YEAR);
+        if (sameYear && stampNow.get(Calendar.DAY_OF_YEAR) == stampThen.get(Calendar.DAY_OF_YEAR)) {
+            return clock.format(new Date(at));
+        }
+        stampYesterday.setTimeInMillis(System.currentTimeMillis());
+        stampYesterday.add(Calendar.DAY_OF_YEAR, -1);
+        if (stampYesterday.get(Calendar.YEAR) == stampThen.get(Calendar.YEAR)
+                && stampYesterday.get(Calendar.DAY_OF_YEAR) == stampThen.get(Calendar.DAY_OF_YEAR)) {
+            return "вчера";
+        }
+        return (sameYear ? dayFormat : dayYearFormat).format(new Date(at));
     }
+
+    private static SimpleDateFormat clockFormat;
+    private static SimpleDateFormat dayFormat;
+    private static SimpleDateFormat dayYearFormat;
+    private static final Calendar stampNow = Calendar.getInstance();
+    private static final Calendar stampThen = Calendar.getInstance();
+    private static final Calendar stampYesterday = Calendar.getInstance();
 
     /** Аватары готовятся в общем фоновом пуле картинок: список чатов листается без рывков. */
     private static final java.util.concurrent.ExecutorService AvatarQueue =
