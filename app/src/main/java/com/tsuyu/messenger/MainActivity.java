@@ -855,7 +855,9 @@ public final class MainActivity extends AppCompatActivity {
             replyBanner.setVisibility(View.GONE);
         });
         root.findViewById(R.id.chat_attach).setOnClickListener(v -> showAttachmentMenu());
-        root.findViewById(R.id.chat_send).setOnClickListener(v -> sendCurrentText());
+        final MaterialButton sendButton = root.findViewById(R.id.chat_send);
+        sendButton.setEnabled(false);
+        sendButton.setOnClickListener(v -> sendCurrentText());
         composer.setOnEditorActionListener((view, actionId, event) -> {
             if (actionId == android.view.inputmethod.EditorInfo.IME_ACTION_SEND
                     || (event != null && event.getKeyCode() == android.view.KeyEvent.KEYCODE_ENTER
@@ -868,6 +870,7 @@ public final class MainActivity extends AppCompatActivity {
         composer.addTextChangedListener(new TextWatcher() {
             @Override public void beforeTextChanged(CharSequence s, int start, int count, int after) { }
             @Override public void onTextChanged(CharSequence s, int start, int before, int count) {
+                sendButton.setEnabled(s != null && s.toString().trim().length() > 0);
                 if (activeChatId != null && !presenceManager.isGhostMode()) {
                     long now = System.currentTimeMillis();
                     if (s != null && s.length() > 0 && now - lastTypingWrite > 800) {

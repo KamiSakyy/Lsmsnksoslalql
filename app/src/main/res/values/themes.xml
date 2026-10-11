@@ -14,31 +14,75 @@
         <item name="android:navigationBarColor">@color/tsuyu_black</item>
         <item name="android:windowBackground">@color/tsuyu_black</item>
         <item name="android:windowActionModeOverlay">true</item>
-        <item name="android:fontFamily">sans</item>
-        <item name="materialButtonStyle">@style/Widget.Tsuyu.Button</item>
+        <item name="android:fontFamily">sans-serif</item>
+        <item name="materialButtonStyle">@style/Widget.Tsuyu.Button.Primary</item>
+        <item name="materialCardViewStyle">@style/Widget.Tsuyu.Card</item>
+        <item name="bottomSheetDialogTheme">@style/Theme.Tsuyu.BottomSheet</item>
+        <item name="toolbarStyle">@style/Widget.Tsuyu.Toolbar</item>
     </style>
 
-    <style name="Widget.Tsuyu.Button" parent="Widget.Material3.Button">
-        <item name="cornerRadius">18dp</item>
-        <item name="android:textAllCaps">false</item>
-        <item name="android:minHeight">48dp</item>
-        <item name="rippleColor">#33FFFFFF</item>
-    </style>
-
+    <!-- Shared smooth corner shapes -->
     <style name="TsuyuCircleShape">
         <item name="cornerFamily">rounded</item>
         <item name="cornerSize">50%</item>
     </style>
 
+    <style name="TsuyuSquircleShape">
+        <item name="cornerFamily">rounded</item>
+        <item name="cornerSize">@dimen/radius_xl</item>
+    </style>
+
+    <style name="TsuyuMediaShape">
+        <item name="cornerFamily">rounded</item>
+        <item name="cornerSize">@dimen/radius_sm</item>
+    </style>
+
     <style name="TsuyuMessageIncomingShape">
         <item name="cornerFamily">rounded</item>
         <item name="cornerSize">18dp</item>
-        <item name="cornerSizeBottomRight">5dp</item>
+        <item name="cornerSizeBottomRight">6dp</item>
     </style>
 
     <style name="TsuyuMessageOutgoingShape">
         <item name="cornerFamily">rounded</item>
         <item name="cornerSize">18dp</item>
-        <item name="cornerSizeBottomLeft">5dp</item>
+        <item name="cornerSizeBottomLeft">6dp</item>
+    </style>
+
+    <style name="Widget.Tsuyu.Toolbar" parent="Widget.Material3.Toolbar">
+        <item name="android:layout_height">@dimen/toolbar_height</item>
+        <item name="android:background">@color/tsuyu_header</item>
+        <item name="titleTextAppearance">@style/TextAppearance.Tsuyu.ToolbarTitle</item>
+        <item name="subtitleTextAppearance">@style/TextAppearance.Tsuyu.ToolbarSubtitle</item>
+        <item name="titleTextColor">@color/tsuyu_white</item>
+        <item name="subtitleTextColor">@color/tsuyu_secondary</item>
+        <item name="navigationIconTint">@color/tsuyu_white</item>
+        <item name="android:elevation">0dp</item>
+        <item name="contentInsetStartWithNavigation">@dimen/space_sm</item>
+        <item name="contentInsetStart">@dimen/space_sm</item>
+    </style>
+
+    <style name="Theme.Tsuyu.BottomSheet" parent="Theme.Material3.Dark.BottomSheetDialog">
+        <item name="bottomSheetStyle">@style/Widget.Tsuyu.BottomSheet</item>
+        <item name="android:navigationBarColor">@color/tsuyu_black</item>
+        <item name="android:windowLightNavigationBar">false</item>
+    </style>
+
+    <style name="Widget.Tsuyu.BottomSheet" parent="Widget.Material3.BottomSheet.Modal">
+        <item name="backgroundTint">@color/tsuyu_header</item>
+        <item name="shapeAppearanceOverlay">@style/TsuyuSheetShape</item>
+    </style>
+
+    <style name="TsuyuSheetShape">
+        <item name="cornerFamily">rounded</item>
+        <item name="cornerSizeTopLeft">@dimen/radius_xl</item>
+        <item name="cornerSizeTopRight">@dimen/radius_xl</item>
+        <item name="cornerSizeBottomLeft">0dp</item>
+        <item name="cornerSizeBottomRight">0dp</item>
+    </style>
+
+    <style name="TsuyuDialogShape">
+        <item name="cornerFamily">rounded</item>
+        <item name="cornerSize">@dimen/radius_xl</item>
     </style>
 </resources>

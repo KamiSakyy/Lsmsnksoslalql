@@ -57,6 +57,9 @@ public final class MessageListAdapter extends RecyclerView.Adapter<MessageListAd
         }
     }
 
+    /** Consecutive messages from one author inside this window form a visual group. */
+    private static final long GROUP_WINDOW_MS = 5 * 60 * 1000L;
+
     private final String ownUid;
     private final Listener listener;
     private final List<Row> rows = new ArrayList<>();
@@ -99,6 +102,14 @@ public final class MessageListAdapter extends RecyclerView.Adapter<MessageListAd
         ChatMessage message = row.message;
         String payload = row.payload;
         boolean outgoing = ownUid != null && ownUid.equals(message.senderUid);
+
+        // Tight spacing inside a burst of messages from one author, roomier between bursts.
+        int topGap = isFirstInGroup(position) ? R.dimen.message_gap_block : R.dimen.message_gap_group;
+        holder.itemView.setPadding(
+                0,
+                holder.itemView.getResources().getDimensionPixelSize(topGap),
+                0,
+                holder.itemView.getResources().getDimensionPixelSize(R.dimen.message_gap_group));
 
         holder.body.setVisibility(View.VISIBLE);
         holder.loading.setVisibility(View.GONE);
@@ -203,6 +214,18 @@ public final class MessageListAdapter extends RecyclerView.Adapter<MessageListAd
         });
         String key = message.id != null ? message.id : message.clientId;
         if (key != null && animatedIds.add(key)) holder.itemView.startAnimation(AnimationUtils.loadAnimation(holder.itemView.getContext(), R.anim.message_enter));
+    }
+
+    private boolean isFirstInGroup(int position) {
+        if (position <= 0) return true;
+        ChatMessage previous = rows.get(position - 1).message;
+        ChatMessage current = rows.get(position).message;
+        boolean sameAuthor = previous.senderUid == null
+                ? current.senderUid == null
+                : previous.senderUid.equals(current.senderUid);
+        if (!sameAuthor) return true;
+        if (previous.sentAt <= 0 || current.sentAt <= 0) return true;
+        return current.sentAt - previous.sentAt > GROUP_WINDOW_MS;
     }
 
     private static void bindImage(ShapeableImageView image, String encoded) {

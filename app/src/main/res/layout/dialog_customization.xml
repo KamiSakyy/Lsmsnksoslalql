@@ -4,20 +4,40 @@
     android:layout_width="match_parent"
     android:layout_height="wrap_content"
     android:orientation="vertical"
-    android:padding="20dp">
-    <TextView android:layout_width="match_parent" android:layout_height="wrap_content" android:text="Размер текста" android:textColor="@color/tsuyu_white" android:textSize="14sp" android:textStyle="bold" />
+    android:padding="@dimen/dialog_gutter">
+
+    <TextView
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:text="Размер текста сообщений"
+        android:textAppearance="@style/TextAppearance.Tsuyu.RowItemTitle" />
+
     <com.google.android.material.slider.Slider
         android:id="@+id/customization_text_size"
         android:layout_width="match_parent"
         android:layout_height="wrap_content"
         android:contentDescription="Размер текста сообщений"
-        android:value="14"
         android:stepSize="1"
+        android:value="14"
+        android:valueFrom="12"
+        android:valueTo="22"
         app:thumbColor="@color/tsuyu_blue"
         app:trackColorActive="@color/tsuyu_blue"
-        app:trackColorInactive="@color/tsuyu_border"
-        android:valueFrom="12"
-        android:valueTo="22" />
-    <com.google.android.material.checkbox.MaterialCheckBox android:id="@+id/customization_bold" android:layout_width="match_parent" android:layout_height="wrap_content" android:text="Жирный текст" android:textColor="@color/tsuyu_white" app:buttonTint="@color/tsuyu_blue" />
-    <com.google.android.material.checkbox.MaterialCheckBox android:id="@+id/customization_italic" android:layout_width="match_parent" android:layout_height="wrap_content" android:text="Курсив" android:textColor="@color/tsuyu_white" app:buttonTint="@color/tsuyu_blue" />
+        app:trackColorInactive="@color/tsuyu_border" />
+
+    <com.google.android.material.checkbox.MaterialCheckBox
+        android:id="@+id/customization_bold"
+        android:layout_width="match_parent"
+        android:layout_height="@dimen/touch_target"
+        android:text="Жирный текст"
+        android:textColor="@color/tsuyu_white"
+        app:buttonTint="@color/tsuyu_blue" />
+
+    <com.google.android.material.checkbox.MaterialCheckBox
+        android:id="@+id/customization_italic"
+        android:layout_width="match_parent"
+        android:layout_height="@dimen/touch_target"
+        android:text="Курсив"
+        android:textColor="@color/tsuyu_white"
+        app:buttonTint="@color/tsuyu_blue" />
 </LinearLayout>

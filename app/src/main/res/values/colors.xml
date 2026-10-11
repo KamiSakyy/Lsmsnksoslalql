@@ -1,4 +1,8 @@
 <resources>
+    <!--
+      Frozen Tsuyu palette. Values are the original ones and must not change:
+      the redesign only names the literals that used to be hard-coded in layouts.
+    -->
     <color name="tsuyu_black">#000000</color>
     <color name="tsuyu_header">#0D0D0D</color>
     <color name="tsuyu_surface">#141416</color>
@@ -13,4 +17,11 @@
     <color name="tsuyu_outgoing">#2C2C2E</color>
     <color name="tsuyu_accent_tint">#1A0A84FF</color>
     <color name="tsuyu_avatar_fallback">#244A6B</color>
+
+    <!-- Named tokens for values that were previously inline literals (same values) -->
+    <color name="tsuyu_skeleton">#19191C</color>
+    <color name="tsuyu_scrim">#99141416</color>
+    <color name="tsuyu_scrim_strong">#AA141416</color>
+    <color name="tsuyu_danger_surface">#2C1616</color>
+    <color name="tsuyu_ripple">#33FFFFFF</color>
 </resources>
