@@ -249,86 +249,94 @@
                 android:layout_height="wrap_content"
                 app:cardBackgroundColor="@color/tsuyu_surface">
 
+                <!-- Карточка — это FrameLayout: её строки обязаны лежать в одном столбце,
+                     иначе строки рисуются друг поверх друга (наложение текста). -->
                 <LinearLayout
                     android:layout_width="match_parent"
                     android:layout_height="wrap_content"
-                    android:gravity="center_vertical"
-                    android:minHeight="@dimen/row_settings_height"
-                    android:orientation="horizontal"
-                    android:paddingStart="@dimen/space_lg"
-                    android:paddingTop="@dimen/space_md"
-                    android:paddingEnd="@dimen/space_lg"
-                    android:paddingBottom="@dimen/space_md">
+                    android:orientation="vertical">
 
                     <LinearLayout
-                        android:layout_width="0dp"
+                        android:layout_width="match_parent"
                         android:layout_height="wrap_content"
-                        android:layout_weight="1"
-                        android:orientation="vertical">
+                        android:gravity="center_vertical"
+                        android:minHeight="@dimen/row_settings_height"
+                        android:orientation="horizontal"
+                        android:paddingStart="@dimen/space_lg"
+                        android:paddingTop="@dimen/space_md"
+                        android:paddingEnd="@dimen/space_lg"
+                        android:paddingBottom="@dimen/space_md">
 
-                        <TextView
+                        <LinearLayout
+                            android:layout_width="0dp"
+                            android:layout_height="wrap_content"
+                            android:layout_weight="1"
+                            android:orientation="vertical">
+
+                            <TextView
+                                android:layout_width="wrap_content"
+                                android:layout_height="wrap_content"
+                                android:text="Новые сообщения"
+                                android:textAppearance="@style/TextAppearance.Tsuyu.RowItemTitle" />
+
+                            <TextView
+                                android:layout_width="wrap_content"
+                                android:layout_height="wrap_content"
+                                android:layout_marginTop="2dp"
+                                android:text="Получать уведомления, когда приложение закрыто"
+                                android:textAppearance="@style/TextAppearance.Tsuyu.RowMeta" />
+                        </LinearLayout>
+
+                        <com.google.android.material.materialswitch.MaterialSwitch
+                            android:id="@+id/background_sync_switch"
                             android:layout_width="wrap_content"
                             android:layout_height="wrap_content"
-                            android:text="Новые сообщения"
-                            android:textAppearance="@style/TextAppearance.Tsuyu.RowItemTitle" />
-
-                        <TextView
-                            android:layout_width="wrap_content"
-                            android:layout_height="wrap_content"
-                            android:layout_marginTop="2dp"
-                            android:text="Получать уведомления, когда приложение закрыто"
-                            android:textAppearance="@style/TextAppearance.Tsuyu.RowMeta" />
+                            android:layout_marginStart="@dimen/space_md" />
                     </LinearLayout>
 
-                    <com.google.android.material.materialswitch.MaterialSwitch
-                        android:id="@+id/background_sync_switch"
-                        android:layout_width="wrap_content"
-                        android:layout_height="wrap_content"
-                        android:layout_marginStart="@dimen/space_md" />
-                </LinearLayout>
+                    <View
+                        android:layout_width="match_parent"
+                        android:layout_height="@dimen/hairline"
+                        android:layout_marginStart="@dimen/space_lg"
+                        android:background="@color/tsuyu_divider_soft" />
 
-                <View
-                    android:layout_width="match_parent"
-                    android:layout_height="@dimen/hairline"
-                    android:layout_marginStart="@dimen/space_lg"
-                    android:background="@color/tsuyu_divider_soft" />
-
-                <!-- v3-дизайн: защита от скриншотов (затемнение системного превью) -->
-                <LinearLayout
-                    android:layout_width="match_parent"
-                    android:layout_height="wrap_content"
-                    android:gravity="center_vertical"
-                    android:orientation="horizontal"
-                    android:paddingStart="@dimen/space_lg"
-                    android:paddingTop="@dimen/space_md"
-                    android:paddingEnd="@dimen/space_lg"
-                    android:paddingBottom="@dimen/space_md">
-
+                    <!-- v3-дизайн: защита от скриншотов (затемнение системного превью) -->
                     <LinearLayout
-                        android:layout_width="0dp"
+                        android:layout_width="match_parent"
                         android:layout_height="wrap_content"
-                        android:layout_weight="1"
-                        android:orientation="vertical">
+                        android:gravity="center_vertical"
+                        android:orientation="horizontal"
+                        android:paddingStart="@dimen/space_lg"
+                        android:paddingTop="@dimen/space_md"
+                        android:paddingEnd="@dimen/space_lg"
+                        android:paddingBottom="@dimen/space_md">
 
-                        <TextView
+                        <LinearLayout
+                            android:layout_width="0dp"
+                            android:layout_height="wrap_content"
+                            android:layout_weight="1"
+                            android:orientation="vertical">
+
+                            <TextView
+                                android:layout_width="wrap_content"
+                                android:layout_height="wrap_content"
+                                android:text="Защита от скриншотов"
+                                android:textAppearance="@style/TextAppearance.Tsuyu.RowItemTitle" />
+
+                            <TextView
+                                android:layout_width="wrap_content"
+                                android:layout_height="wrap_content"
+                                android:layout_marginTop="2dp"
+                                android:text="Запрещать снимки экрана и прятать переписку в списке задач"
+                                android:textAppearance="@style/TextAppearance.Tsuyu.RowMeta" />
+                        </LinearLayout>
+
+                        <com.google.android.material.materialswitch.MaterialSwitch
+                            android:id="@+id/screen_guard_switch"
                             android:layout_width="wrap_content"
                             android:layout_height="wrap_content"
-                            android:text="Защита от скриншотов"
-                            android:textAppearance="@style/TextAppearance.Tsuyu.RowItemTitle" />
-
-                        <TextView
-                            android:layout_width="wrap_content"
-                            android:layout_height="wrap_content"
-                            android:layout_marginTop="2dp"
-                            android:text="Запрещать снимки экрана и прятать переписку в списке задач"
-                            android:textAppearance="@style/TextAppearance.Tsuyu.RowMeta" />
+                            android:layout_marginStart="@dimen/space_md" />
                     </LinearLayout>
-
-                    <com.google.android.material.materialswitch.MaterialSwitch
-                        android:id="@+id/screen_guard_switch"
-                        android:layout_width="wrap_content"
-                        android:layout_height="wrap_content"
-                        android:layout_marginStart="@dimen/space_md" />
                 </LinearLayout>
             </com.google.android.material.card.MaterialCardView>
 
