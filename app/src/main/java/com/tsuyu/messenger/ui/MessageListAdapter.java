@@ -110,7 +110,16 @@ public final class MessageListAdapter extends RecyclerView.Adapter<RecyclerView.
     private boolean bold;
     private boolean italic;
 
+    /**
+     * У каждой строки постоянный номер: при обновлении списка RecyclerView переиспользует
+     * уже готовые строки вместо полной перерисовки — прокрутка и новые сообщения быстрее.
+     */
+    @Override public long getItemId(int position) {
+        return position >= 0 && position < rows.size() ? rowKey(rows.get(position)).hashCode() : RecyclerView.NO_ID;
+    }
+
     public MessageListAdapter(String ownUid, int textSize, boolean bold, boolean italic, Listener listener) {
+        setHasStableIds(true);
         this.ownUid = ownUid;
         this.textSize = textSize;
         this.bold = bold;
@@ -733,16 +742,35 @@ public final class MessageListAdapter extends RecyclerView.Adapter<RecyclerView.
      * Фото в переписке показываем уменьшенным: большая картинка иначе съедает всю память
      * телефона. Здесь же ловим и переполнение памяти — такое сообщение не роняет приложение.
      */
+    /** Кадры готовятся в фоне: прокрутка списка не спотыкается о большие фото. */
+    private static final java.util.concurrent.ExecutorService IMAGE_QUEUE =
+            java.util.concurrent.Executors.newFixedThreadPool(2, runnable -> {
+                Thread thread = new Thread(runnable, "tsuyu-image");
+                thread.setPriority(Thread.NORM_PRIORITY - 1);
+                return thread;
+            });
+
     private void bindImage(ShapeableImageView image, String encoded) {
         try {
-            // Вложение лежит файлом в кеше, а готовый уменьшенный кадр берём из общей памяти
-            // ограниченного размера: повторная отрисовка ничего не пересчитывает.
-            Bitmap bitmap = com.tsuyu.messenger.TsuyuPhotoCache.media(image.getContext(), encoded, 1280);
-            if (bitmap == null) {
+            final String key = encoded == null ? "" : encoded;
+            if (key.isEmpty()) {
                 image.setImageDrawable(null);
                 return;
             }
-            image.setImageBitmap(bitmap);
+            Bitmap ready = com.tsuyu.messenger.TsuyuPhotoCache.peek(key, 1280);
+            if (ready != null) {
+                image.setImageBitmap(ready);
+                return;
+            }
+            image.setImageDrawable(null);
+            image.setTag(key);
+            IMAGE_QUEUE.execute(() -> {
+                final Bitmap bitmap = com.tsuyu.messenger.TsuyuPhotoCache.media(
+                        image.getContext(), key, 1280);
+                image.post(() -> {
+                    if (key.equals(image.getTag()) && bitmap != null) image.setImageBitmap(bitmap);
+                });
+            });
         } catch (Throwable ignored) {
             try { image.setImageDrawable(null); } catch (Throwable ignoredAgain) { }
         }

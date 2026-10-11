@@ -140,6 +140,14 @@ public final class ChatListAdapter extends RecyclerView.Adapter<ChatListAdapter.
         return new SimpleDateFormat(sameYear ? "d MMM" : "d MMM yy", new Locale("ru")).format(new Date(at));
     }
 
+    /** Аватары готовятся в фоне: список чатов листается без рывков. */
+    private static final java.util.concurrent.ExecutorService AvatarQueue =
+            java.util.concurrent.Executors.newFixedThreadPool(2, runnable -> {
+                Thread thread = new Thread(runnable, "tsuyu-avatar");
+                thread.setPriority(Thread.NORM_PRIORITY - 1);
+                return thread;
+            });
+
     public static void bindAvatar(ShapeableImageView image, TextView initial, Profile profile, String displayName) {
         String label = profile == null ? "" : profile.displayName;
         if (label == null || label.trim().isEmpty()) label = profile == null ? "" : profile.username;
@@ -154,19 +162,26 @@ public final class ChatListAdapter extends RecyclerView.Adapter<ChatListAdapter.
             image.setContentDescription("Аватар " + displayName);
             return;
         }
-        try {
-            // Аватар уменьшается один раз и запоминается: прокрутка списка не тормозит.
-            Bitmap bitmap = com.tsuyu.messenger.TsuyuPhotoCache.avatar(image.getContext(), encoded);
-            if (bitmap == null) throw new IllegalArgumentException("Invalid avatar bitmap");
-            image.setImageBitmap(bitmap);
+        // Аватар готовится в фоне и запоминается: прокрутка списка не тормозит даже с фото.
+        final Bitmap ready = com.tsuyu.messenger.TsuyuPhotoCache.avatarPeek(encoded);
+        if (ready != null) {
+            image.setImageBitmap(ready);
             image.setVisibility(View.VISIBLE);
             initial.setVisibility(View.GONE);
             image.setContentDescription("Аватар " + displayName);
-        } catch (Throwable ignored) {
-            image.setImageDrawable(null);
-            image.setVisibility(View.GONE);
-            initial.setVisibility(View.VISIBLE);
+            return;
         }
+        image.setTag(encoded);
+        AvatarQueue.post(() -> {
+            final Bitmap bitmap = com.tsuyu.messenger.TsuyuPhotoCache.avatar(image.getContext(), encoded);
+            image.post(() -> {
+                if (bitmap == null || !encoded.equals(image.getTag())) return;
+                image.setImageBitmap(bitmap);
+                image.setVisibility(View.VISIBLE);
+                initial.setVisibility(View.GONE);
+                image.setContentDescription("Аватар " + displayName);
+            });
+        });
     }
 
     @Override public int getItemCount() { return items.size(); }

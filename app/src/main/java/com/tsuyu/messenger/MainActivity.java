@@ -253,6 +253,14 @@ public final class MainActivity extends AppCompatActivity {
     private com.google.firebase.database.DatabaseReference pollVotesRef;
     private com.google.firebase.database.ValueEventListener pollVotesListener;
     private String burnRefreshChatId;
+    /** Номер последнего разбора истории: старые результаты не должны перебивать новые. */
+    private int messagesGeneration;
+    /** Когда по каждому чату последний раз спрашивали «в сети» и «печатает». */
+    private final java.util.concurrent.ConcurrentHashMap<String, Long> presenceCheckedAt =
+            new java.util.concurrent.ConcurrentHashMap<>();
+    /** Готовые тексты сообщений этого чата, прочитанные с диска одним заходом. */
+    private final java.util.concurrent.ConcurrentHashMap<String, String> payloadIndex =
+            new java.util.concurrent.ConcurrentHashMap<>();
 
     @Override
     protected void onCreate(Bundle savedInstanceState) {
@@ -263,8 +271,11 @@ public final class MainActivity extends AppCompatActivity {
         drawerRoot = findViewById(R.id.drawer_root);
         if (drawerRoot != null) {
             ViewCompat.setOnApplyWindowInsetsListener(drawerRoot, (view, windowInsets) -> {
-                Insets bars = windowInsets.getInsets(WindowInsetsCompat.Type.systemBars());
-                view.setPadding(view.getPaddingLeft(), bars.top, view.getPaddingRight(), bars.bottom);
+                Insets bars = windowInsets.getInsets(WindowInsetsCompat.Type.systemBars()
+                        | WindowInsetsCompat.Type.displayCutout());
+                Insets keyboard = windowInsets.getInsets(WindowInsetsCompat.Type.ime());
+                // Клавиатура: экран поднимается вместе с ней, поле ввода всегда видно.
+                view.setPadding(bars.left, bars.top, bars.right, Math.max(bars.bottom, keyboard.bottom));
                 return WindowInsetsCompat.CONSUMED;
             });
             ViewCompat.requestApplyInsets(drawerRoot);
@@ -272,8 +283,11 @@ public final class MainActivity extends AppCompatActivity {
         setupDrawer();
         WindowCompat.setDecorFitsSystemWindows(getWindow(), false);
         ViewCompat.setOnApplyWindowInsetsListener(screenHost, (view, windowInsets) -> {
-            Insets systemBars = windowInsets.getInsets(WindowInsetsCompat.Type.systemBars());
-            view.setPadding(systemBars.left, systemBars.top, systemBars.right, systemBars.bottom);
+            Insets bars = windowInsets.getInsets(WindowInsetsCompat.Type.systemBars()
+                    | WindowInsetsCompat.Type.displayCutout());
+            Insets keyboard = windowInsets.getInsets(WindowInsetsCompat.Type.ime());
+            // Клавиатура раньше не учитывалась вовсе: поле ввода уходило под неё.
+            view.setPadding(bars.left, bars.top, bars.right, Math.max(bars.bottom, keyboard.bottom));
             return WindowInsetsCompat.CONSUMED;
         });
         ViewCompat.requestApplyInsets(screenHost);
@@ -705,17 +719,30 @@ public final class MainActivity extends AppCompatActivity {
             if (last != null) last.id = meta.child("lastMessageId").getValue(String.class);
             long at = meta == null ? 0L : number(meta.child("lastAt").getValue());
             boolean online = false;
-            try {
-                DataSnapshot onlineSnapshot = Tasks.await(chatRepository.presence(peerUid).child("online").get(), 10, TimeUnit.SECONDS);
-                online = Boolean.TRUE.equals(onlineSnapshot.getValue(Boolean.class));
-            } catch (Throwable ignored) { }
             boolean typingNow = false;
-            try {
-                DataSnapshot typing = Tasks.await(chatRepository.typing(chatId).child(peerUid).get(), 10, TimeUnit.SECONDS);
-                long typingAt = number(typing.child("at").getValue());
-                typingNow = Boolean.TRUE.equals(typing.child("typing").getValue(Boolean.class))
-                        && System.currentTimeMillis() - typingAt <= 5500;
-            } catch (Throwable ignored) { }
+            // «В сети» и «печатает» обновляем не чаще раза в 20 секунд: иначе на каждый чат
+            // уходило по два лишних сетевых запроса и список полз.
+            Long checkedAt = presenceCheckedAt.get(chatId);
+            boolean needsPresence = checkedAt == null || System.currentTimeMillis() - checkedAt > 20_000L;
+            if (needsPresence) {
+                presenceCheckedAt.put(chatId, System.currentTimeMillis());
+                try {
+                    DataSnapshot onlineSnapshot = Tasks.await(chatRepository.presence(peerUid).child("online").get(), 10, TimeUnit.SECONDS);
+                    online = Boolean.TRUE.equals(onlineSnapshot.getValue(Boolean.class));
+                } catch (Throwable ignored) { }
+                try {
+                    DataSnapshot typing = Tasks.await(chatRepository.typing(chatId).child(peerUid).get(), 10, TimeUnit.SECONDS);
+                    long typingAt = number(typing.child("at").getValue());
+                    typingNow = Boolean.TRUE.equals(typing.child("typing").getValue(Boolean.class))
+                            && System.currentTimeMillis() - typingAt <= 5500;
+                } catch (Throwable ignored) { }
+            } else {
+                ChatSummary previousSummary = summaries.get(chatId);
+                if (previousSummary != null) {
+                    online = previousSummary.online;
+                    typingNow = previousSummary.typing;
+                }
+            }
             if (!expectedUid.equals(uid)) return;
             if (last != null) {
                 last.id = meta == null ? null : meta.child("lastMessageId").getValue(String.class);
@@ -1084,6 +1111,8 @@ public final class MainActivity extends AppCompatActivity {
         getSharedPreferences("tsuyu_settings", MODE_PRIVATE).edit().putString("active_chat", chatId).apply();
         page = "chat";
         com.tsuyu.messenger.notifications.NotificationCenter.clear(this, chatId);
+        // Тексты этого чата читаем с диска одним заходом — в фоне, пока рисуется экран.
+        preloadPayloadIndex(chatId);
         exitSelectionMode();
         View root = showScreen(R.layout.screen_chat);
         root.findViewById(R.id.chat_back).setOnClickListener(v -> {
@@ -1280,26 +1309,38 @@ public final class MainActivity extends AppCompatActivity {
     private void attachMessagesListener(String chatId, String peerUid) {
         messagesListener = new ValueEventListener() {
             @Override public void onDataChange(DataSnapshot snapshot) {
-                List<ChatMessage> messages = new ArrayList<>();
-                for (DataSnapshot child : snapshot.getChildren()) {
-                    ChatMessage message = child.getValue(ChatMessage.class);
-                    if (message != null) { message.id = child.getKey(); messages.add(message); }
-                }
-                if (store != null) {
-                    ChatMessage newest = null;
-                    for (ChatMessage message : messages) {
-                        if (newest == null || message.sentAt >= newest.sentAt) newest = message;
+                // Разбор всей истории уходит в фон: главный поток не ждёт перебора сообщений.
+                final int generation = ++messagesGeneration;
+                dataQueue.execute(() -> {
+                    List<ChatMessage> messages = new ArrayList<>();
+                    try {
+                        for (DataSnapshot child : snapshot.getChildren()) {
+                            ChatMessage message = child.getValue(ChatMessage.class);
+                            if (message != null) { message.id = child.getKey(); messages.add(message); }
+                        }
+                    } catch (Throwable error) {
+                        com.tsuyu.messenger.TsuyuLogs.crash(MainActivity.this, "разбор истории", error);
+                        return;
                     }
-                    if (newest != null) store.markChatOpened(chatId, newest.id, newest.sentAt);
-                    ChatSummary openedSummary = summaries.get(chatId);
-                    if (openedSummary != null) openedSummary.unread = 0;
-                }
-                try {
-                    renderMessages(messages, peerUid);
-                } catch (Throwable error) {
-                    recordChatError(error);
-                }
-                if (!presenceManager.isGhostMode()) chatRepository.markRead(chatId, uid);
+                    ui.post(() -> {
+                        if (generation != messagesGeneration) return;
+                        if (store != null) {
+                            ChatMessage newest = null;
+                            for (ChatMessage message : messages) {
+                                if (newest == null || message.sentAt >= newest.sentAt) newest = message;
+                            }
+                            if (newest != null) store.markChatOpened(chatId, newest.id, newest.sentAt);
+                            ChatSummary openedSummary = summaries.get(chatId);
+                            if (openedSummary != null) openedSummary.unread = 0;
+                        }
+                        try {
+                            renderMessages(messages, peerUid);
+                        } catch (Throwable error) {
+                            recordChatError(error);
+                        }
+                        if (!presenceManager.isGhostMode()) chatRepository.markRead(chatId, uid);
+                    });
+                });
             }
             @Override public void onCancelled(DatabaseError error) { toast("Не удалось загрузить сообщения. Проверьте подключение и попробуйте снова."); }
         };
@@ -1474,7 +1515,13 @@ public final class MainActivity extends AppCompatActivity {
         for (ChatMessage message : visible) {
             visibleIndex++;
             String payload = message.localPayload;
-            if (payload == null && activeCache != null && message.id != null) payload = activeCache.get(renderChatId, message.id);
+            // Тексты этого чата уже прочитаны с диска одним заходом — берём готовое,
+            // а не расшифровываем по одному на главном потоке.
+            if (payload == null && message.id != null) payload = payloadIndex.get(message.id);
+            if (payload == null && activeCache != null && message.id != null) {
+                payload = activeCache.get(renderChatId, message.id);
+                if (payload != null) payloadIndex.put(message.id, payload);
+            }
             if (payload != null) {
                 // Фото и кружочки сразу уходят файлами в кеш на диске: в памяти остаётся ссылка,
                 // поэтому переписка не растёт и не тормозит.
@@ -1816,11 +1863,6 @@ public final class MainActivity extends AppCompatActivity {
         local.localChatId = chatId;
         local.localPayload = payloadJson;
         optimisticMessages.put(clientId, local);
-        if (messageCache != null) messageCache.put(chatId, local.id, payloadJson);
-        if (store != null) {
-            store.upsertMessage(chatId, local, payloadJson, TsuyuStore.STATE_PENDING);
-            store.enqueue(clientId, chatId, peerUid, payloadJson);
-        }
 
         ChatSummary summary = summaries.get(chatId);
         if (summary == null) {
@@ -1836,10 +1878,23 @@ public final class MainActivity extends AppCompatActivity {
         summary.lastPreview = previewFromJson(payloadJson);
         summary.lastKind = kindFromJson(payloadJson);
         summary.lastState = TsuyuStore.STATE_PENDING;
-        if (store != null) persistSummary(summary);
+        // Всё, что касается диска, уходит в фон: пузырь показывается сразу, без ожидания
+        // записи в кэш и в базу.
+        final ChatSummary pendingSummary = summary;
+        final ChatMessage pendingLocal = local;
+        dataQueue.execute(() -> {
+            try {
+                if (messageCache != null) messageCache.put(chatId, pendingLocal.id, payloadJson);
+                if (store != null) {
+                    store.upsertMessage(chatId, pendingLocal, payloadJson, TsuyuStore.STATE_PENDING);
+                    store.enqueue(clientId, chatId, peerUid, payloadJson);
+                    persistSummary(pendingSummary);
+                }
+            } catch (Throwable ignored) { }
+        });
         watchSummaryRealtime(chatId, peerUid);
         renderChatList();
-        if (chatId.equals(activeChatId) && "chat".equals(page)) renderMessages(lastRemoteMessages, peerUid);
+        requestMessageRender();
         dispatchOptimisticMessage(local, peerUid);
         return local;
     }
@@ -1861,23 +1916,27 @@ public final class MainActivity extends AppCompatActivity {
                     local.localPayload.getBytes(StandardCharsets.UTF_8), local.clientId,
                     new ChatRepository.Result<String>() {
                         @Override public void success(String messageId) {
-                            if (activeCache != null) activeCache.put(chatId, messageId, local.localPayload);
                             ChatMessage current = optimisticMessages.get(local.clientId);
                             if (current != null) {
                                 current.id = messageId;
                                 current.pending = false;
                                 current.failed = false;
                             }
-                            if (store != null && local.id != null) {
-                                store.promoteLocalMessage(local.id, messageId, local.localPayload);
-                                store.dequeue(local.clientId);
-                                ChatSummary stored = summaries.get(chatId);
-                                if (stored != null) {
-                                    stored.lastState = TsuyuStore.STATE_SENT;
-                                    persistSummary(stored);
-                                }
-                            }
-                            if (chatId.equals(activeChatId)) renderMessages(lastRemoteMessages, peerUid);
+                            payloadIndex.put(messageId, local.localPayload);
+                            ChatSummary stored = summaries.get(chatId);
+                            if (stored != null) stored.lastState = TsuyuStore.STATE_SENT;
+                            // Запись в кэш и базу — в фоне: экран не ждёт диск.
+                            dataQueue.execute(() -> {
+                                try {
+                                    if (activeCache != null) activeCache.put(chatId, messageId, local.localPayload);
+                                    if (store != null && local.id != null) {
+                                        store.promoteLocalMessage(local.id, messageId, local.localPayload);
+                                        store.dequeue(local.clientId);
+                                        if (stored != null) persistSummary(stored);
+                                    }
+                                } catch (Throwable ignored) { }
+                            });
+                            if (chatId.equals(activeChatId)) requestMessageRender();
                             ChatSummary summary = summaries.get(chatId);
                             if (summary != null && summary.lastMessage != null
                                     && local.clientId.equals(summary.lastMessage.clientId)) {
@@ -1892,16 +1951,18 @@ public final class MainActivity extends AppCompatActivity {
                                 current.pending = false;
                                 current.failed = true;
                             }
-                            if (store != null && local.id != null) {
-                                store.updateState(local.id, TsuyuStore.STATE_FAILED);
-                                store.noteAttempt(local.clientId);
-                                ChatSummary stored = summaries.get(chatId);
-                                if (stored != null) {
-                                    stored.lastState = TsuyuStore.STATE_FAILED;
-                                    persistSummary(stored);
-                                }
-                            }
-                            if (chatId.equals(activeChatId)) renderMessages(lastRemoteMessages, peerUid);
+                            ChatSummary stored = summaries.get(chatId);
+                            if (stored != null) stored.lastState = TsuyuStore.STATE_FAILED;
+                            dataQueue.execute(() -> {
+                                try {
+                                    if (store != null && local.id != null) {
+                                        store.updateState(local.id, TsuyuStore.STATE_FAILED);
+                                        store.noteAttempt(local.clientId);
+                                        if (stored != null) persistSummary(stored);
+                                    }
+                                } catch (Throwable ignored) { }
+                            });
+                            if (chatId.equals(activeChatId)) requestMessageRender();
                             renderChatList();
                             toast(error);
                         }
@@ -2843,6 +2904,31 @@ public final class MainActivity extends AppCompatActivity {
         }
     }
 
+
+    /**
+     * Один заход на диск: читаем готовые тексты всего чата и складываем в память.
+     * Дальше переписка рисуется без обращения к хранилищу — поэтому мгновенно.
+     */
+    private void preloadPayloadIndex(final String chatId) {
+        payloadIndex.clear();
+        final TsuyuStore activeStore = store;
+        final LocalMessageCache activeCache = messageCache;
+        if (activeStore == null && activeCache == null) return;
+        dataQueue.execute(() -> {
+            try {
+                if (activeStore != null) {
+                    List<ChatMessage> stored = activeStore.messages(chatId, 200);
+                    for (ChatMessage message : stored) {
+                        if (message.id != null && message.localPayload != null) {
+                            payloadIndex.put(message.id, message.localPayload);
+                        }
+                    }
+                }
+            } catch (Throwable ignored) { }
+            if (!chatId.equals(activeChatId)) return;
+            requestMessageRender();
+        });
+    }
 
     /**
      * Просьба перерисовать переписку. Несколько событий подряд (расшифровка, реакции,

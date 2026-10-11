@@ -15,19 +15,28 @@ public final class LocalMessageCache {
         // Вложения уходят файлами в кеш, здесь остаётся короткая ссылка.
         payload = com.tsuyu.messenger.data.TsuyuMedia.spill(context, payload);
         String key = key(chatId, messageId);
-        if (payload != null && payload.length() > 200_000) {
-            prefs.remove(key);
-            prefs.putLarge(key, payload);
-        } else {
-            prefs.removeLarge(key);
-            prefs.put(key, payload == null ? "" : payload);
+        try {
+            if (payload != null && payload.length() > 200_000) {
+                prefs.remove(key);
+                prefs.putLarge(key, payload);
+            } else {
+                prefs.removeLarge(key);
+                // Без ожидания диска: раньше главный поток стоял на записи.
+                prefs.putFast(key, payload == null ? "" : payload);
+            }
+        } catch (Throwable ignored) {
+            // Кэш — не повод ломать отправку: текст всё равно уйдёт в сеть.
         }
     }
 
     public synchronized String get(String chatId, String messageId) {
         String key = key(chatId, messageId);
-        String small = prefs.get(key);
-        return small == null ? prefs.getLarge(key) : small;
+        try {
+            String small = prefs.get(key);
+            return small == null ? prefs.getLarge(key) : small;
+        } catch (Throwable ignored) {
+            return null;
+        }
     }
 
     private static String key(String chatId, String messageId) {

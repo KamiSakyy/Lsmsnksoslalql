@@ -33,6 +33,12 @@ public final class TsuyuPhotoCache {
 
     private TsuyuPhotoCache() { }
 
+    /** Готовый кадр, если он уже подготовлен: тогда показываем сразу, без всякой работы. */
+    public static Bitmap peek(String value, int maxSide) {
+        if (value == null || value.isEmpty()) return null;
+        return MEDIA.get(key(value, maxSide));
+    }
+
     /** Кадр вложения: берём из кеша файлом с диска и уменьшаем один раз на весь сеанс. */
     public static Bitmap media(Context context, String value, int maxSide) {
         if (value == null || value.isEmpty()) return null;
@@ -43,6 +49,12 @@ public final class TsuyuPhotoCache {
         Bitmap decoded = TsuyuPhoto.decodeScaled(bytes, maxSide);
         if (decoded != null) MEDIA.put(key, decoded);
         return decoded;
+    }
+
+    /** Готовый аватар, если он уже подготовлен. */
+    public static Bitmap avatarPeek(String value) {
+        if (value == null || value.isEmpty()) return null;
+        return AVATARS.get(key(value, 160));
     }
 
     /** Аватар: уменьшенный кадр, чтобы прокрутка списка не спотыкалась. */
