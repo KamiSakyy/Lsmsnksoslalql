@@ -606,4 +606,14 @@
         </LinearLayout>
     </androidx.core.widget.NestedScrollView>
 
+            <TextView
+                android:id="@+id/settings_version"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:layout_marginTop="@dimen/space_xl"
+                android:layout_marginBottom="@dimen/space_lg"
+                android:gravity="center"
+                android:text="@string/settings_version"
+                android:textAppearance="@style/TextAppearance.Tsuyu.Timestamp" />
+
 </LinearLayout>

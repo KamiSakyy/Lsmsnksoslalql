@@ -556,6 +556,7 @@ public final class MainActivity extends AppCompatActivity {
         activeChatId = null;
         activePeerUid = null;
         View root = showScreen(R.layout.screen_home);
+        ui.post(this::showCrashReportIfAny);
         View menuButton = root.findViewById(R.id.home_menu_btn);
         if (menuButton != null) menuButton.setOnClickListener(v -> openDrawer());
         View encryptButton = root.findViewById(R.id.home_encrypt_btn);
@@ -2364,6 +2365,10 @@ public final class MainActivity extends AppCompatActivity {
         page = "settings";
         View root = showScreen(R.layout.screen_settings);
         bindScreenGuardSwitch(root);
+        TextView versionView = root.findViewById(R.id.settings_version);
+        if (versionView != null) {
+            versionView.setText(versionLabel());
+        }
         View wallpaperRow = root.findViewById(R.id.settings_wallpaper);
         if (wallpaperRow != null) wallpaperRow.setOnClickListener(v -> showWallpaperDialog(null, true));
 
@@ -2726,6 +2731,50 @@ public final class MainActivity extends AppCompatActivity {
         });
         View row = (View) guard.getParent();
         if (row != null) row.setOnClickListener(v -> guard.setChecked(!guard.isChecked()));
+    }
+
+    /** Версия и номер сборки — их видно в самом приложении, чтобы точно знать, что установлено. */
+    private String versionLabel() {
+        try {
+            android.content.pm.PackageInfo info = getPackageManager().getPackageInfo(getPackageName(), 0);
+            return "Tsuyu " + info.versionName + " · сборка " + info.versionCode;
+        } catch (Throwable ignored) {
+            return "Tsuyu";
+        }
+    }
+
+    /** Причина последнего сбоя — прямо на экране: её можно скопировать и прислать. */
+    private void showCrashReportIfAny() {
+        if (isFinishing() || isDestroyed()) return;
+        try {
+            android.content.SharedPreferences prefs = getSharedPreferences("tsuyu_crash", MODE_PRIVATE);
+            String trace = prefs.getString("last", null);
+            long when = prefs.getLong("at", 0L);
+            if (trace == null || trace.isEmpty()) return;
+            // Показываем один раз: чтобы окно не всплывало при каждом возврате в список.
+            prefs.edit().remove("last").apply();
+            final String report = trace;
+            TextView body = new TextView(this);
+            body.setText(report);
+            body.setTextSize(11f);
+            body.setTypeface(android.graphics.Typeface.MONOSPACE);
+            body.setTextColor(getResources().getColor(R.color.tsuyu_white, getTheme()));
+            body.setPadding(dp(16), dp(12), dp(16), dp(12));
+            android.widget.ScrollView scroll = new android.widget.ScrollView(this);
+            scroll.addView(body);
+            new AlertDialog.Builder(this)
+                    .setTitle(getString(R.string.crash_title) + (when > 0 ? " · " + scheduleTimeLabel(when) : ""))
+                    .setMessage(getString(R.string.crash_hint))
+                    .setView(scroll)
+                    .setPositiveButton(R.string.crash_close, null)
+                    .setNeutralButton(R.string.crash_copy, (dialog, which) -> {
+                        try {
+                            ((android.content.ClipboardManager) getSystemService(CLIPBOARD_SERVICE))
+                                    .setPrimaryClip(android.content.ClipData.newPlainText("Tsuyu crash", report));
+                            toast("Скопировано");
+                        } catch (Throwable ignored) { }
+                    }).show();
+        } catch (Throwable ignored) { }
     }
 
     private void markNoActiveChat() {

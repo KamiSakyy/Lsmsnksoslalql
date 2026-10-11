@@ -6,7 +6,7 @@
     android:background="@color/tsuyu_header">
 
     <!-- Видео собеседника: на весь экран, как в веб-клиенте -->
-    <org.webrtc.SurfaceViewRenderer
+    <SurfaceView
         android:id="@+id/call_remote"
         android:layout_width="match_parent"
         android:layout_height="match_parent" />
@@ -81,7 +81,7 @@
         app:cardCornerRadius="14dp"
         app:cardElevation="6dp">
 
-        <org.webrtc.SurfaceViewRenderer
+        <SurfaceView
             android:id="@+id/call_local"
             android:layout_width="match_parent"
             android:layout_height="match_parent" />

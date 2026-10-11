@@ -27,7 +27,7 @@ import com.tsuyu.messenger.Profile;
 import com.tsuyu.messenger.R;
 import com.tsuyu.messenger.data.ProfileRepository;
 
-import org.webrtc.SurfaceViewRenderer;
+import android.view.SurfaceView;
 
 /**
  * Экран звонка: входящий, исходящий и идущий разговор в одном окне.
@@ -126,8 +126,7 @@ public final class CallActivity extends Activity implements CallEngine.Listener 
                 peerName == null || peerName.trim().isEmpty() ? getString(R.string.call_unknown) : peerName);
         initialView.setText(initialOf(peerName));
         TextView badge = findViewById(R.id.call_relay_badge);
-        badge.setText(getString(R.string.call_p2p_badge_net, engine.relayCount(),
-                NetworkPriority.label(this)));
+        badge.setText(getString(R.string.call_p2p_direct, NetworkPriority.label(this)));
 
         findViewById(R.id.call_end).setOnClickListener(v -> hangup());
         incomingActions.findViewById(R.id.call_decline).setOnClickListener(v -> decline());
@@ -268,9 +267,12 @@ public final class CallActivity extends Activity implements CallEngine.Listener 
 
     private void attachRenderersIfNeeded() {
         if (renderersReady) return;
-        SurfaceViewRenderer remote = findViewById(R.id.call_remote);
-        SurfaceViewRenderer local = findViewById(R.id.call_local);
-        engine.attachRenderers(local, remote);
+        SurfaceView remote = findViewById(R.id.call_remote);
+        SurfaceView local = findViewById(R.id.call_local);
+        // Свои поверхности отдаём движку: он выводит на них видео с камеры и от собеседника.
+        android.view.Surface localSurface = local == null ? null : local.getHolder().getSurface();
+        android.view.Surface remoteSurface = remote == null ? null : remote.getHolder().getSurface();
+        engine.attachSurfaces(localSurface, remoteSurface);
         renderersReady = true;
         remoteShade.setVisibility(video ? View.GONE : View.VISIBLE);
     }
@@ -356,8 +358,7 @@ public final class CallActivity extends Activity implements CallEngine.Listener 
             gotConnected = true;
             TextView badgeView = findViewById(R.id.call_relay_badge);
             if (badgeView != null) {
-                badgeView.setText(getString(R.string.call_p2p_badge_net, engine.relayCount(),
-                        NetworkPriority.label(this)));
+                badgeView.setText(getString(R.string.call_p2p_direct, NetworkPriority.label(this)));
             }
             incomingActions.setVisibility(View.GONE);
             showActiveControls(true);

@@ -46,9 +46,6 @@
 -dontwarn edu.umd.**
 -dontwarn **
 
-# Stream WebRTC для Android (io.getstream:stream-webrtc-android): тот же org.webrtc API.
-# Нативный слой ищет классы по именам, поэтому JNI-мосты не переименовываем.
--keep class org.webrtc.** { *; }
--dontwarn org.webrtc.**
--dontwarn io.getstream.**
--dontwarn org.jetbrains.annotations.**
+# Звонки — собственный P2P (пакет com.tsuyu.messenger.p2p): внешних P2P-библиотек нет,
+# поэтому и специальных правил для них больше не нужно.
+
