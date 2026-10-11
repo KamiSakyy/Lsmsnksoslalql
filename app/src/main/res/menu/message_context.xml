@@ -1,7 +1,0 @@
-<menu xmlns:android="http://schemas.android.com/apk/res/android">
-    <item android:id="@+id/message_react" android:icon="@drawable/ic_heart" android:title="Реакция" />
-    <item android:id="@+id/message_reply" android:title="Ответить" />
-    <item android:id="@+id/message_forward" android:title="Скопировать текст" />
-    <item android:id="@+id/message_edit" android:title="Редактировать" />
-    <item android:id="@+id/message_delete" android:title="Удалить у всех" />
-</menu>

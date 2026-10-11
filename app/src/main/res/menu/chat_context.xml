@@ -1,5 +1,0 @@
-<menu xmlns:android="http://schemas.android.com/apk/res/android">
-    <item android:id="@+id/chat_menu_profile" android:title="Профиль собеседника" />
-    <item android:id="@+id/chat_menu_export" android:title="Экспортировать текст переписки" />
-    <item android:id="@+id/chat_menu_keys" android:title="Управление ключами" />
-</menu>

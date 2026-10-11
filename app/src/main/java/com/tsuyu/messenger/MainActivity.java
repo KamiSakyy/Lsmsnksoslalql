@@ -15,13 +15,11 @@ import android.os.Handler;
 import android.os.Looper;
 import android.text.Editable;
 import android.text.TextWatcher;
-import android.view.MenuItem;
 import android.view.View;
 import android.view.animation.AnimationUtils;
 import android.view.inputmethod.InputMethodManager;
 import android.util.Base64;
 import android.widget.FrameLayout;
-import android.widget.PopupMenu;
 import android.widget.TextView;
 import android.widget.Toast;
 
@@ -810,12 +808,11 @@ public final class MainActivity extends AppCompatActivity {
         getSharedPreferences("tsuyu_settings", MODE_PRIVATE).edit().putString("active_chat", chatId).apply();
         page = "chat";
         View root = showScreen(R.layout.screen_chat);
-        MaterialToolbar toolbar = root.findViewById(R.id.chat_toolbar);
-        toolbar.setNavigationOnClickListener(v -> { detachChatListeners(); showHome(); });
-        toolbar.setOnMenuItemClickListener(item -> {
-            if (item.getItemId() == R.id.action_chat_more) { showChatMenu(toolbar); return true; }
-            return false;
+        root.findViewById(R.id.chat_back).setOnClickListener(v -> {
+            detachChatListeners();
+            showHome();
         });
+        root.findViewById(R.id.chat_more).setOnClickListener(v -> showChatMenu());
         ShapeableImageView avatar = root.findViewById(R.id.chat_peer_avatar);
         TextView avatarInitial = root.findViewById(R.id.chat_peer_initial);
         chatStatus = root.findViewById(R.id.chat_peer_status);
@@ -842,7 +839,7 @@ public final class MainActivity extends AppCompatActivity {
                 getSharedPreferences("tsuyu_settings", MODE_PRIVATE).getBoolean("italic", false),
                 new MessageListAdapter.Listener() {
                     @Override public void onOpenPayload(String payload) { openPayload(payload); }
-                    @Override public void onMessageMenu(View anchor, ChatMessage message, String payload) { showMessageMenu(anchor, message, payload); }
+                    @Override public void onMessageMenu(View anchor, ChatMessage message, String payload) { showMessageMenu(message, payload); }
                     @Override public void onRetry(ChatMessage message) { retryMessage(message); }
                     @Override public void onReact(ChatMessage message) { toggleHeart(message); }
                     @Override public void onGalleryImage(String encodedImage) { showImageDialog(encodedImage); }
@@ -1190,33 +1187,45 @@ public final class MainActivity extends AppCompatActivity {
 
     private android.media.MediaPlayer audioPlayer;
 
-    private void showMessageMenu(View anchor, ChatMessage message, String payload) {
-        PopupMenu popup = new PopupMenu(this, anchor);
-        popup.inflate(R.menu.message_context);
-        MenuItem heart = popup.getMenu().findItem(R.id.message_react);
-        MenuItem reply = popup.getMenu().findItem(R.id.message_reply);
-        MenuItem forward = popup.getMenu().findItem(R.id.message_forward);
-        MenuItem edit = popup.getMenu().findItem(R.id.message_edit);
-        MenuItem delete = popup.getMenu().findItem(R.id.message_delete);
+    private void showMessageMenu(ChatMessage message, String payload) {
+        BottomSheetDialog sheet = new BottomSheetDialog(this);
+        View content = getLayoutInflater().inflate(R.layout.sheet_message_actions, null, false);
         boolean persisted = message.id != null && !message.id.startsWith("local_") && !message.pending;
-        if (heart != null) heart.setVisible(persisted);
-        if (reply != null) reply.setVisible(persisted);
-        if (edit != null) edit.setVisible(persisted && uid.equals(message.senderUid));
-        if (delete != null) delete.setVisible(persisted);
-        popup.setOnMenuItemClickListener(item -> {
-            if (item.getItemId() == R.id.message_react) toggleHeart(message);
-            else if (item.getItemId() == R.id.message_reply) {
-                replyToId = message.id;
-                replyToText = payload == null ? "Сообщение" : textFromPayload(payload);
-                if (replyBannerText != null) replyBannerText.setText(replyToText);
-                if (replyBanner != null) replyBanner.setVisibility(View.VISIBLE);
-                if (composer != null) composer.requestFocus();
-            } else if (item.getItemId() == R.id.message_forward) forwardMessage(payload);
-            else if (item.getItemId() == R.id.message_edit) editMessage(message, payload);
-            else if (item.getItemId() == R.id.message_delete) confirmDelete(message);
-            return true;
+        boolean ownMessage = uid != null && uid.equals(message.senderUid);
+
+        content.findViewById(R.id.message_react).setVisibility(persisted ? View.VISIBLE : View.GONE);
+        content.findViewById(R.id.message_reply).setVisibility(persisted ? View.VISIBLE : View.GONE);
+        content.findViewById(R.id.message_edit).setVisibility(persisted && ownMessage ? View.VISIBLE : View.GONE);
+        content.findViewById(R.id.message_delete).setVisibility(persisted ? View.VISIBLE : View.GONE);
+        content.findViewById(R.id.message_actions_divider).setVisibility(persisted ? View.VISIBLE : View.GONE);
+
+        content.findViewById(R.id.message_react).setOnClickListener(v -> {
+            sheet.dismiss();
+            toggleHeart(message);
         });
-        popup.show();
+        content.findViewById(R.id.message_reply).setOnClickListener(v -> {
+            sheet.dismiss();
+            replyToId = message.id;
+            replyToText = payload == null ? "Сообщение" : textFromPayload(payload);
+            if (replyBannerText != null) replyBannerText.setText(replyToText);
+            if (replyBanner != null) replyBanner.setVisibility(View.VISIBLE);
+            if (composer != null) composer.requestFocus();
+        });
+        content.findViewById(R.id.message_forward).setOnClickListener(v -> {
+            sheet.dismiss();
+            forwardMessage(payload);
+        });
+        content.findViewById(R.id.message_edit).setOnClickListener(v -> {
+            sheet.dismiss();
+            editMessage(message, payload);
+        });
+        content.findViewById(R.id.message_delete).setOnClickListener(v -> {
+            sheet.dismiss();
+            confirmDelete(message);
+        });
+
+        sheet.setContentView(content);
+        sheet.show();
     }
 
     private void toggleHeart(ChatMessage message) {
@@ -1400,16 +1409,23 @@ public final class MainActivity extends AppCompatActivity {
     }
 
 
-    private void showChatMenu(View anchor) {
-        PopupMenu menu = new PopupMenu(this, anchor);
-        menu.inflate(R.menu.chat_context);
-        menu.setOnMenuItemClickListener(item -> {
-            if (item.getItemId() == R.id.chat_menu_profile) showPeerProfile();
-            else if (item.getItemId() == R.id.chat_menu_export) exportCurrentChat();
-            else if (item.getItemId() == R.id.chat_menu_keys) showKeySettings();
-            return true;
+    private void showChatMenu() {
+        BottomSheetDialog sheet = new BottomSheetDialog(this);
+        View content = getLayoutInflater().inflate(R.layout.sheet_chat_actions, null, false);
+        content.findViewById(R.id.chat_menu_profile).setOnClickListener(v -> {
+            sheet.dismiss();
+            showPeerProfile();
         });
-        menu.show();
+        content.findViewById(R.id.chat_menu_export).setOnClickListener(v -> {
+            sheet.dismiss();
+            exportCurrentChat();
+        });
+        content.findViewById(R.id.chat_menu_keys).setOnClickListener(v -> {
+            sheet.dismiss();
+            showKeySettings();
+        });
+        sheet.setContentView(content);
+        sheet.show();
     }
 
     private void showPeerProfile() {
