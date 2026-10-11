@@ -116,9 +116,9 @@ public final class CallSignal {
                     String id = callId.getValue(String.class);
                     String from = chat.child("from").getValue(String.class);
                     if (id == null || from == null || from.equals(myUid)) continue;
-                    Long at = chat.child("at").getValue(Long.class);
+                    Object rawAt = chat.child("at").getValue();
                     boolean video = Boolean.TRUE.equals(chat.child("video").getValue(Boolean.class));
-                    long stamp = at == null ? now : at;
+                    long stamp = rawAt instanceof Number ? ((Number) rawAt).longValue() : now;
                     if (now - stamp > 60_000L) continue;
                     Invite invite = new Invite();
                     invite.callId = id;

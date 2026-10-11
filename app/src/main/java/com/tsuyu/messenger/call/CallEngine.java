@@ -582,6 +582,8 @@ public final class CallEngine {
 
         @Override public void onAddStream(MediaStream stream) { }
 
+        @Override public void onRemoveStream(MediaStream stream) { }
+
         @Override public void onAddTrack(RtpReceiver receiver, MediaStream[] streams) {
             MediaStreamTrack track = receiver.track();
             if (track instanceof VideoTrack && remoteRenderer != null) {

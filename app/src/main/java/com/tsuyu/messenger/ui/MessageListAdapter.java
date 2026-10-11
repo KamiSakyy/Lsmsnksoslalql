@@ -429,7 +429,8 @@ public final class MessageListAdapter extends RecyclerView.Adapter<RecyclerView.
         StringBuilder out = new StringBuilder();
         out.append("📊 ").append(object.optString("question", "")).append('\n');
         JSONArray options = object.optJSONArray("options");
-        java.util.Map<String, Integer> votes = message == null ? null : pollVotes.get(message.id);
+        java.util.Map<String, Integer> votes =
+                (message == null || message.id == null) ? null : pollVotes.get(message.id);
         int total = 0;
         if (votes != null) for (Integer value : votes.values()) if (value != null) total++;
         if (options != null) {

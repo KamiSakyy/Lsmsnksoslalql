@@ -4,6 +4,7 @@ import android.Manifest;
 import android.app.AlertDialog;
 import android.content.ClipData;
 import android.content.ClipboardManager;
+import android.content.SharedPreferences;
 import android.content.Intent;
 import android.content.pm.PackageManager;
 import android.graphics.Bitmap;
@@ -3700,7 +3701,8 @@ public final class MainActivity extends AppCompatActivity {
                 for (DataSnapshot poll : snapshot.getChildren()) {
                     Map<String, Integer> votes = new ConcurrentHashMap<>();
                     for (DataSnapshot vote : poll.getChildren()) {
-                        Integer index = vote.getValue(Integer.class);
+                        Object raw = vote.getValue();
+                        Integer index = raw instanceof Number ? ((Number) raw).intValue() : null;
                         if (index != null && vote.getKey() != null) votes.put(vote.getKey(), index);
                     }
                     if (poll.getKey() != null) next.put(poll.getKey(), votes);
