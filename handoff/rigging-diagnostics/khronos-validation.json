@@ -3,9 +3,9 @@
     "uri": "anime-girl-rigged.glb",
     "mimeType": "model/gltf-binary",
     "validatorVersion": "2.0.0-dev.3.10",
-    "validatedAt": "2026-10-11T04:31:04.137Z",
+    "validatedAt": "2026-10-11T04:37:26.594Z",
     "issues": {
-      "numErrors": 7,
+      "numErrors": 0,
       "numWarnings": 1,
       "numInfos": 0,
       "numHints": 0,
@@ -15,48 +15,6 @@
           "message": "Node with a skinned mesh is not root. Parent transforms will not affect a skinned mesh.",
           "severity": 1,
           "pointer": "/nodes/48"
-        },
-        {
-          "code": "ACCESSOR_VECTOR3_NON_UNIT",
-          "message": "Vector3 at accessor indices 25240..25242 is not of unit length: 0.",
-          "severity": 0,
-          "pointer": "/meshes/0/primitives/0/attributes/TANGENT"
-        },
-        {
-          "code": "ACCESSOR_VECTOR3_NON_UNIT",
-          "message": "Vector3 at accessor indices 177120..177122 is not of unit length: 0.",
-          "severity": 0,
-          "pointer": "/meshes/0/primitives/0/attributes/TANGENT"
-        },
-        {
-          "code": "ACCESSOR_VECTOR3_NON_UNIT",
-          "message": "Vector3 at accessor indices 224164..224166 is not of unit length: 0.",
-          "severity": 0,
-          "pointer": "/meshes/0/primitives/0/attributes/TANGENT"
-        },
-        {
-          "code": "ACCESSOR_VECTOR3_NON_UNIT",
-          "message": "Vector3 at accessor indices 237572..237574 is not of unit length: 0.",
-          "severity": 0,
-          "pointer": "/meshes/0/primitives/0/attributes/TANGENT"
-        },
-        {
-          "code": "ACCESSOR_VECTOR3_NON_UNIT",
-          "message": "Vector3 at accessor indices 287228..287230 is not of unit length: 0.",
-          "severity": 0,
-          "pointer": "/meshes/0/primitives/0/attributes/TANGENT"
-        },
-        {
-          "code": "ACCESSOR_VECTOR3_NON_UNIT",
-          "message": "Vector3 at accessor indices 300004..300006 is not of unit length: 0.",
-          "severity": 0,
-          "pointer": "/meshes/0/primitives/0/attributes/TANGENT"
-        },
-        {
-          "code": "ACCESSOR_VECTOR3_NON_UNIT",
-          "message": "Vector3 at accessor indices 335904..335906 is not of unit length: 0.",
-          "severity": 0,
-          "pointer": "/meshes/0/primitives/0/attributes/TANGENT"
         }
       ],
       "truncated": false
@@ -125,7 +83,7 @@
     "uri": "anime-girl-full.glb",
     "mimeType": "model/gltf-binary",
     "validatorVersion": "2.0.0-dev.3.10",
-    "validatedAt": "2026-10-11T04:31:05.237Z",
+    "validatedAt": "2026-10-11T04:37:28.916Z",
     "issues": {
       "numErrors": 0,
       "numWarnings": 2,

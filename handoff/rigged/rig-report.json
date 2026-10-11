@@ -1,7 +1,8 @@
 {
+  "previews_generated": false,
   "toolchain": {
     "blender": "4.2.23 LTS",
-    "method": "Anatomical capsule envelopes + surface diffusion + 4-influence normalization",
+    "method": "Surface-geodesic anatomical binding + hair/cloth envelopes + diffusion + 4-influence normalization",
     "fps": 30
   },
   "source": {
@@ -15,11 +16,11 @@
   },
   "runtime": {
     "file": "anime-girl-rigged.glb",
-    "vertices": 156219,
-    "triangles": 159999,
+    "vertices": 79947,
+    "triangles": 160000,
     "skin": {
       "joints": 48,
-      "vertices": 201411,
+      "vertices": 96614,
       "unweighted_vertices": 0,
       "max_influences": 4,
       "rest_bind_error": 7.848589749934213e-07,
@@ -31,7 +32,16 @@
         "Wave"
       ]
     },
-    "bytes": 21974996
+    "topology": {
+      "geometric_vertices": 79947,
+      "boundary_edges": 4,
+      "nonmanifold_edges": 2
+    },
+    "tangent_repairs": {
+      "corrected_vertices": 92696,
+      "method": "orthonormal fallback for degenerate UV tangents"
+    },
+    "bytes": 18071540
   },
   "full_resolution": {
     "file": "anime-girl-full.glb",
@@ -50,7 +60,7 @@
         "Wave"
       ]
     },
-    "bytes": 100792328
+    "bytes": 79754500
   },
   "bones": [
     {
@@ -334,23 +344,28 @@
   "pose_checks": {
     "Idle": {
       "sampled_frames": 5,
-      "maximum_extent_in_model_heights": 1.0016520126541384
+      "maximum_extent_in_model_heights": 1.000086240619356,
+      "edge_stretch_p99_5": 1.1176471883058556
     },
     "Walk_InPlace": {
       "sampled_frames": 5,
-      "maximum_extent_in_model_heights": 0.9946032712563057
+      "maximum_extent_in_model_heights": 0.9929754035428473,
+      "edge_stretch_p99_5": 2.791955690383915
     },
     "Run_InPlace": {
       "sampled_frames": 5,
-      "maximum_extent_in_model_heights": 0.9939335380402629
+      "maximum_extent_in_model_heights": 0.9923057311452949,
+      "edge_stretch_p99_5": 4.300987095832853
     },
     "Wave": {
       "sampled_frames": 5,
-      "maximum_extent_in_model_heights": 1.0016031754063648
+      "maximum_extent_in_model_heights": 0.9999753076929065,
+      "edge_stretch_p99_5": 9.643318276405417
     },
     "Dance": {
       "sampled_frames": 5,
-      "maximum_extent_in_model_heights": 0.9876032454692657
+      "maximum_extent_in_model_heights": 0.9859753777558075,
+      "edge_stretch_p99_5": 3.4067509555816686
     }
   },
   "limitations": [

@@ -1,6 +1,2 @@
-Run: https://github.com/KamiSakyy/Lsmsnksoslalql/actions/runs/38111736347
-anime-girl-rigged.fbx 11232172 bytes
-anime-girl-full.glb 79754500 bytes
-anime-girl-rigged.glb 18071540 bytes
-rig-report.json 8432 bytes
-khronos-validation.json 6260 bytes
+Run: https://github.com/KamiSakyy/Lsmsnksoslalql/actions/runs/38112065533
+Status: success

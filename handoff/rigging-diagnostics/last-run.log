@@ -1,53 +1,26 @@
 [    0.0s] Blender 4.2.23 LTS; source archive SHA-256 5b3a69491504d2a526c3a25f32012a102456663d7dbb3082d154287cfbab2eb5
-04:30:19 | INFO: Data are loaded, start creating Blender stuff
-04:30:19 | INFO: Blender create Mesh node tripo_mesh_d247d7c3-46ba-414e-b821-b731d4b67026
-04:30:21 | INFO: glTF import finished in 2.00s
-[    4.4s] Welded runtime topology: 1,117,173 → 990,818 vertices; UV corners preserved
-[   31.9s] Mesh: 1,117,173 source vertices; 79,947 runtime vertices / 160,000 triangles
-[   32.2s] Runtime surface topology: {'geometric_vertices': 79947, 'boundary_edges': 4, 'nonmanifold_edges': 2}
-[   32.3s] Solving surface-geodesic distances to avoid hand/coat/hair cross-binding
-[   35.1s] Solving pose-aware body / hair / clothing skin weights
-[   35.5s] Generating Idle: 121 keyframes
-[   35.8s] Generating Walk_InPlace: 37 keyframes
-[   35.9s] Generating Run_InPlace: 25 keyframes
-[   36.0s] Generating Wave: 91 keyframes
-[   36.2s] Generating Dance: 121 keyframes
-[   36.7s] Pose QA Idle: extent=1.000 H, 99.5-percentile edge stretch=1.118
-[   36.8s] Pose QA Walk_InPlace: extent=0.993 H, 99.5-percentile edge stretch=2.792
-[   36.9s] Pose QA Run_InPlace: extent=0.992 H, 99.5-percentile edge stretch=4.301
-[   37.0s] Pose QA Wave: extent=1.000 H, 99.5-percentile edge stretch=9.643
-[   37.1s] Pose QA Dance: extent=0.986 H, 99.5-percentile edge stretch=3.407
-[   37.1s] Exporting runtime GLB with five separate animation clips
-ERROR Draco mesh compression is not available because library could not be found at /home/runner/work/Lsmsnksoslalql/Lsmsnksoslalql/4.2/python/lib/python3.11/site-packages/libextern_draco.so
-04:30:56 | INFO: Starting glTF 2.0 export
-04:30:56 | INFO: Extracting primitive: AnimeGirl_Welded_Runtime_Surface
-04:30:56 | WARNING: More than one shader node tex image used for a texture. The resulting glTF sampler will behave like the first shader node tex image.
-04:30:57 | INFO: Primitives created: 1
-04:30:58 | INFO: Finished glTF 2.0 export in 2.3361306190490723 s
-
-[   39.5s] Exporting FBX with actions (no extra leaf bones)
-
-FBX export starting... '/home/runner/work/Lsmsnksoslalql/Lsmsnksoslalql/build/rigged/anime-girl-rigged.fbx'
-(bpy.data.armatures['AnimeGirl_48_Bones'], 'POSE')
-export finished in 3.5003 sec.
-[   40.8s] Runtime GLB skin validated: {'joints': 48, 'vertices': 96614, 'unweighted_vertices': 0, 'max_influences': 4, 'rest_bind_error': 7.848589749934213e-07, 'animations': ['Dance', 'Idle', 'Run_InPlace', 'Walk_InPlace', 'Wave']}
-[   40.8s] Transferring skin weights to the original high-detail Blender mesh
-[   43.4s] Preserving original GLB geometry and textures; appending skeleton and animations
-[   44.7s] Checking both exports with the official Khronos validator before rendering
-anime-girl-rigged.glb: 7 errors, 1 warnings
-{"code":"ACCESSOR_VECTOR3_NON_UNIT","message":"Vector3 at accessor indices 25240..25242 is not of unit length: 0.","severity":0,"pointer":"/meshes/0/primitives/0/attributes/TANGENT"}
-{"code":"ACCESSOR_VECTOR3_NON_UNIT","message":"Vector3 at accessor indices 177120..177122 is not of unit length: 0.","severity":0,"pointer":"/meshes/0/primitives/0/attributes/TANGENT"}
-{"code":"ACCESSOR_VECTOR3_NON_UNIT","message":"Vector3 at accessor indices 224164..224166 is not of unit length: 0.","severity":0,"pointer":"/meshes/0/primitives/0/attributes/TANGENT"}
-{"code":"ACCESSOR_VECTOR3_NON_UNIT","message":"Vector3 at accessor indices 237572..237574 is not of unit length: 0.","severity":0,"pointer":"/meshes/0/primitives/0/attributes/TANGENT"}
-{"code":"ACCESSOR_VECTOR3_NON_UNIT","message":"Vector3 at accessor indices 287228..287230 is not of unit length: 0.","severity":0,"pointer":"/meshes/0/primitives/0/attributes/TANGENT"}
-{"code":"ACCESSOR_VECTOR3_NON_UNIT","message":"Vector3 at accessor indices 300004..300006 is not of unit length: 0.","severity":0,"pointer":"/meshes/0/primitives/0/attributes/TANGENT"}
-{"code":"ACCESSOR_VECTOR3_NON_UNIT","message":"Vector3 at accessor indices 335904..335906 is not of unit length: 0.","severity":0,"pointer":"/meshes/0/primitives/0/attributes/TANGENT"}
+[    7.1s] Welded runtime topology: 1,117,173 → 990,818 vertices; UV corners preserved
+[   40.5s] Mesh: 1,117,173 source vertices; 79,947 runtime vertices / 160,000 triangles
+[   40.9s] Runtime surface topology: {'geometric_vertices': 79947, 'boundary_edges': 4, 'nonmanifold_edges': 2}
+[   41.1s] Solving surface-geodesic distances to avoid hand/coat/hair cross-binding
+[   46.5s] Solving pose-aware body / hair / clothing skin weights
+[   47.4s] Generating Idle: 121 keyframes
+[   47.9s] Generating Walk_InPlace: 37 keyframes
+[   48.1s] Generating Run_InPlace: 25 keyframes
+[   48.2s] Generating Wave: 91 keyframes
+[   48.6s] Generating Dance: 121 keyframes
+[   49.4s] Pose QA Idle: extent=1.000 H, 99.5-percentile edge stretch=1.118
+[   49.6s] Pose QA Walk_InPlace: extent=0.993 H, 99.5-percentile edge stretch=2.792
+[   49.7s] Pose QA Run_InPlace: extent=0.992 H, 99.5-percentile edge stretch=4.301
+[   49.9s] Pose QA Wave: extent=1.000 H, 99.5-percentile edge stretch=9.643
+[   50.1s] Pose QA Dance: extent=0.986 H, 99.5-percentile edge stretch=3.407
+[   50.1s] Exporting runtime GLB with five separate animation clips
+[   54.0s] Exporting FBX with actions (no extra leaf bones)
+[   56.2s] Exported tangent frames repaired: {'corrected_vertices': 92696, 'method': 'orthonormal fallback for degenerate UV tangents'}
+[   56.2s] Runtime GLB skin validated: {'joints': 48, 'vertices': 96614, 'unweighted_vertices': 0, 'max_influences': 4, 'rest_bind_error': 7.848589749934213e-07, 'animations': ['Dance', 'Idle', 'Run_InPlace', 'Walk_InPlace', 'Wave']}
+[   56.2s] Transferring skin weights to the original high-detail Blender mesh
+[   60.1s] Preserving original GLB geometry and textures; appending skeleton and animations
+[   62.2s] Checking both exports with the official Khronos validator before rendering
+anime-girl-rigged.glb: 0 errors, 1 warnings
 anime-girl-full.glb: 0 errors, 2 warnings
-Traceback (most recent call last):
-  File "/home/runner/work/Lsmsnksoslalql/Lsmsnksoslalql/tools/rigging/rig_model.py", line 681, in <module>
-    main()
-  File "/home/runner/work/Lsmsnksoslalql/Lsmsnksoslalql/tools/rigging/rig_model.py", line 660, in main
-    subprocess.run(['node', str(Path(__file__).with_name('validate-glb.cjs')),
-  File "/opt/hostedtoolcache/Python/3.11.17/x64/lib/python3.11/subprocess.py", line 571, in run
-    raise CalledProcessError(retcode, process.args,
-subprocess.CalledProcessError: Command '['node', '/home/runner/work/Lsmsnksoslalql/Lsmsnksoslalql/tools/rigging/validate-glb.cjs', '/home/runner/work/Lsmsnksoslalql/Lsmsnksoslalql/build/rigged/anime-girl-rigged.glb', '/home/runner/work/Lsmsnksoslalql/Lsmsnksoslalql/build/rigged/anime-girl-full.glb']' returned non-zero exit status 1.
+[   65.9s] DONE: GLB (runtime + full), FBX, Blender scene, skin checks and preview files
