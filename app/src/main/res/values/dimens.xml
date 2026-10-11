@@ -38,7 +38,7 @@
     <dimen name="toolbar_height">56dp</dimen>
 
     <!-- Avatars -->
-    <dimen name="avatar_row">56dp</dimen>
+    <dimen name="avatar_row">54dp</dimen>
     <dimen name="avatar_header">44dp</dimen>
     <dimen name="avatar_profile">58dp</dimen>
     <dimen name="avatar_hero">96dp</dimen>
@@ -46,12 +46,12 @@
     <dimen name="online_dot">13dp</dimen>
 
     <!-- List rows -->
-    <dimen name="row_min_height">78dp</dimen>
+    <dimen name="row_min_height">74dp</dimen>
     <dimen name="row_settings_height">68dp</dimen>
     <dimen name="row_sheet_action_height">60dp</dimen>
     <dimen name="row_icon_tile">40dp</dimen>
     <dimen name="row_icon_size">20dp</dimen>
-    <dimen name="divider_inset">84dp</dimen>
+    <dimen name="divider_inset">82dp</dimen>
 
     <!-- Conversation -->
     <dimen name="bubble_text_max_width">272dp</dimen>

@@ -441,6 +441,22 @@ public final class TsuyuStore extends SQLiteOpenHelper {
         }
     }
 
+    /**
+     * True when this client message already reached the server, so the outbox must not
+     * send it a second time (the row gets renamed to the server id on success).
+     */
+    public synchronized boolean isDelivered(String clientId) {
+        if (clientId == null) return false;
+        try (Cursor cursor = getReadableDatabase().rawQuery(
+                "SELECT message_id, state FROM messages WHERE account = ? AND client_id = ? LIMIT 1",
+                new String[]{account, clientId})) {
+            if (!cursor.moveToFirst()) return false;
+            String messageId = cursor.getString(0);
+            int state = cursor.getInt(1);
+            return messageId != null && !messageId.startsWith("local_") && state >= STATE_SENT;
+        }
+    }
+
     public synchronized List<OutboxItem> outbox() {
         List<OutboxItem> result = new ArrayList<>();
         try (Cursor cursor = getReadableDatabase().rawQuery(

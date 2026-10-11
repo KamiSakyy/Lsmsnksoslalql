@@ -2543,6 +2543,10 @@ public final class MainActivity extends AppCompatActivity {
                 activeStore.dequeue(item.clientId);
                 continue;
             }
+            if (activeStore.isDelivered(item.clientId)) {
+                activeStore.dequeue(item.clientId);
+                continue;
+            }
             if (item.attempts > 6) {
                 activeStore.updateState("local_" + item.clientId, TsuyuStore.STATE_FAILED);
                 continue;

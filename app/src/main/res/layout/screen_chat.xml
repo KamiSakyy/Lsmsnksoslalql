@@ -80,7 +80,8 @@
                 android:ellipsize="end"
                 android:maxLines="1"
                 android:text="Собеседник"
-                android:textAppearance="@style/TextAppearance.Tsuyu.RowTitle" />
+                android:textAppearance="@style/TextAppearance.Tsuyu.RowTitle"
+                android:textSize="17sp" />
 
             <TextView
                 android:id="@+id/chat_peer_status"
@@ -88,7 +89,8 @@
                 android:layout_height="wrap_content"
                 android:ellipsize="end"
                 android:maxLines="1"
-                android:textAppearance="@style/TextAppearance.Tsuyu.RowMeta" />
+                android:textAppearance="@style/TextAppearance.Tsuyu.RowMeta"
+                android:textSize="13sp" />
         </LinearLayout>
 
         <com.google.android.material.button.MaterialButton
