@@ -74,13 +74,17 @@ public final class NetworkPriority {
         if (manager == null) return false;
         synchronized (LOCK) {
             if (!enabled(app)) {
+                boolean changed = bound != null;
                 releaseLocked(manager);
+                if (changed) pokeDatabase();
                 return false;
             }
             Network target = mobile(app);
             if (target == null) {
                 // Мобильной сети нет или она не подтверждена: остаёмся на том, что есть.
+                boolean changed = bound != null;
                 releaseLocked(manager);
+                if (changed) pokeDatabase();
                 return false;
             }
             if (bound != null && bound.equals(target)) {
@@ -96,8 +100,20 @@ public final class NetworkPriority {
             if (ok) {
                 bound = target;
                 watch(app, manager);
+                // Смена сети рвёт старые соединения: просим базу подключиться заново,
+                // иначе клиент остаётся «отключённым» и в приложении видно «нет подключения».
+                pokeDatabase();
             }
             return ok;
+        }
+    }
+
+    /** После смены сети база должна открыть соединение заново. */
+    private static void pokeDatabase() {
+        try {
+            com.google.firebase.database.FirebaseDatabase.getInstance().goOnline();
+        } catch (Throwable ignored) {
+            // Firebase ещё не поднят — соединение откроется само при первом запросе.
         }
     }
 

@@ -227,6 +227,10 @@ public final class MainActivity extends AppCompatActivity {
     private MessageListAdapter messageListAdapter;
     private String lastRemoteChatId;
     private ValueEventListener userChatsListener;
+    /** Сколько раз подряд не удалось подписаться на список чатов (для повторов и подсказки). */
+    private int chatIndexRetries;
+    /** То же для переписки: сколько раз подряд не удалось подписаться на сообщения. */
+    private int chatMessagesRetries;
     private ValueEventListener messagesListener;
     private ValueEventListener typingListener;
     private ValueEventListener reactionsListener;
@@ -423,11 +427,19 @@ public final class MainActivity extends AppCompatActivity {
         });
     }
 
+    @Override
     protected void onStart() {
         super.onStart();
         visible = true;
         auth.addAuthStateListener(authListener);
         attachCallInbox();
+        // Возврат из фона: подписки, снятые в onStop, встают на место. Без этого список чатов
+        // и метки «в сети»/«печатает» оставались без обновлений — выглядело как «пропало подключение».
+        if (uid != null) {
+            watchConnection();
+            attachUserChatsListener();
+            if ("home".equals(page)) ui.post(this::updateSummaryWatches);
+        }
     }
 
     @Override
@@ -682,7 +694,8 @@ public final class MainActivity extends AppCompatActivity {
         loadFolders();
         rebuildFilterChips();
         homeOfflineBanner = root.findViewById(R.id.home_offline_banner);
-        if (homeOfflineBanner != null) homeOfflineBanner.setVisibility(onlineNow ? View.GONE : View.VISIBLE);
+        // Плашка — по настоящему состоянию сети, а не по одному только ответу базы.
+        updateOfflineBanner();
         watchConnection();
         attachUserChatsListener();
         renderChatList();
@@ -694,11 +707,23 @@ public final class MainActivity extends AppCompatActivity {
         detachUserChatsListener();
         listenedUserChatsUid = uid;
         userChatsListener = new ValueEventListener() {
-            @Override public void onDataChange(DataSnapshot snapshot) { loadChatSummaries(snapshot); }
+            @Override public void onDataChange(DataSnapshot snapshot) {
+                chatIndexRetries = 0;
+                loadChatSummaries(snapshot);
+            }
             @Override public void onCancelled(DatabaseError error) {
+                // Подписку отменили (связь оборвалась или сменилась сеть): сами подписываемся
+                // заново, чтобы список чатов не остался мёртвым до перезапуска приложения.
+                userChatsListener = null;
+                listenedUserChatsUid = null;
                 chatIndexLoaded = true;
                 renderChatList();
-                toast("Не удалось загрузить чаты. Проверьте подключение и попробуйте снова.");
+                chatIndexRetries++;
+                if (chatIndexRetries == 3) {
+                    toast("Не удалось загрузить чаты. Проверьте подключение и попробуйте снова.");
+                }
+                long delay = Math.min(20000L, 2000L * chatIndexRetries);
+                ui.postDelayed(MainActivity.this::attachUserChatsListener, delay);
             }
         };
         chatRepository.userChats(uid).addValueEventListener(userChatsListener);
@@ -868,7 +893,12 @@ public final class MainActivity extends AppCompatActivity {
                         requestChatListRender();
                     }
                 }
-                @Override public void onCancelled(DatabaseError error) { }
+                @Override public void onCancelled(DatabaseError error) {
+                    // Подписку отменили: убираем её из списка, и «в сети» подпишется заново.
+                    summaryPresenceListeners.remove(chatId);
+                    summaryPresenceRefs.remove(chatId);
+                    if ("home".equals(page)) ui.postDelayed(MainActivity.this::updateSummaryWatches, 3000L);
+                }
             };
             summaryPresenceRefs.put(chatId, ref);
             summaryPresenceListeners.put(chatId, listener);
@@ -885,7 +915,11 @@ public final class MainActivity extends AppCompatActivity {
                             && System.currentTimeMillis() - at <= 5500;
                     requestChatListRender();
                 }
-                @Override public void onCancelled(DatabaseError error) { }
+                @Override public void onCancelled(DatabaseError error) {
+                    summaryTypingListeners.remove(chatId);
+                    summaryTypingRefs.remove(chatId);
+                    if ("home".equals(page)) ui.postDelayed(MainActivity.this::updateSummaryWatches, 3000L);
+                }
             };
             summaryTypingRefs.put(chatId, ref);
             summaryTypingListeners.put(chatId, listener);
@@ -950,11 +984,18 @@ public final class MainActivity extends AppCompatActivity {
                     requestChatListRender();
                 });
             }
-            @Override public void onCancelled(DatabaseError error) { }
+            @Override public void onCancelled(DatabaseError error) { onSummaryMetaCancelled(chatId); }
         };
         summaryMetaRefs.put(chatId, ref);
         summaryMetaListeners.put(chatId, listener);
         ref.addValueEventListener(listener);
+    }
+
+    /** Подписка на данные строки отменена: убираем её, чтобы строка подписалась заново. */
+    private void onSummaryMetaCancelled(String chatId) {
+        summaryMetaListeners.remove(chatId);
+        summaryMetaRefs.remove(chatId);
+        if ("home".equals(page)) ui.postDelayed(MainActivity.this::updateSummaryWatches, 3000L);
     }
 
     private void removeSummaryRealtime(String chatId) {
@@ -1496,6 +1537,8 @@ public final class MainActivity extends AppCompatActivity {
     private void attachMessagesListener(String chatId, String peerUid) {
         messagesListener = new ValueEventListener() {
             @Override public void onDataChange(DataSnapshot snapshot) {
+                // Данные пришли — значит связь есть: счётчик повторов сбрасываем.
+                chatMessagesRetries = 0;
                 // Разбор всей истории уходит в фон: главный поток не ждёт перебора сообщений.
                 final int generation = ++messagesGeneration;
                 dataQueue.execute(() -> {
@@ -1529,7 +1572,21 @@ public final class MainActivity extends AppCompatActivity {
                     });
                 });
             }
-            @Override public void onCancelled(DatabaseError error) { toast("Не удалось загрузить сообщения. Проверьте подключение и попробуйте снова."); }
+            @Override public void onCancelled(DatabaseError error) {
+                // Подписку отменили (обрыв связи или смена сети): подписываемся заново, пока
+                // переписка открыта, — иначе экран остаётся без сообщений до перезапуска.
+                messagesListener = null;
+                chatMessagesRetries++;
+                if (chatMessagesRetries == 3) {
+                    toast("Связь пропала — восстанавливаю соединение…");
+                }
+                long delay = Math.min(20000L, 2000L * chatMessagesRetries);
+                ui.postDelayed(() -> {
+                    if (!"chat".equals(page) || !chatId.equals(activeChatId)) return;
+                    if (messagesListener != null) return;
+                    attachMessagesListener(chatId, peerUid);
+                }, delay);
+            }
         };
         chatRepository.messages(chatId).addValueEventListener(messagesListener);
     }
@@ -3090,6 +3147,7 @@ public final class MainActivity extends AppCompatActivity {
             if (uid != null) chatRepository.setTyping(activeChatId, uid, false);
         }
         markNoActiveChat();
+        chatMessagesRetries = 0;
         messagesListener = null; typingListener = null; reactionsListener = null; peerPresenceListener = null; peerPresenceRef = null;
         peerLastSeenListener = null; peerLastSeenRef = null; receiptListener = null; receiptRef = null; peerReadAt = 0;
         peerTyping = false; peerOnline = false; peerLastSeenVisible = false; peerLastSeen = 0;
@@ -3458,12 +3516,54 @@ public final class MainActivity extends AppCompatActivity {
         connectionListener = new ValueEventListener() {
             @Override public void onDataChange(DataSnapshot snapshot) {
                 onlineNow = Boolean.TRUE.equals(snapshot.getValue(Boolean.class));
-                if (homeOfflineBanner != null) homeOfflineBanner.setVisibility(onlineNow ? View.GONE : View.VISIBLE);
-                if (onlineNow) dataQueue.execute(MainActivity.this::replayOutbox);
+                if (onlineNow) {
+                    ui.removeCallbacks(reconnectPending);
+                    dataQueue.execute(MainActivity.this::replayOutbox);
+                } else {
+                    // Связь пропала: через несколько секунд пробуем поднять её сами.
+                    ui.removeCallbacks(reconnectPending);
+                    ui.postDelayed(reconnectPending, 6000L);
+                }
+                updateOfflineBanner();
             }
             @Override public void onCancelled(DatabaseError error) { }
         };
         database.getReference(".info/connected").addValueEventListener(connectionListener);
+    }
+
+    /** Повторная попытка соединения: сеть выбирается заново, база просит подключиться снова. */
+    private final Runnable reconnectPending = () -> {
+        if (onlineNow || isFinishing()) return;
+        try { com.tsuyu.messenger.call.NetworkPriority.refresh(this); } catch (Throwable ignored) { }
+        try { if (database != null) database.goOnline(); } catch (Throwable ignored) { }
+        updateOfflineBanner();
+    };
+
+    /**
+     * Плашка «нет подключения» показывается только тогда, когда сети нет на самом телефоне.
+     * Если сеть есть, а база ещё договаривается — не пугаем, а тихо переподключаемся.
+     */
+    private void updateOfflineBanner() {
+        if (homeOfflineBanner == null) return;
+        boolean show = !onlineNow && !deviceHasNetwork();
+        homeOfflineBanner.setVisibility(show ? View.VISIBLE : View.GONE);
+    }
+
+    /** Есть ли на телефоне сеть с подтверждённым доступом в интернет. */
+    private boolean deviceHasNetwork() {
+        try {
+            android.net.ConnectivityManager manager = (android.net.ConnectivityManager)
+                    getSystemService(android.content.Context.CONNECTIVITY_SERVICE);
+            if (manager == null) return true;
+            android.net.Network active = manager.getActiveNetwork();
+            android.net.NetworkCapabilities capabilities =
+                    active == null ? null : manager.getNetworkCapabilities(active);
+            return capabilities != null
+                    && capabilities.hasCapability(android.net.NetworkCapabilities.NET_CAPABILITY_INTERNET)
+                    && capabilities.hasCapability(android.net.NetworkCapabilities.NET_CAPABILITY_VALIDATED);
+        } catch (Throwable ignored) {
+            return true;
+        }
     }
 
     /** Re-sends everything that was queued while the device had no connectivity. */
