@@ -140,8 +140,6 @@ public final class MainActivity extends AppCompatActivity {
     private DrawerLayout drawerLayout;
     private View drawerRoot;
     private boolean pinUnlocked;
-    private final Map<String, String> folderNames = new java.util.LinkedHashMap<>();
-    private final Map<String, Set<String>> folderMembers = new java.util.LinkedHashMap<>();
     private long unreadDividerAt;
     private Drawable swipePinIcon;
     private Drawable swipeReadIcon;
@@ -153,7 +151,6 @@ public final class MainActivity extends AppCompatActivity {
     private View chatScrollBottom;
     private ValueEventListener connectionListener;
     private boolean onlineNow = true;
-    private List<ChatMessage> cachedMessages = new ArrayList<>();
     private FirebaseAuth.AuthStateListener authListener;
 
     private String uid;
@@ -161,6 +158,23 @@ public final class MainActivity extends AppCompatActivity {
     private String activePeerUid;
     private Profile myProfile;
     private Profile peerProfile;
+    // Состояние экранов вынесено в модели (MVVM): список чатов — HomeViewModel,
+    // открытая переписка — ConversationViewModel. Ниже — короткие имена для удобства.
+    private com.tsuyu.messenger.ui.viewmodel.HomeViewModel homeModel;
+    private com.tsuyu.messenger.ui.viewmodel.ConversationViewModel conversationModel;
+    private Map<String, ChatSummary> summaries;
+    private Map<String, String> folderNames;
+    private Map<String, Set<String>> folderMembers;
+    private java.util.concurrent.ConcurrentHashMap<String, Long> presenceCheckedAt;
+    private Set<String> loadingSummaryIds;
+    private java.util.concurrent.ConcurrentHashMap<String, String> payloadIndex;
+    private java.util.Set<String> payloadLoading;
+    private Map<String, ChatMessage> optimisticMessages;
+    private Map<String, Set<String>> messageReactions;
+    private Map<String, Map<String, Integer>> pollVotes;
+    private Set<String> decrypting;
+    private Set<String> decryptFailures;
+
     private String page = "";
     private boolean authFormIsRegister;
     private boolean editingAvatar;
@@ -175,18 +189,12 @@ public final class MainActivity extends AppCompatActivity {
     // Один единственный поток для шифрования заставлял сообщения ждать друг друга.
     private final ExecutorService cryptoQueue = com.tsuyu.messenger.util.Background.crypto();
     private final ExecutorService dataQueue = com.tsuyu.messenger.util.Background.io();
-    private final Set<String> decrypting = ConcurrentHashMap.newKeySet();
-    private final Set<String> decryptFailures = ConcurrentHashMap.newKeySet();
-    private final Set<String> loadingSummaryIds = ConcurrentHashMap.newKeySet();
-    private final Map<String, ChatSummary> summaries = new ConcurrentHashMap<>();
-    private final Map<String, ChatMessage> optimisticMessages = new ConcurrentHashMap<>();
     private final Map<String, DatabaseReference> summaryPresenceRefs = new ConcurrentHashMap<>();
     private final Map<String, ValueEventListener> summaryPresenceListeners = new ConcurrentHashMap<>();
     private final Map<String, DatabaseReference> summaryTypingRefs = new ConcurrentHashMap<>();
     private final Map<String, ValueEventListener> summaryTypingListeners = new ConcurrentHashMap<>();
     private final Map<String, DatabaseReference> summaryMetaRefs = new ConcurrentHashMap<>();
     private final Map<String, ValueEventListener> summaryMetaListeners = new ConcurrentHashMap<>();
-    private final Map<String, Set<String>> messageReactions = new ConcurrentHashMap<>();
 
     private ActivityResultLauncher<String> avatarPicker;
     private ActivityResultLauncher<String[]> documentPicker;
@@ -216,7 +224,6 @@ public final class MainActivity extends AppCompatActivity {
     private ChatListAdapter chatListAdapter;
     private ProfileSearchAdapter profileSearchAdapter;
     private MessageListAdapter messageListAdapter;
-    private List<ChatMessage> lastRemoteMessages = new ArrayList<>();
     private String lastRemoteChatId;
     private ValueEventListener userChatsListener;
     private ValueEventListener messagesListener;
@@ -251,25 +258,38 @@ public final class MainActivity extends AppCompatActivity {
     /** Ключ обоев, которые сейчас выбираем в галерее. */
     private String pendingWallpaperKey;
     /** Голоса опросов: messageId -> (uid -> номер варианта). */
-    private final Map<String, Map<String, Integer>> pollVotes = new ConcurrentHashMap<>();
     private com.google.firebase.database.DatabaseReference pollVotesRef;
     private com.google.firebase.database.ValueEventListener pollVotesListener;
     private String burnRefreshChatId;
     /** Номер последнего разбора истории: старые результаты не должны перебивать новые. */
     private int messagesGeneration;
     /** Когда по каждому чату последний раз спрашивали «в сети» и «печатает». */
-    private final java.util.concurrent.ConcurrentHashMap<String, Long> presenceCheckedAt =
-            new java.util.concurrent.ConcurrentHashMap<>();
     /** Готовые тексты сообщений этого чата, прочитанные с диска одним заходом. */
-    private final java.util.concurrent.ConcurrentHashMap<String, String> payloadIndex =
-            new java.util.concurrent.ConcurrentHashMap<>();
     /** Какие тексты сейчас дочитываются в фоне: лишние повторы не нужны. */
-    private final java.util.Set<String> payloadLoading =
-            java.util.Collections.newSetFromMap(new java.util.concurrent.ConcurrentHashMap<String, Boolean>());
+    /** Фрагмент, который сейчас показан (экраны живут отдельными классами). */
+    private com.tsuyu.messenger.ui.screens.TsuyuScreen currentScreenFragment;
 
     @Override
     protected void onCreate(Bundle savedInstanceState) {
         super.onCreate(savedInstanceState);
+        // Данные экранов берём из моделей: они переживают пересоздание экрана и не мешаются
+        // с кодом разметки.
+        homeModel = new androidx.lifecycle.ViewModelProvider(this)
+                .get(com.tsuyu.messenger.ui.viewmodel.HomeViewModel.class);
+        conversationModel = new androidx.lifecycle.ViewModelProvider(this)
+                .get(com.tsuyu.messenger.ui.viewmodel.ConversationViewModel.class);
+        summaries = homeModel.summaries;
+        folderNames = homeModel.folderNames;
+        folderMembers = homeModel.folderMembers;
+        presenceCheckedAt = homeModel.presenceCheckedAt;
+        loadingSummaryIds = homeModel.loadingSummaryIds;
+        payloadIndex = conversationModel.payloadIndex;
+        payloadLoading = conversationModel.payloadLoading;
+        optimisticMessages = conversationModel.optimisticMessages;
+        messageReactions = conversationModel.messageReactions;
+        pollVotes = conversationModel.pollVotes;
+        decrypting = conversationModel.decrypting;
+        decryptFailures = conversationModel.decryptFailures;
         // Material You: если человек включил «Цвета системы», берём палитру обоев телефона.
         if (com.tsuyu.messenger.util.Settings.getBoolean("dynamic_colors", false)) {
             try {
@@ -365,7 +385,7 @@ public final class MainActivity extends AppCompatActivity {
                 messageCache = null;
                 store = null;
                 vault = null;
-                cachedMessages = new ArrayList<>();
+                conversationModel.cachedMessages = new ArrayList<>();
                 myProfile = null;
                 peerProfile = null;
                 isNewProfile = false;
@@ -1111,8 +1131,7 @@ public final class MainActivity extends AppCompatActivity {
      * Готовит подпись строки в фоне: расшифровка-из-кэша и разбор JSON выполняются вне
      * главного потока, результат складывается в строку чата.
      */
-    private void refreshSummaryPreview(final ChatSummary summary) {
-        if (summary == null || summary.chatId == null) return;
+    private void refreshSummaryPreview(final ChatSummary summary) {        if (summary == null || summary.chatId == null) return;
         final String chatId = summary.chatId;
         final ChatMessage last = summary.lastMessage;
         dataQueue.execute(() -> {
@@ -1249,7 +1268,7 @@ public final class MainActivity extends AppCompatActivity {
         activePeerUid = peerUid;
         replyToId = null;
         replyToText = null;
-        lastRemoteMessages = new ArrayList<>();
+        conversationModel.lastRemoteMessages = new ArrayList<>();
         lastRemoteChatId = chatId;
         getSharedPreferences("tsuyu_settings", MODE_PRIVATE).edit().putString("active_chat", chatId).apply();
         page = "chat";
@@ -1601,7 +1620,7 @@ public final class MainActivity extends AppCompatActivity {
                     }
                     if (!users.isEmpty()) messageReactions.put(message.getKey(), users);
                 }
-                if (chatId.equals(activeChatId)) renderMessages(lastRemoteMessages, activePeerUid);
+                if (chatId.equals(activeChatId)) renderMessages(conversationModel.lastRemoteMessages, activePeerUid);
             }
             @Override public void onCancelled(DatabaseError error) { }
         };
@@ -1615,16 +1634,16 @@ public final class MainActivity extends AppCompatActivity {
         final SignalE2ee activeCrypto = crypto;
         final LocalMessageCache activeCache = messageCache;
         lastRemoteChatId = renderChatId;
-        lastRemoteMessages = new ArrayList<>(messages);
+        conversationModel.lastRemoteMessages = new ArrayList<>(messages);
 
         Set<String> serverClientIds = new HashSet<>();
-        for (ChatMessage message : lastRemoteMessages) {
+        for (ChatMessage message : conversationModel.lastRemoteMessages) {
             if (message.clientId != null) {
                 serverClientIds.add(message.clientId);
                 reconcileOptimisticMessage(renderChatId, message);
             }
         }
-        List<ChatMessage> visible = new ArrayList<>(lastRemoteMessages);
+        List<ChatMessage> visible = new ArrayList<>(conversationModel.lastRemoteMessages);
         for (ChatMessage local : optimisticMessages.values()) {
             if (!renderChatId.equals(local.localChatId)) continue;
             if (local.clientId != null && serverClientIds.contains(local.clientId)) continue;
@@ -1632,7 +1651,7 @@ public final class MainActivity extends AppCompatActivity {
         }
         Set<String> visibleIds = new HashSet<>();
         for (ChatMessage visibleMessage : visible) if (visibleMessage.id != null) visibleIds.add(visibleMessage.id);
-        for (ChatMessage cachedMessage : cachedMessages) {
+        for (ChatMessage cachedMessage : conversationModel.cachedMessages) {
             if (cachedMessage.id == null || !renderChatId.equals(cachedMessage.localChatId)) continue;
             if (!visibleIds.add(cachedMessage.id)) continue;
             visible.add(cachedMessage);
@@ -2075,7 +2094,7 @@ public final class MainActivity extends AppCompatActivity {
             local.pending = false;
             local.failed = true;
             if (store != null && local.id != null) store.updateState(local.id, TsuyuStore.STATE_FAILED);
-            if (chatId != null && chatId.equals(activeChatId)) renderMessages(lastRemoteMessages, activePeerUid);
+            if (chatId != null && chatId.equals(activeChatId)) renderMessages(conversationModel.lastRemoteMessages, activePeerUid);
             return;
         }
         SignalE2ee activeCrypto = crypto;
@@ -2140,7 +2159,7 @@ public final class MainActivity extends AppCompatActivity {
             local.pending = false;
             local.failed = true;
             if (store != null && local.id != null) store.updateState(local.id, TsuyuStore.STATE_FAILED);
-            if (chatId.equals(activeChatId)) renderMessages(lastRemoteMessages, peerUid);
+            if (chatId.equals(activeChatId)) renderMessages(conversationModel.lastRemoteMessages, peerUid);
             toast("Не удалось отправить сообщение.");
         }
     }
@@ -2172,7 +2191,7 @@ public final class MainActivity extends AppCompatActivity {
         }
         ChatSummary summary = summaries.get(retry.localChatId);
         if (summary != null) { summary.lastAt = retry.sentAt; summary.lastMessage = retry; renderChatList(); }
-        renderMessages(lastRemoteMessages, activePeerUid);
+        renderMessages(conversationModel.lastRemoteMessages, activePeerUid);
         dispatchOptimisticMessage(retry, activePeerUid);
     }
 
@@ -2343,10 +2362,10 @@ public final class MainActivity extends AppCompatActivity {
                         renderChatList();
                     }
                     if (chatId.equals(activeChatId)) {
-                        cachedMessages = new ArrayList<>();
-                        lastRemoteMessages = new ArrayList<>();
+                        conversationModel.cachedMessages = new ArrayList<>();
+                        conversationModel.lastRemoteMessages = new ArrayList<>();
                         optimisticMessages.clear();
-                        renderMessages(lastRemoteMessages, activePeerUid);
+                        renderMessages(conversationModel.lastRemoteMessages, activePeerUid);
                     }
                     toast(getString(R.string.chat_clear_done));
                 }).show();
@@ -2782,7 +2801,7 @@ public final class MainActivity extends AppCompatActivity {
                             .putBoolean("bold", bold.isChecked())
                             .putBoolean("italic", italic.isChecked()).apply();
                     if (messageListAdapter != null && messageList != null && "chat".equals(page)) {
-                        renderMessages(lastRemoteMessages, activePeerUid);
+                        renderMessages(conversationModel.lastRemoteMessages, activePeerUid);
                     }
                 }).show();
     }
@@ -2837,18 +2856,56 @@ public final class MainActivity extends AppCompatActivity {
         });
     }
 
+    /**
+     * Показывает экран как отдельный фрагмент: у каждого экрана свой класс со своим
+     * жизненным циклом, а не общий «мешок» в одном классе. Переключение мгновенное —
+     * без переходов и затуханий.
+     */
     private View showScreen(int layoutResource) {
         if (screenHost == null) {
             setContentView(R.layout.activity_main);
             screenHost = findViewById(R.id.screen_host);
         }
-        View next = getLayoutInflater().inflate(layoutResource, screenHost, false);
-        // Экраны переключаются мгновенно: никаких переходов и затуханий.
-        screenHost.removeAllViews();
-        screenHost.addView(next);
+        TsuyuScreen screen = screenFor(layoutResource);
+        String tag = TsuyuScreen.tagFor(layoutResource);
+        TsuyuScreen previous = currentScreenFragment;
+        if (previous != null && !previous.equals(screen)) {
+            try { previous.onScreenHidden(); } catch (Throwable ignored) { }
+        }
+        try {
+            getSupportFragmentManager().beginTransaction()
+                    .replace(R.id.screen_host, screen, tag)
+                    .commitNow();
+        } catch (Throwable error) {
+            com.tsuyu.messenger.TsuyuLogs.crash(this, "показ экрана", error);
+        }
+        View next = screen.getView();
+        if (next == null) {
+            // Фрагмент не отдал разметку: рисуем напрямую, чтобы экран не остался пустым.
+            next = getLayoutInflater().inflate(layoutResource, screenHost, false);
+            screenHost.removeAllViews();
+            screenHost.addView(next);
+        }
         currentScreen = next;
+        currentScreenFragment = screen;
+        if (next != null) {
+            try { screen.onScreenShown(next); } catch (Throwable ignored) { }
+        }
         return next;
     }
+
+    private TsuyuScreen screenFor(int layoutResource) {
+        if (currentScreenFragment != null && currentScreenFragment.layoutId() == layoutResource) {
+            return currentScreenFragment;
+        }
+        if (layoutResource == R.layout.screen_home) return new com.tsuyu.messenger.ui.screens.HomeFragment();
+        if (layoutResource == R.layout.screen_chat) return new com.tsuyu.messenger.ui.screens.ChatFragment();
+        if (layoutResource == R.layout.screen_settings) return new com.tsuyu.messenger.ui.screens.SettingsFragment();
+        if (layoutResource == R.layout.screen_search) return new com.tsuyu.messenger.ui.screens.SearchFragment();
+        if (layoutResource == R.layout.screen_profile_editor) return new com.tsuyu.messenger.ui.screens.ProfileFragment();
+        return new com.tsuyu.messenger.ui.screens.AuthFragment();
+    }
+
 
     private void bindAvatar(ShapeableImageView image, TextView fallback, Profile profile,
                             String displayName, String encoded) {
@@ -2971,7 +3028,7 @@ public final class MainActivity extends AppCompatActivity {
         peerLastSeenListener = null; peerLastSeenRef = null; receiptListener = null; receiptRef = null; peerReadAt = 0;
         peerTyping = false; peerOnline = false; peerLastSeenVisible = false; peerLastSeen = 0;
         messageList = null; messageListAdapter = null; chatEmptyState = null; chatScrollBottom = null;
-        cachedMessages = new ArrayList<>();
+        conversationModel.cachedMessages = new ArrayList<>();
         unreadDividerAt = 0;
         composer = null; replyBanner = null; replyBannerText = null; chatStatus = null; chatAvatarDot = null;
         ui.removeCallbacks(clearTyping);
@@ -3133,8 +3190,23 @@ public final class MainActivity extends AppCompatActivity {
         String chatId = activeChatId;
         if (chatId == null || !"chat".equals(page)) return;
         if (!chatId.equals(lastRemoteChatId)) return;
-        renderMessages(lastRemoteMessages, activePeerUid);
+        renderMessages(conversationModel.lastRemoteMessages, activePeerUid);
     };
+
+    /** Список чатов снова на экране: частые подписки возвращаются. */
+    public void onHomeScreenShown() {
+        try { updateSummaryWatches(); } catch (Throwable ignored) { }
+    }
+
+    /** Список чатов ушёл с экрана: подписки «в сети» и «печатает» снимаются. */
+    public void onHomeScreenLeft() {
+        try { detachSummaryWatches(); } catch (Throwable ignored) { }
+    }
+
+    /** Экран переписки закрыт: подписки на сообщения, реакции и метки сняты. */
+    public void onChatScreenLeft() {
+        try { detachChatListeners(); } catch (Throwable ignored) { }
+    }
 
     private void markNoActiveChat() {
         getSharedPreferences("tsuyu_settings", MODE_PRIVATE).edit().remove("active_chat").apply();
@@ -3372,8 +3444,8 @@ public final class MainActivity extends AppCompatActivity {
                     if (time != 0) return time;
                     return String.valueOf(first.id).compareTo(String.valueOf(second.id));
                 });
-                cachedMessages = page;
-                renderMessages(lastRemoteMessages, peerUid);
+                conversationModel.cachedMessages = page;
+                renderMessages(conversationModel.lastRemoteMessages, peerUid);
             });
         });
     }
@@ -3828,7 +3900,7 @@ public final class MainActivity extends AppCompatActivity {
     private void forwardSelectedMessages() {
         if (selectedMessageIds.isEmpty()) { toast(getString(R.string.multi_select_empty)); return; }
         StringBuilder builder = new StringBuilder();
-        for (ChatMessage message : cachedMessages) {
+        for (ChatMessage message : conversationModel.cachedMessages) {
             String key = selectionKey(message);
             if (key == null || !selectedMessageIds.contains(key)) continue;
             String text = message.localPayload != null ? textFromPayload(message.localPayload) : null;
@@ -4175,7 +4247,7 @@ public final class MainActivity extends AppCompatActivity {
                 pollVotes.clear();
                 pollVotes.putAll(next);
                 if (chatId.equals(activeChatId) && "chat".equals(page)) {
-                    renderMessages(lastRemoteMessages, activePeerUid);
+                    renderMessages(conversationModel.lastRemoteMessages, activePeerUid);
                 }
             }
             @Override public void onCancelled(DatabaseError error) { }
@@ -4257,7 +4329,7 @@ public final class MainActivity extends AppCompatActivity {
         ui.postDelayed(() -> {
             burnRefreshChatId = null;
             if (chatId.equals(activeChatId) && "chat".equals(page)) {
-                renderMessages(lastRemoteMessages, activePeerUid);
+                renderMessages(conversationModel.lastRemoteMessages, activePeerUid);
             }
         }, 5000L);
     }
