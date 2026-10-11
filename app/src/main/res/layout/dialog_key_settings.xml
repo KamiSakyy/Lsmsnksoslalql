@@ -1,0 +1,55 @@
+<?xml version="1.0" encoding="utf-8"?>
+<LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:app="http://schemas.android.com/apk/res-auto"
+    android:layout_width="match_parent"
+    android:layout_height="wrap_content"
+    android:orientation="vertical"
+    android:padding="20dp">
+    <TextView
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:layout_marginTop="9dp"
+        android:text="Секретные данные хранятся на этом устройстве. Сверьте код безопасности с собеседником, чтобы убедиться, что вы общаетесь именно с ним."
+        android:textColor="@color/tsuyu_secondary"
+        android:textSize="13sp" />
+    <TextView
+        android:layout_width="wrap_content"
+        android:layout_height="wrap_content"
+        android:layout_marginTop="16dp"
+        android:text="Мой код безопасности"
+        android:textColor="@color/tsuyu_secondary"
+        android:textSize="12sp"
+        android:textStyle="bold" />
+    <com.google.android.material.card.MaterialCardView
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:layout_marginTop="7dp"
+        app:cardBackgroundColor="@color/tsuyu_header"
+        app:cardCornerRadius="14dp"
+        app:cardElevation="0dp">
+        <TextView
+            android:id="@+id/key_fingerprint"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:padding="12dp"
+            android:textColor="@color/tsuyu_white"
+            android:textIsSelectable="true"
+            android:textSize="11sp" />
+    </com.google.android.material.card.MaterialCardView>
+    <com.google.android.material.button.MaterialButton
+        android:id="@+id/key_copy_bundle"
+        android:layout_width="match_parent"
+        android:layout_height="48dp"
+        android:layout_marginTop="10dp"
+        android:text="Скопировать код безопасности"
+        app:backgroundTint="@color/tsuyu_input"
+        app:cornerRadius="15dp" />
+    <com.google.android.material.button.MaterialButton
+        android:id="@+id/key_rotate"
+        android:layout_width="match_parent"
+        android:layout_height="48dp"
+        android:layout_marginTop="9dp"
+        android:text="Обновить код безопасности"
+        app:backgroundTint="@color/tsuyu_input"
+        app:cornerRadius="15dp" />
+</LinearLayout>

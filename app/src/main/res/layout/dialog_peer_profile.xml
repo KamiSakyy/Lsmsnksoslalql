@@ -1,0 +1,121 @@
+<?xml version="1.0" encoding="utf-8"?>
+<androidx.core.widget.NestedScrollView xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:app="http://schemas.android.com/apk/res-auto"
+    android:layout_width="match_parent"
+    android:layout_height="wrap_content"
+    android:fillViewport="false">
+    <LinearLayout
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:orientation="vertical"
+        android:padding="20dp">
+        <LinearLayout
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:gravity="center_horizontal"
+            android:orientation="vertical"
+            android:paddingTop="6dp">
+            <FrameLayout
+                android:layout_width="88dp"
+                android:layout_height="88dp">
+                <TextView
+                    android:id="@+id/peer_avatar_initial"
+                    android:layout_width="match_parent"
+                    android:layout_height="match_parent"
+                    android:background="@drawable/bg_avatar_fallback"
+                    android:gravity="center"
+                    android:textColor="@color/tsuyu_white"
+                    android:textSize="34sp"
+                    android:textStyle="bold" />
+                <com.google.android.material.imageview.ShapeableImageView
+                    android:id="@+id/peer_avatar"
+                    android:layout_width="match_parent"
+                    android:layout_height="match_parent"
+                    android:scaleType="centerCrop"
+                    android:visibility="gone"
+                    app:shapeAppearanceOverlay="@style/TsuyuCircleShape" />
+            </FrameLayout>
+            <TextView
+                android:id="@+id/peer_profile_name"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:layout_marginTop="12dp"
+                android:ellipsize="end"
+                android:gravity="center"
+                android:maxLines="2"
+                android:textColor="@color/tsuyu_white"
+                android:textSize="19sp"
+                android:textStyle="bold" />
+            <TextView
+                android:id="@+id/peer_profile_username"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:layout_marginTop="4dp"
+                android:gravity="center"
+                android:textColor="@color/tsuyu_blue"
+                android:textSize="13sp" />
+        </LinearLayout>
+        <TextView
+            android:id="@+id/peer_profile_about"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:layout_marginTop="16dp"
+            android:gravity="center"
+            android:textColor="@color/tsuyu_secondary"
+            android:textSize="14sp" />
+        <com.google.android.material.card.MaterialCardView
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:layout_marginTop="16dp"
+            app:cardBackgroundColor="@color/tsuyu_header"
+            app:cardCornerRadius="14dp"
+            app:cardElevation="0dp">
+            <LinearLayout
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:orientation="vertical"
+                android:padding="12dp">
+                <TextView
+                    android:layout_width="wrap_content"
+                    android:layout_height="wrap_content"
+                    android:text="Код безопасности"
+                    android:textColor="@color/tsuyu_secondary"
+                    android:textSize="12sp"
+                    android:textStyle="bold" />
+                <TextView
+                    android:id="@+id/peer_fingerprint"
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:layout_marginTop="7dp"
+                    android:text="Загрузка…"
+                    android:textColor="@color/tsuyu_white"
+                    android:textIsSelectable="true"
+                    android:textSize="11sp" />
+            </LinearLayout>
+        </com.google.android.material.card.MaterialCardView>
+        <com.google.android.material.button.MaterialButton
+            android:id="@+id/peer_trust_key"
+            android:layout_width="match_parent"
+            android:layout_height="48dp"
+            android:layout_marginTop="10dp"
+            android:text="Сверить код безопасности"
+            app:backgroundTint="@color/tsuyu_input"
+            app:cornerRadius="15dp" />
+        <com.google.android.material.button.MaterialButton
+            android:id="@+id/peer_contact_button"
+            android:layout_width="match_parent"
+            android:layout_height="48dp"
+            android:layout_marginTop="12dp"
+            android:text="Добавить в контакты"
+            app:backgroundTint="@color/tsuyu_input"
+            app:cornerRadius="15dp" />
+        <com.google.android.material.button.MaterialButton
+            android:id="@+id/peer_access_button"
+            android:layout_width="match_parent"
+            android:layout_height="48dp"
+            android:layout_marginTop="8dp"
+            android:text="Разрешить доступ по списку"
+            app:backgroundTint="@color/tsuyu_input"
+            app:cornerRadius="15dp" />
+    </LinearLayout>
+</androidx.core.widget.NestedScrollView>

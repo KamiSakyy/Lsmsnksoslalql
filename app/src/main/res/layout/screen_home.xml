@@ -1,0 +1,112 @@
+<?xml version="1.0" encoding="utf-8"?>
+<LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:app="http://schemas.android.com/apk/res-auto"
+    android:id="@+id/home_root"
+    android:layout_width="match_parent"
+    android:layout_height="match_parent"
+    android:background="@color/tsuyu_black"
+    android:orientation="vertical">
+
+    <com.google.android.material.appbar.MaterialToolbar
+        android:id="@+id/home_toolbar"
+        android:layout_width="match_parent"
+        android:layout_height="56dp"
+        android:background="@color/tsuyu_header"
+        android:elevation="0dp"
+        app:menu="@menu/home_toolbar"
+        app:title="@string/nav_chats"
+        app:titleTextColor="@color/tsuyu_white" />
+
+    <FrameLayout
+        android:layout_width="match_parent"
+        android:layout_height="0dp"
+        android:layout_weight="1">
+        <androidx.recyclerview.widget.RecyclerView
+            android:id="@+id/chats_list"
+            android:layout_width="match_parent"
+            android:layout_height="match_parent"
+            android:clipToPadding="false"
+            android:paddingBottom="12dp"
+            android:scrollbars="none" />
+
+        <LinearLayout
+            android:id="@+id/home_loading_state"
+            android:layout_width="match_parent"
+            android:layout_height="match_parent"
+            android:orientation="vertical"
+            android:visibility="gone">
+            <include layout="@layout/row_chat_skeleton" />
+            <include layout="@layout/row_chat_skeleton" />
+            <include layout="@layout/row_chat_skeleton" />
+            <include layout="@layout/row_chat_skeleton" />
+        </LinearLayout>
+
+        <LinearLayout
+            android:id="@+id/home_empty_state"
+            android:layout_width="match_parent"
+            android:layout_height="match_parent"
+            android:gravity="center"
+            android:orientation="vertical"
+            android:paddingStart="32dp"
+            android:paddingEnd="32dp"
+            android:visibility="gone">
+            <ImageView
+                android:layout_width="54dp"
+                android:layout_height="54dp"
+                android:contentDescription=""
+                android:src="@drawable/ic_chat"
+                app:tint="@color/tsuyu_secondary" />
+            <TextView
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:layout_marginTop="18dp"
+                android:text="Пока нет чатов"
+                android:textColor="@color/tsuyu_white"
+                android:textSize="20sp"
+                android:textStyle="bold" />
+            <TextView
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:layout_marginTop="8dp"
+                android:gravity="center"
+                android:text="Найдите собеседника, чтобы начать разговор."
+                android:textColor="@color/tsuyu_secondary"
+                android:textSize="14sp" />
+            <com.google.android.material.button.MaterialButton
+                android:id="@+id/home_find_people"
+                android:layout_width="wrap_content"
+                android:layout_height="48dp"
+                android:layout_marginTop="18dp"
+                android:text="Найти собеседника"
+                app:backgroundTint="@color/tsuyu_blue"
+                app:cornerRadius="24dp" />
+        </LinearLayout>
+
+        <com.google.android.material.floatingactionbutton.FloatingActionButton
+            android:id="@+id/home_new_chat"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:layout_gravity="bottom|end"
+            android:layout_marginEnd="18dp"
+            android:layout_marginBottom="18dp"
+            android:contentDescription="Новый чат"
+            android:visibility="gone"
+            app:backgroundTint="@color/tsuyu_blue"
+            app:fabSize="normal"
+            app:shapeAppearanceOverlay="@style/TsuyuCircleShape"
+            app:srcCompat="@drawable/ic_compose"
+            app:tint="@color/tsuyu_white" />
+    </FrameLayout>
+
+    <com.google.android.material.bottomnavigation.BottomNavigationView
+        android:id="@+id/main_navigation"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:background="@color/tsuyu_black"
+        android:elevation="0dp"
+        app:itemActiveIndicatorStyle="@null"
+        app:itemIconTint="@color/nav_item_tint"
+        app:itemTextColor="@color/nav_item_tint"
+        app:labelVisibilityMode="labeled"
+        app:menu="@menu/main_navigation" />
+</LinearLayout>

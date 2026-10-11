@@ -1,0 +1,95 @@
+<?xml version="1.0" encoding="utf-8"?>
+<LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:app="http://schemas.android.com/apk/res-auto"
+    android:id="@+id/search_root"
+    android:layout_width="match_parent"
+    android:layout_height="match_parent"
+    android:background="@color/tsuyu_black"
+    android:orientation="vertical">
+    <com.google.android.material.appbar.MaterialToolbar
+        android:id="@+id/search_toolbar"
+        android:layout_width="match_parent"
+        android:layout_height="56dp"
+        android:background="@color/tsuyu_header"
+        app:navigationIcon="@drawable/ic_arrow_back"
+        app:title="@string/search_people"
+        app:titleTextColor="@color/tsuyu_white" />
+    <com.google.android.material.textfield.TextInputLayout
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:layout_marginStart="16dp"
+        android:layout_marginTop="14dp"
+        android:layout_marginEnd="16dp"
+        android:layout_marginBottom="12dp"
+        app:boxBackgroundColor="@color/tsuyu_input"
+        app:boxBackgroundMode="filled"
+        app:boxCornerRadiusBottomEnd="18dp"
+        app:boxCornerRadiusBottomStart="18dp"
+        app:boxCornerRadiusTopEnd="18dp"
+        app:boxCornerRadiusTopStart="18dp"
+        app:boxStrokeColor="@color/tsuyu_input"
+        app:boxStrokeWidth="0dp"
+        app:boxStrokeWidthFocused="0dp"
+        app:hintEnabled="false"
+        app:startIconDrawable="@drawable/ic_search"
+        app:startIconTint="@color/tsuyu_secondary">
+        <com.google.android.material.textfield.TextInputEditText
+            android:id="@+id/search_input"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:imeOptions="actionSearch"
+            android:hint="@string/search_hint"
+            android:inputType="text"
+            android:singleLine="true"
+            android:textColor="@color/tsuyu_white"
+            android:textColorHint="@color/tsuyu_secondary"
+            android:textSize="15sp" />
+    </com.google.android.material.textfield.TextInputLayout>
+    <FrameLayout
+        android:layout_width="match_parent"
+        android:layout_height="0dp"
+        android:layout_weight="1">
+        <androidx.recyclerview.widget.RecyclerView
+            android:id="@+id/search_results"
+            android:layout_width="match_parent"
+            android:layout_height="match_parent"
+            android:clipToPadding="false"
+            android:paddingTop="2dp"
+            android:paddingBottom="10dp" />
+        <LinearLayout
+            android:id="@+id/search_empty_state"
+            android:layout_width="match_parent"
+            android:layout_height="match_parent"
+            android:gravity="center"
+            android:orientation="vertical"
+            android:padding="28dp">
+            <ImageView
+                android:layout_width="58dp"
+                android:layout_height="58dp"
+                android:background="@drawable/bg_security_pill"
+                android:padding="15dp"
+                android:src="@drawable/ic_search"
+                app:tint="@color/tsuyu_blue" />
+            <TextView
+                android:id="@+id/search_empty_text"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:layout_marginTop="16dp"
+                android:gravity="center"
+                android:text="@string/search_prompt"
+                android:textColor="@color/tsuyu_secondary"
+                android:textSize="14sp" />
+        </LinearLayout>
+    </FrameLayout>
+    <com.google.android.material.bottomnavigation.BottomNavigationView
+        android:id="@+id/main_navigation"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:background="@color/tsuyu_black"
+        android:elevation="0dp"
+        app:itemActiveIndicatorStyle="@null"
+        app:itemIconTint="@color/nav_item_tint"
+        app:itemTextColor="@color/nav_item_tint"
+        app:labelVisibilityMode="labeled"
+        app:menu="@menu/main_navigation" />
+</LinearLayout>

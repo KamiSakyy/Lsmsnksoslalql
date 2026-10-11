@@ -1,0 +1,22 @@
+# Android / Gradle
+.gradle/
+local.properties
+**/build/
+*.iml
+.idea/
+
+# Local Firebase or Google credentials (never include Admin SDK keys in a client app)
+*serviceAccount*.json
+*firebase-adminsdk*.json
+service-account*.json
+
+# Local signing material
+*.jks
+*.keystore
+
+# Local validation tools
+.venv/
+
+# IDE / OS
+.DS_Store
+Thumbs.db
