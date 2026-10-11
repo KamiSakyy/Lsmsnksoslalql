@@ -23,12 +23,15 @@ public final class PresenceManager {
     }
 
     public synchronized boolean isGhostMode() {
-        return uid != null && context.getSharedPreferences("tsuyu_settings", Context.MODE_PRIVATE).getBoolean("ghost_" + uid, false);
+        if (uid == null) return false;
+        com.tsuyu.messenger.util.Settings.ensure(context);
+        return com.tsuyu.messenger.util.Settings.getBoolean("ghost_" + uid, false);
     }
 
     public synchronized void setGhostMode(String accountUid, boolean enabled) {
         uid = accountUid;
-        context.getSharedPreferences("tsuyu_settings", Context.MODE_PRIVATE).edit().putBoolean("ghost_" + accountUid, enabled).apply();
+        com.tsuyu.messenger.util.Settings.ensure(context);
+        com.tsuyu.messenger.util.Settings.putBoolean("ghost_" + accountUid, enabled);
         if (enabled) {
             DatabaseReference presence = database.getReference("users").child(accountUid).child("presence");
             Map<String, Object> offlineOnly = new HashMap<>();

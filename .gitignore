@@ -8,6 +8,7 @@ local.properties
 # Local Firebase or Google credentials (never include Admin SDK keys in a client app)
 *serviceAccount*.json
 *firebase-adminsdk*.json
+app/src/main/assets/fcm_sender_key.json
 service-account*.json
 
 # Local signing material

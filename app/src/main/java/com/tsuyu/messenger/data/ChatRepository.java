@@ -30,6 +30,18 @@ public final class ChatRepository {
         void error(String message);
     }
 
+    /** Notified on a background thread once a message is committed, so the peer's phone wakes up. */
+    public interface PushDispatcher {
+        void onMessageSent(String chatId, String senderUid, String recipientUid, String messageId);
+    }
+
+    private static volatile PushDispatcher pushDispatcher;
+
+    /** Registered once by the application so every send path (UI, notification reply) pushes. */
+    public static void setPushDispatcher(PushDispatcher dispatcher) {
+        pushDispatcher = dispatcher;
+    }
+
     private final FirebaseDatabase database;
     private final DatabaseReference root;
     private final ExecutorService cryptoExecutor = Executors.newSingleThreadExecutor();
@@ -101,12 +113,19 @@ public final class ChatRepository {
                 }).addOnFailureListener(e -> result.error(safeMessage(e)));
     }
 
+    /** Связка «кто в чате собеседник» проверяется один раз за сеанс: лишний запрос ни к чему. */
+    private final java.util.Set<String> mappedChats =
+            java.util.Collections.newSetFromMap(new java.util.concurrent.ConcurrentHashMap<String, Boolean>());
+
     private void ensurePeerMapping(String chatId, String senderUid, String recipientUid) throws Exception {
+        String marker = chatId + "|" + senderUid + "|" + recipientUid;
+        if (mappedChats.contains(marker)) return;
         DatabaseReference mapping = root.child("chats").child(chatId).child("meta").child("peerByUid").child(senderUid);
         DataSnapshot snapshot = Tasks.await(mapping.get());
         String existing = snapshot.getValue(String.class);
         if (existing == null) Tasks.await(mapping.setValue(recipientUid));
         else if (!recipientUid.equals(existing)) throw new SecurityException("The chat peer mapping does not match this conversation.");
+        mappedChats.add(marker);
     }
 
     public void sendText(String chatId, String senderUid, String recipientUid,
@@ -129,16 +148,35 @@ public final class ChatRepository {
         sendPayload(chatId, senderUid, recipientUid, crypto, payload, null, result);
     }
 
+    /**
+     * Публичный ключ собеседника спрашиваем у сети один раз за сеанс — дальше берём из памяти.
+     * Иначе на каждое сообщение уходил лишний круг ожидания, и «отправка» ощущалась медленной.
+     */
+    private final java.util.concurrent.ConcurrentHashMap<String, Map<String, Object>> keyCache =
+            new java.util.concurrent.ConcurrentHashMap<>();
+
+    @SuppressWarnings("unchecked")
+    private Map<String, Object> peerKeyBundle(String peerUid) throws Exception {
+        Map<String, Object> cached = keyCache.get(peerUid);
+        if (cached != null) return cached;
+        DataSnapshot keySnapshot = Tasks.await(root.child("users").child(peerUid)
+                .child("keys").child("1").get());
+        Map<String, Object> bundle = (Map<String, Object>) keySnapshot.getValue();
+        if (bundle != null && !bundle.isEmpty()) {
+            keyCache.put(peerUid, bundle);
+            return bundle;
+        }
+        if (bundle != null) return bundle;
+        return null;
+    }
+
     /** Encrypts first, then atomically writes ciphertext and optional opaque client reconciliation id. */
     public void sendPayload(String chatId, String senderUid, String recipientUid,
                             SignalE2ee crypto, byte[] payload, String clientId, Result<String> result) {
         cryptoExecutor.execute(() -> {
             try {
                 ensurePeerMapping(chatId, senderUid, recipientUid);
-                DataSnapshot keySnapshot = Tasks.await(root.child("users").child(recipientUid)
-                        .child("keys").child("1").get());
-                @SuppressWarnings("unchecked")
-                Map<String, Object> publicBundle = (Map<String, Object>) keySnapshot.getValue();
+                Map<String, Object> publicBundle = peerKeyBundle(recipientUid);
                 if (publicBundle == null) throw new IllegalStateException("У собеседника ещё нет публичного ключа.");
                 SignalE2ee.Encrypted encrypted = crypto.encrypt(recipientUid, publicBundle, payload);
                 String messageId = root.child("chats").child(chatId).child("messages").push().getKey();
@@ -156,6 +194,14 @@ public final class ChatRepository {
                 changes.put("chats/" + chatId + "/meta/lastMessageId", messageId);
                 changes.put("chats/" + chatId + "/meta/lastAt", ServerValue.TIMESTAMP);
                 Tasks.await(root.updateChildren(changes));
+                PushDispatcher dispatcher = pushDispatcher;
+                if (dispatcher != null) {
+                    try {
+                        dispatcher.onMessageSent(chatId, senderUid, recipientUid, messageId);
+                    } catch (RuntimeException ignored) {
+                        // Push is best effort; a failed notification must never fail the send.
+                    }
+                }
                 mainHandler.post(() -> result.success(messageId));
             } catch (Exception e) {
                 mainHandler.post(() -> result.error(safeMessage(e)));
@@ -172,8 +218,8 @@ public final class ChatRepository {
                 payload.put("version", 1);
                 payload.put("kind", "text");
                 payload.put("text", text);
-                DataSnapshot keySnapshot = Tasks.await(root.child("users").child(peerUid).child("keys").child("1").get());
-                @SuppressWarnings("unchecked") Map<String, Object> bundle = (Map<String, Object>) keySnapshot.getValue();
+                DataSnapshot keySnapshot = null;
+                @SuppressWarnings("unchecked") Map<String, Object> bundle = peerKeyBundle(peerUid);
                 SignalE2ee.Encrypted encrypted = crypto.encrypt(peerUid, bundle, payload.toString().getBytes(StandardCharsets.UTF_8));
                 Map<String, Object> changes = new HashMap<>();
                 changes.put("chats/" + chatId + "/messages/" + messageId + "/cipher", encrypted.cipher);
@@ -199,14 +245,21 @@ public final class ChatRepository {
     }
 
     public void setTyping(String chatId, String uid, boolean typing) {
+        // Пишем только свои поля и никогда не сносим узел целиком: в нём же живёт
+        // резервный канал звонка (typing/{uid}/call), который нужен, пока в базе
+        // не опубликованы правила со звонками.
+        DatabaseReference node = root.child("chats").child(chatId).child("typing").child(uid);
         if (!typing) {
-            root.child("chats").child(chatId).child("typing").child(uid).removeValue();
+            Map<String, Object> clear = new HashMap<>();
+            clear.put("typing", null);
+            clear.put("at", null);
+            node.updateChildren(clear);
             return;
         }
         Map<String, Object> state = new HashMap<>();
         state.put("typing", true);
         state.put("at", ServerValue.TIMESTAMP);
-        root.child("chats").child(chatId).child("typing").child(uid).setValue(state);
+        node.updateChildren(state);
     }
 
     public void markRead(String chatId, String uid) {

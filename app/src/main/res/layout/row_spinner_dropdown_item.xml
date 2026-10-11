@@ -3,8 +3,9 @@
     android:layout_width="match_parent"
     android:layout_height="48dp"
     android:background="@color/tsuyu_surface"
+    android:fontFamily="sans-serif"
     android:gravity="center_vertical"
-    android:paddingStart="16dp"
-    android:paddingEnd="16dp"
+    android:paddingStart="@dimen/space_lg"
+    android:paddingEnd="@dimen/space_lg"
     android:textColor="@color/tsuyu_white"
     android:textSize="14sp" />

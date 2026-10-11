@@ -8,28 +8,32 @@
     android:clickable="true"
     android:focusable="true"
     android:orientation="vertical">
+
     <LinearLayout
         android:layout_width="match_parent"
         android:layout_height="wrap_content"
         android:gravity="center_vertical"
-        android:minHeight="82dp"
+        android:minHeight="@dimen/row_min_height"
         android:orientation="horizontal"
-        android:paddingStart="16dp"
-        android:paddingTop="10dp"
-        android:paddingEnd="16dp"
-        android:paddingBottom="10dp">
+        android:paddingStart="@dimen/screen_gutter"
+        android:paddingTop="@dimen/space_md"
+        android:paddingEnd="@dimen/screen_gutter"
+        android:paddingBottom="@dimen/space_md">
+
         <FrameLayout
-            android:layout_width="56dp"
-            android:layout_height="56dp">
+            android:layout_width="@dimen/avatar_row"
+            android:layout_height="@dimen/avatar_row">
+
             <TextView
                 android:id="@+id/user_initial"
                 android:layout_width="match_parent"
                 android:layout_height="match_parent"
                 android:background="@drawable/bg_avatar_fallback"
+                android:fontFamily="sans-serif-medium"
                 android:gravity="center"
                 android:textColor="@color/tsuyu_white"
-                android:textSize="20sp"
-                android:textStyle="bold" />
+                android:textSize="20sp" />
+
             <com.google.android.material.imageview.ShapeableImageView
                 android:id="@+id/user_avatar"
                 android:layout_width="match_parent"
@@ -38,44 +42,44 @@
                 android:visibility="gone"
                 app:shapeAppearanceOverlay="@style/TsuyuCircleShape" />
         </FrameLayout>
+
         <LinearLayout
             android:layout_width="0dp"
             android:layout_height="wrap_content"
-            android:layout_marginStart="13dp"
+            android:layout_marginStart="@dimen/space_md"
             android:layout_weight="1"
             android:orientation="vertical">
+
             <TextView
                 android:id="@+id/user_name"
                 android:layout_width="match_parent"
                 android:layout_height="wrap_content"
                 android:ellipsize="end"
                 android:maxLines="1"
-                android:textColor="@color/tsuyu_white"
-                android:textSize="15sp"
-                android:textStyle="bold" />
+                android:textAppearance="@style/TextAppearance.Tsuyu.RowItemTitle" />
+
             <TextView
                 android:id="@+id/user_handle"
                 android:layout_width="match_parent"
                 android:layout_height="wrap_content"
-                android:layout_marginTop="4dp"
-                android:textColor="@color/tsuyu_secondary"
-                android:textSize="12sp" />
+                android:layout_marginTop="@dimen/space_2xs"
+                android:ellipsize="end"
+                android:maxLines="1"
+                android:textAppearance="@style/TextAppearance.Tsuyu.RowMeta" />
         </LinearLayout>
+
         <com.google.android.material.button.MaterialButton
             android:id="@+id/user_message_button"
+            style="@style/Widget.Tsuyu.Chip"
             android:layout_width="wrap_content"
-            android:layout_height="38dp"
-            android:layout_marginStart="8dp"
-            android:minWidth="0dp"
-            android:text="Написать"
-            android:textColor="@color/tsuyu_blue"
-            android:textSize="12sp"
-            app:backgroundTint="@color/tsuyu_accent_tint"
-            app:cornerRadius="19dp" />
+            android:layout_height="@dimen/icon_button_small"
+            android:layout_marginStart="@dimen/space_sm"
+            android:text="Написать" />
     </LinearLayout>
+
     <View
         android:layout_width="match_parent"
-        android:layout_height="1dp"
-        android:layout_marginStart="85dp"
+        android:layout_height="@dimen/hairline"
+        android:layout_marginStart="@dimen/divider_inset"
         android:background="@color/tsuyu_border" />
 </LinearLayout>

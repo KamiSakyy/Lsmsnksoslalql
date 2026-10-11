@@ -4,6 +4,7 @@
     android:id="@+id/media_thumb"
     android:layout_width="match_parent"
     android:layout_height="match_parent"
+    android:layout_margin="@dimen/gallery_gutter"
     android:adjustViewBounds="true"
     android:scaleType="centerCrop"
-    app:shapeAppearanceOverlay="@style/TsuyuMessageIncomingShape" />
+    app:shapeAppearanceOverlay="@style/TsuyuMediaShape" />

@@ -1,0 +1,372 @@
+<resources>
+    <!--
+      Tsuyu component styles and type ramp.
+      Colours referenced here come from the frozen colors.xml palette.
+    -->
+
+    <!-- ==================== Typography ==================== -->
+
+    <style name="TextAppearance.Tsuyu.Logotype" parent="">
+        <item name="android:textSize">30sp</item>
+        <item name="android:textColor">@color/tsuyu_white</item>
+        <item name="android:fontFamily">sans-serif-medium</item>
+        <item name="android:letterSpacing">0.16</item>
+    </style>
+
+    <style name="TextAppearance.Tsuyu.ToolbarTitle" parent="">
+        <item name="android:textSize">20sp</item>
+        <item name="android:textColor">@color/tsuyu_white</item>
+        <item name="android:fontFamily">sans-serif-medium</item>
+    </style>
+
+    <style name="TextAppearance.Tsuyu.ToolbarSubtitle" parent="">
+        <item name="android:textSize">12sp</item>
+        <item name="android:textColor">@color/tsuyu_secondary</item>
+        <item name="android:fontFamily">sans-serif</item>
+    </style>
+
+    <style name="TextAppearance.Tsuyu.ScreenTitle" parent="">
+        <item name="android:textSize">18sp</item>
+        <item name="android:textColor">@color/tsuyu_white</item>
+        <item name="android:fontFamily">sans-serif-medium</item>
+    </style>
+
+    <style name="TextAppearance.Tsuyu.SectionLabel" parent="">
+        <item name="android:textSize">12sp</item>
+        <item name="android:textColor">@color/tsuyu_secondary</item>
+        <item name="android:fontFamily">sans-serif-medium</item>
+        <item name="android:letterSpacing">0.06</item>
+    </style>
+
+    <style name="TextAppearance.Tsuyu.RowTitle" parent="">
+        <item name="android:textSize">16sp</item>
+        <item name="android:textColor">@color/tsuyu_white</item>
+        <item name="android:fontFamily">sans-serif-medium</item>
+    </style>
+
+    <style name="TextAppearance.Tsuyu.RowItemTitle" parent="">
+        <item name="android:textSize">15sp</item>
+        <item name="android:textColor">@color/tsuyu_white</item>
+        <item name="android:fontFamily">sans-serif-medium</item>
+    </style>
+
+    <style name="TextAppearance.Tsuyu.RowSubtitle" parent="">
+        <item name="android:textSize">13sp</item>
+        <item name="android:textColor">@color/tsuyu_secondary</item>
+        <item name="android:fontFamily">sans-serif</item>
+    </style>
+
+    <style name="TextAppearance.Tsuyu.RowMeta" parent="">
+        <item name="android:textSize">12sp</item>
+        <item name="android:textColor">@color/tsuyu_secondary</item>
+        <item name="android:fontFamily">sans-serif</item>
+    </style>
+
+    <style name="TextAppearance.Tsuyu.Body" parent="">
+        <item name="android:textSize">15sp</item>
+        <item name="android:textColor">@color/tsuyu_white</item>
+        <item name="android:fontFamily">sans-serif</item>
+        <item name="android:lineSpacingMultiplier">1.15</item>
+    </style>
+
+    <style name="TextAppearance.Tsuyu.Caption" parent="">
+        <item name="android:textSize">12sp</item>
+        <item name="android:textColor">@color/tsuyu_secondary</item>
+        <item name="android:fontFamily">sans-serif</item>
+    </style>
+
+    <style name="TextAppearance.Tsuyu.Timestamp" parent="">
+        <item name="android:textSize">11sp</item>
+        <item name="android:textColor">@color/tsuyu_secondary</item>
+        <item name="android:fontFamily">sans-serif</item>
+        <item name="android:letterSpacing">0.02</item>
+    </style>
+
+    <style name="TextAppearance.Tsuyu.Mono" parent="">
+        <item name="android:textSize">12sp</item>
+        <item name="android:textColor">@color/tsuyu_white</item>
+        <item name="android:fontFamily">monospace</item>
+        <item name="android:letterSpacing">0.06</item>
+        <item name="android:lineSpacingMultiplier">1.35</item>
+    </style>
+
+    <style name="TextAppearance.Tsuyu.NavLabel" parent="">
+        <item name="android:textSize">11sp</item>
+        <item name="android:fontFamily">sans-serif</item>
+    </style>
+
+    <style name="TextAppearance.Tsuyu.NavLabelActive" parent="">
+        <item name="android:textSize">11sp</item>
+        <item name="android:fontFamily">sans-serif-medium</item>
+    </style>
+
+    <!-- ==================== Buttons ==================== -->
+
+    <style name="Widget.Tsuyu.Button.Primary" parent="Widget.Material3.Button">
+        <item name="cornerRadius">@dimen/radius_md</item>
+        <item name="android:textAllCaps">false</item>
+        <item name="android:minHeight">52dp</item>
+        <item name="android:textSize">16sp</item>
+        <item name="android:fontFamily">sans-serif-medium</item>
+        <item name="android:insetTop">0dp</item>
+        <item name="android:insetBottom">0dp</item>
+        <item name="backgroundTint">@color/tsuyu_blue</item>
+        <item name="android:textColor">@color/tsuyu_white</item>
+        <item name="rippleColor">@color/tsuyu_ripple</item>
+    </style>
+
+    <style name="Widget.Tsuyu.Button.Secondary" parent="Widget.Material3.Button">
+        <item name="cornerRadius">@dimen/radius_sm</item>
+        <item name="android:textAllCaps">false</item>
+        <item name="android:minHeight">48dp</item>
+        <item name="android:textSize">15sp</item>
+        <item name="android:fontFamily">sans-serif-medium</item>
+        <item name="android:insetTop">0dp</item>
+        <item name="android:insetBottom">0dp</item>
+        <item name="backgroundTint">@color/tsuyu_input</item>
+        <item name="android:textColor">@color/tsuyu_white</item>
+        <item name="rippleColor">@color/tsuyu_ripple</item>
+    </style>
+
+    <style name="Widget.Tsuyu.Button.Quiet" parent="Widget.Material3.Button">
+        <item name="cornerRadius">@dimen/radius_pill</item>
+        <item name="android:textAllCaps">false</item>
+        <item name="android:minHeight">48dp</item>
+        <item name="android:textSize">14sp</item>
+        <item name="android:fontFamily">sans-serif-medium</item>
+        <item name="android:insetTop">0dp</item>
+        <item name="android:insetBottom">0dp</item>
+        <item name="backgroundTint">@color/tsuyu_accent_tint</item>
+        <item name="android:textColor">@color/tsuyu_blue</item>
+        <item name="rippleColor">@color/tsuyu_ripple</item>
+    </style>
+
+    <style name="Widget.Tsuyu.Button.Danger" parent="Widget.Material3.Button">
+        <item name="cornerRadius">@dimen/radius_md</item>
+        <item name="android:textAllCaps">false</item>
+        <item name="android:minHeight">52dp</item>
+        <item name="android:textSize">15sp</item>
+        <item name="android:fontFamily">sans-serif-medium</item>
+        <item name="android:insetTop">0dp</item>
+        <item name="android:insetBottom">0dp</item>
+        <item name="backgroundTint">@color/tsuyu_danger_surface</item>
+        <item name="android:textColor">@color/tsuyu_red</item>
+        <item name="rippleColor">@color/tsuyu_ripple</item>
+    </style>
+
+    <style name="Widget.Tsuyu.IconButton" parent="Widget.Material3.Button">
+        <item name="android:textAllCaps">false</item>
+        <item name="android:paddingLeft">0dp</item>
+        <item name="android:paddingRight">0dp</item>
+        <item name="android:paddingTop">0dp</item>
+        <item name="android:paddingBottom">0dp</item>
+        <item name="android:insetTop">0dp</item>
+        <item name="android:insetBottom">0dp</item>
+        <item name="android:insetLeft">0dp</item>
+        <item name="android:insetRight">0dp</item>
+        <item name="android:minWidth">0dp</item>
+        <item name="android:minHeight">0dp</item>
+        <item name="backgroundTint">@android:color/transparent</item>
+        <item name="iconGravity">textStart</item>
+        <item name="iconPadding">0dp</item>
+        <item name="rippleColor">@color/tsuyu_accent_tint</item>
+    </style>
+
+    <style name="Widget.Tsuyu.Chip" parent="Widget.Material3.Button">
+        <item name="cornerRadius">@dimen/radius_pill</item>
+        <item name="android:textAllCaps">false</item>
+        <item name="android:minHeight">@dimen/icon_button_small</item>
+        <item name="android:minWidth">0dp</item>
+        <item name="android:paddingLeft">@dimen/space_lg</item>
+        <item name="android:paddingRight">@dimen/space_lg</item>
+        <item name="android:insetTop">0dp</item>
+        <item name="android:insetBottom">0dp</item>
+        <item name="android:textSize">13sp</item>
+        <item name="android:fontFamily">sans-serif-medium</item>
+        <item name="android:textColor">@color/tsuyu_blue</item>
+        <item name="backgroundTint">@color/tsuyu_accent_tint</item>
+        <item name="rippleColor">@color/tsuyu_ripple</item>
+    </style>
+
+    <!-- ==================== Inputs ==================== -->
+
+    <style name="Widget.Tsuyu.Input" parent="">
+        <item name="boxBackgroundColor">@color/tsuyu_input</item>
+        <item name="boxBackgroundMode">filled</item>
+        <item name="boxCornerRadiusTopStart">@dimen/radius_md</item>
+        <item name="boxCornerRadiusTopEnd">@dimen/radius_md</item>
+        <item name="boxCornerRadiusBottomStart">@dimen/radius_md</item>
+        <item name="boxCornerRadiusBottomEnd">@dimen/radius_md</item>
+        <item name="boxStrokeColor">@color/tsuyu_input</item>
+        <item name="boxStrokeWidth">0dp</item>
+        <item name="boxStrokeWidthFocused">0dp</item>
+        <item name="hintEnabled">false</item>
+        <item name="android:minHeight">54dp</item>
+    </style>
+
+    <style name="Widget.Tsuyu.Input.Pill" parent="Widget.Tsuyu.Input">
+        <item name="boxCornerRadiusTopStart">@dimen/radius_pill</item>
+        <item name="boxCornerRadiusTopEnd">@dimen/radius_pill</item>
+        <item name="boxCornerRadiusBottomStart">@dimen/radius_pill</item>
+        <item name="boxCornerRadiusBottomEnd">@dimen/radius_pill</item>
+        <item name="android:minHeight">44dp</item>
+    </style>
+
+    <style name="Widget.Tsuyu.Input.EditText" parent="">
+        <item name="android:textColor">@color/tsuyu_white</item>
+        <item name="android:textColorHint">@color/tsuyu_secondary</item>
+        <item name="android:textSize">16sp</item>
+        <item name="android:fontFamily">sans-serif</item>
+        <item name="android:paddingStart">@dimen/space_lg</item>
+        <item name="android:paddingEnd">@dimen/space_lg</item>
+        <item name="android:paddingTop">@dimen/space_md</item>
+        <item name="android:paddingBottom">@dimen/space_md</item>
+    </style>
+
+    <!-- ==================== Surfaces ==================== -->
+
+    <style name="Widget.Tsuyu.Card" parent="">
+        <item name="cardCornerRadius">@dimen/radius_lg</item>
+        <item name="cardElevation">0dp</item>
+        <item name="strokeWidth">0dp</item>
+        <item name="strokeColor">@android:color/transparent</item>
+    </style>
+
+    <style name="Widget.Tsuyu.Card.Inset" parent="Widget.Tsuyu.Card">
+        <item name="cardBackgroundColor">@color/tsuyu_header</item>
+        <item name="cardCornerRadius">@dimen/radius_md</item>
+    </style>
+
+    <style name="Widget.Tsuyu.Bubble.Incoming" parent="Widget.Tsuyu.Card">
+        <item name="cardBackgroundColor">@color/tsuyu_incoming</item>
+        <item name="cardCornerRadius">@dimen/bubble_radius_web</item>
+        <item name="cardElevation">0dp</item>
+        <item name="strokeWidth">0dp</item>
+        <item name="strokeColor">@android:color/transparent</item>
+        <item name="shapeAppearanceOverlay">@style/TsuyuMessageIncomingShape</item>
+    </style>
+
+    <style name="Widget.Tsuyu.Bubble.Outgoing" parent="Widget.Tsuyu.Card">
+        <item name="cardBackgroundColor">@color/tsuyu_outgoing</item>
+        <item name="cardCornerRadius">@dimen/bubble_radius_web</item>
+        <item name="cardElevation">0dp</item>
+        <item name="strokeWidth">0dp</item>
+        <item name="strokeColor">@android:color/transparent</item>
+        <item name="shapeAppearanceOverlay">@style/TsuyuMessageOutgoingShape</item>
+    </style>
+
+    <!-- ==================== Text helpers ==================== -->
+
+    <style name="Widget.Tsuyu.SectionLabel" parent="">
+        <item name="android:textSize">12sp</item>
+        <item name="android:textColor">@color/tsuyu_secondary</item>
+        <item name="android:fontFamily">sans-serif-medium</item>
+        <item name="android:letterSpacing">0.06</item>
+        <item name="android:includeFontPadding">false</item>
+    </style>
+
+    <style name="TextAppearance.Tsuyu.SheetTitle" parent="">
+        <item name="android:textSize">18sp</item>
+        <item name="android:textColor">@color/tsuyu_white</item>
+        <item name="android:fontFamily">sans-serif-medium</item>
+    </style>
+
+    <style name="Widget.Tsuyu.MultiSelectButton" parent="Widget.Material3.Button">
+        <item name="cornerRadius">@dimen/sheet_item_radius</item>
+        <item name="android:textAllCaps">false</item>
+        <item name="android:textSize">13sp</item>
+        <item name="android:fontFamily">sans-serif-medium</item>
+        <item name="android:minWidth">0dp</item>
+        <item name="android:minHeight">0dp</item>
+        <item name="android:insetTop">0dp</item>
+        <item name="android:insetBottom">0dp</item>
+        <item name="android:paddingStart">@dimen/chip_padding_h_web</item>
+        <item name="android:paddingEnd">@dimen/chip_padding_h_web</item>
+        <item name="backgroundTint">@color/tsuyu_border</item>
+        <item name="android:textColor">@color/tsuyu_white</item>
+        <item name="iconTint">@color/tsuyu_white</item>
+        <item name="iconSize">14dp</item>
+        <item name="iconPadding">@dimen/space_xs</item>
+        <item name="iconGravity">textStart</item>
+        <item name="rippleColor">@color/tsuyu_ripple</item>
+    </style>
+
+    <!-- Action-sheet row: 2c2c2e card, 12dp radius, 16/13dp padding (web .action-sheet-item) -->
+    <style name="Widget.Tsuyu.SheetActionRow" parent="">
+        <item name="android:layout_width">match_parent</item>
+        <item name="android:layout_height">wrap_content</item>
+        <item name="android:background">@drawable/bg_sheet_item</item>
+        <item name="android:clickable">true</item>
+        <item name="android:focusable">true</item>
+        <item name="android:gravity">center_vertical</item>
+        <item name="android:orientation">horizontal</item>
+        <item name="android:paddingStart">@dimen/sheet_item_padding_h</item>
+        <item name="android:paddingEnd">@dimen/sheet_item_padding_h</item>
+        <item name="android:paddingTop">@dimen/sheet_item_padding_v</item>
+        <item name="android:paddingBottom">@dimen/sheet_item_padding_v</item>
+    </style>
+
+    <style name="Widget.Tsuyu.SheetActionIcon" parent="">
+        <item name="android:layout_width">20dp</item>
+        <item name="android:layout_height">20dp</item>
+        <item name="tint">@color/tsuyu_white</item>
+    </style>
+
+    <style name="Widget.Tsuyu.SheetActionLabel" parent="">
+        <item name="android:layout_width">0dp</item>
+        <item name="android:layout_height">wrap_content</item>
+        <item name="android:layout_weight">1</item>
+        <item name="android:layout_marginStart">@dimen/space_md</item>
+        <item name="android:ellipsize">end</item>
+        <item name="android:maxLines">1</item>
+        <item name="android:textColor">@color/tsuyu_white</item>
+        <item name="android:textSize">15sp</item>
+    </style>
+
+    <!-- ==================== Drawer (web .drawer) ==================== -->
+
+    <style name="Widget.Tsuyu.DrawerRow" parent="">
+        <item name="android:layout_width">match_parent</item>
+        <item name="android:layout_height">wrap_content</item>
+        <item name="android:background">@drawable/bg_drawer_row</item>
+        <item name="android:clickable">true</item>
+        <item name="android:focusable">true</item>
+        <item name="android:gravity">center_vertical</item>
+        <item name="android:orientation">horizontal</item>
+        <item name="android:paddingStart">10dp</item>
+        <item name="android:paddingEnd">10dp</item>
+        <item name="android:paddingTop">6dp</item>
+        <item name="android:paddingBottom">6dp</item>
+        <item name="android:minHeight">44dp</item>
+    </style>
+
+    <style name="Widget.Tsuyu.DrawerIcon" parent="">
+        <item name="android:layout_width">20dp</item>
+        <item name="android:layout_height">20dp</item>
+        <item name="tint">@color/tsuyu_drawer_icon</item>
+    </style>
+
+    <style name="Widget.Tsuyu.DrawerLabel" parent="">
+        <item name="android:layout_width">0dp</item>
+        <item name="android:layout_height">wrap_content</item>
+        <item name="android:layout_weight">1</item>
+        <item name="android:layout_marginStart">12dp</item>
+        <item name="android:ellipsize">end</item>
+        <item name="android:maxLines">1</item>
+        <item name="android:textColor">@color/tsuyu_drawer_text</item>
+        <item name="android:textSize">15sp</item>
+        <!-- Длинные подписи сами уменьшаются, короткие остаются крупными. -->
+        <item name="autoSizeTextType">uniform</item>
+        <item name="autoSizeMinTextSize">13sp</item>
+        <item name="autoSizeMaxTextSize">15sp</item>
+        <item name="autoSizeStepGranularity">1sp</item>
+    </style>
+
+    <style name="Widget.Tsuyu.DrawerSwitch" parent="Widget.Material3.CompoundButton.MaterialSwitch">
+        <item name="android:layout_width">wrap_content</item>
+        <item name="android:layout_height">wrap_content</item>
+        <item name="thumbTint">@color/tsuyu_switch_thumb</item>
+        <item name="trackTint">@color/tsuyu_switch_track</item>
+        <item name="trackDecorationTint">@android:color/transparent</item>
+    </style>
+</resources>

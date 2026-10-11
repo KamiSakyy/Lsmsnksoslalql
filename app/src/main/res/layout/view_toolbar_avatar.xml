@@ -2,21 +2,23 @@
 <FrameLayout xmlns:android="http://schemas.android.com/apk/res/android"
     xmlns:app="http://schemas.android.com/apk/res-auto"
     android:id="@+id/action_profile_container"
-    android:layout_width="44dp"
-    android:layout_height="44dp"
+    android:layout_width="@dimen/icon_button_dense"
+    android:layout_height="@dimen/icon_button_dense"
     android:clickable="true"
     android:contentDescription="Профиль"
     android:focusable="true"
-    android:padding="4dp">
+    android:padding="5dp">
+
     <TextView
         android:id="@+id/action_profile_initial"
         android:layout_width="match_parent"
         android:layout_height="match_parent"
         android:background="@drawable/bg_avatar_fallback"
+        android:fontFamily="sans-serif-medium"
         android:gravity="center"
         android:textColor="@color/tsuyu_white"
-        android:textSize="16sp"
-        android:textStyle="bold" />
+        android:textSize="15sp" />
+
     <com.google.android.material.imageview.ShapeableImageView
         android:id="@+id/action_profile_avatar"
         android:layout_width="match_parent"
