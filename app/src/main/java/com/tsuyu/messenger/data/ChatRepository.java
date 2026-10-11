@@ -30,6 +30,18 @@ public final class ChatRepository {
         void error(String message);
     }
 
+    /** Notified on a background thread once a message is committed, so the peer's phone wakes up. */
+    public interface PushDispatcher {
+        void onMessageSent(String chatId, String senderUid, String recipientUid, String messageId);
+    }
+
+    private static volatile PushDispatcher pushDispatcher;
+
+    /** Registered once by the application so every send path (UI, notification reply) pushes. */
+    public static void setPushDispatcher(PushDispatcher dispatcher) {
+        pushDispatcher = dispatcher;
+    }
+
     private final FirebaseDatabase database;
     private final DatabaseReference root;
     private final ExecutorService cryptoExecutor = Executors.newSingleThreadExecutor();
@@ -156,6 +168,14 @@ public final class ChatRepository {
                 changes.put("chats/" + chatId + "/meta/lastMessageId", messageId);
                 changes.put("chats/" + chatId + "/meta/lastAt", ServerValue.TIMESTAMP);
                 Tasks.await(root.updateChildren(changes));
+                PushDispatcher dispatcher = pushDispatcher;
+                if (dispatcher != null) {
+                    try {
+                        dispatcher.onMessageSent(chatId, senderUid, recipientUid, messageId);
+                    } catch (RuntimeException ignored) {
+                        // Push is best effort; a failed notification must never fail the send.
+                    }
+                }
                 mainHandler.post(() -> result.success(messageId));
             } catch (Exception e) {
                 mainHandler.post(() -> result.error(safeMessage(e)));
