@@ -34,7 +34,7 @@ import java.util.Locale;
 import java.util.Set;
 
 /** Renders encrypted message records into XML-defined Material bubble templates. */
-public final class MessageListAdapter extends RecyclerView.Adapter<MessageListAdapter.Holder> {
+public final class MessageListAdapter extends RecyclerView.Adapter<RecyclerView.ViewHolder> {
     public interface Listener {
         void onOpenPayload(String payload);
         void onMessageMenu(View anchor, ChatMessage message, String payload);
@@ -48,13 +48,26 @@ public final class MessageListAdapter extends RecyclerView.Adapter<MessageListAd
         public final String payload;
         public final int reactionCount;
         public final boolean read;
+        /** Non-null only for date separators such as «Сегодня». */
+        public final String dateLabel;
 
         public Row(ChatMessage message, String payload, int reactionCount, boolean read) {
             this.message = message;
             this.payload = payload;
             this.reactionCount = reactionCount;
             this.read = read;
+            this.dateLabel = null;
         }
+
+        public Row(String dateLabel) {
+            this.message = null;
+            this.payload = null;
+            this.reactionCount = 0;
+            this.read = false;
+            this.dateLabel = dateLabel;
+        }
+
+        public boolean isDate() { return dateLabel != null; }
     }
 
     /** Consecutive messages from one author inside this window form a visual group. */
@@ -89,16 +102,29 @@ public final class MessageListAdapter extends RecyclerView.Adapter<MessageListAd
     }
 
     @Override public int getItemViewType(int position) {
-        return ownUid != null && ownUid.equals(rows.get(position).message.senderUid) ? 1 : 0;
+        Row row = rows.get(position);
+        if (row.isDate()) return 2;
+        return ownUid != null && ownUid.equals(row.message.senderUid) ? 1 : 0;
     }
 
-    @NonNull @Override public Holder onCreateViewHolder(@NonNull ViewGroup parent, int viewType) {
+    @NonNull @Override public RecyclerView.ViewHolder onCreateViewHolder(@NonNull ViewGroup parent, int viewType) {
+        if (viewType == 2) {
+            return new DateHolder(LayoutInflater.from(parent.getContext()).inflate(R.layout.row_message_date, parent, false));
+        }
         int layout = viewType == 1 ? R.layout.row_message_outgoing : R.layout.row_message_incoming;
         return new Holder(LayoutInflater.from(parent.getContext()).inflate(layout, parent, false));
     }
 
-    @Override public void onBindViewHolder(@NonNull Holder holder, int position) {
+    @Override public void onBindViewHolder(@NonNull RecyclerView.ViewHolder holder, int position) {
         Row row = rows.get(position);
+        if (holder instanceof DateHolder) {
+            ((DateHolder) holder).label.setText(row.dateLabel);
+            return;
+        }
+        bindMessage((Holder) holder, row, position);
+    }
+
+    private void bindMessage(Holder holder, Row row, int position) {
         ChatMessage message = row.message;
         String payload = row.payload;
         boolean outgoing = ownUid != null && ownUid.equals(message.senderUid);
@@ -218,7 +244,9 @@ public final class MessageListAdapter extends RecyclerView.Adapter<MessageListAd
 
     private boolean isFirstInGroup(int position) {
         if (position <= 0) return true;
-        ChatMessage previous = rows.get(position - 1).message;
+        Row previousRow = rows.get(position - 1);
+        if (previousRow.isDate()) return true;
+        ChatMessage previous = previousRow.message;
         ChatMessage current = rows.get(position).message;
         boolean sameAuthor = previous.senderUid == null
                 ? current.senderUid == null
@@ -237,6 +265,14 @@ public final class MessageListAdapter extends RecyclerView.Adapter<MessageListAd
     }
 
     @Override public int getItemCount() { return rows.size(); }
+
+    static final class DateHolder extends RecyclerView.ViewHolder {
+        final TextView label;
+        DateHolder(View itemView) {
+            super(itemView);
+            label = itemView.findViewById(R.id.message_date_label);
+        }
+    }
 
     static final class Holder extends RecyclerView.ViewHolder {
         final MaterialCardView bubble;

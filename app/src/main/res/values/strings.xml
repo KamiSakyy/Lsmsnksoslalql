@@ -39,4 +39,20 @@
     <string name="auth_create_account">Нет аккаунта? Зарегистрироваться</string>
     <string name="auth_have_account">Уже есть аккаунт? Войти</string>
     <string name="private_dialogs">Личные диалоги</string>
+    <string name="home_filter_all">Все</string>
+    <string name="home_filter_unread">Непрочитанные</string>
+    <string name="home_offline_banner">Нет подключения · сообщения отправятся позже</string>
+    <string name="chat_menu_unpin_title">Открепить чат</string>
+    <string name="chat_menu_unpin_subtitle">Вернуть в общий порядок</string>
+    <string name="chat_menu_mark_unread_title">Отметить как непрочитанное</string>
+    <string name="chat_menu_mark_unread_subtitle">Оставить значок для напоминания</string>
+    <string name="chat_clear_title">Очистить историю?</string>
+    <string name="chat_clear_message">Сообщения удалятся только с этого устройства. Собеседник их сохранит.</string>
+    <string name="chat_clear_confirm">Очистить</string>
+    <string name="chat_clear_done">История очищена на этом устройстве</string>
+    <string name="chat_pinned_toast">Чат закреплён</string>
+    <string name="chat_unpinned_toast">Чат откреплён</string>
+    <string name="chat_scroll_bottom">Вниз к новым сообщениям</string>
+    <string name="chat_menu_title">Действия в чате</string>
+    <string name="chat_menu_subtitle">Переписка, профиль и безопасность</string>
 </resources>

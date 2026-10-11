@@ -164,6 +164,22 @@
                 android:text="Поздоровайтесь первым — сообщение появится здесь."
                 android:textAppearance="@style/TextAppearance.Tsuyu.RowSubtitle" />
         </LinearLayout>
+
+        <com.google.android.material.floatingactionbutton.FloatingActionButton
+            android:id="@+id/chat_scroll_bottom"
+            android:layout_width="40dp"
+            android:layout_height="40dp"
+            android:layout_gravity="bottom|end"
+            android:layout_marginEnd="@dimen/space_lg"
+            android:layout_marginBottom="@dimen/space_md"
+            android:contentDescription="@string/chat_scroll_bottom"
+            android:visibility="gone"
+            app:backgroundTint="@color/tsuyu_input"
+            app:elevation="0dp"
+            app:fabSize="mini"
+            app:shapeAppearanceOverlay="@style/TsuyuCircleShape"
+            app:srcCompat="@drawable/ic_chevron_right"
+            app:tint="@color/tsuyu_white" />
     </FrameLayout>
 
     <com.google.android.material.card.MaterialCardView

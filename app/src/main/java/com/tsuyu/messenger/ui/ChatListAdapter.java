@@ -7,6 +7,7 @@ import android.view.LayoutInflater;
 import android.view.View;
 import android.view.ViewGroup;
 import android.view.animation.AnimationUtils;
+import android.widget.ImageView;
 import android.widget.TextView;
 
 import androidx.annotation.NonNull;
@@ -19,15 +20,22 @@ import com.tsuyu.messenger.data.ChatSummary;
 
 import java.text.SimpleDateFormat;
 import java.util.ArrayList;
+import java.util.Calendar;
 import java.util.Date;
 import java.util.List;
 import java.util.Locale;
 
-/** RecyclerView adapter whose entire row hierarchy and motion resources live in XML. */
+/** Telegram-grade conversation row: avatar, unread badge, pin marker and delivery marks. */
 public final class ChatListAdapter extends RecyclerView.Adapter<ChatListAdapter.Holder> {
     public interface Listener {
         void onChatSelected(ChatSummary summary);
+
+        void onChatLongPress(ChatSummary summary);
+
         String previewFor(ChatSummary summary);
+
+        /** 0 — no mark, 1 — sent, 2 — read. */
+        int ownMessageState(ChatSummary summary);
     }
 
     private final Listener listener;
@@ -52,18 +60,56 @@ public final class ChatListAdapter extends RecyclerView.Adapter<ChatListAdapter.
         Profile peer = summary.peer == null ? new Profile() : summary.peer;
         String title = peer.displayNameOrUsername();
         holder.name.setText(title);
-        holder.time.setText(summary.lastAt <= 0 ? "" : new SimpleDateFormat("HH:mm", Locale.getDefault()).format(new Date(summary.lastAt)));
+        holder.time.setText(summary.lastAt <= 0 ? "" : formatStamp(summary.lastAt));
         String preview = summary.typing ? "печатает…" : listener.previewFor(summary);
         holder.preview.setText(preview);
         holder.preview.setTextColor(summary.typing
                 ? holder.itemView.getContext().getColor(R.color.tsuyu_blue)
                 : holder.itemView.getContext().getColor(R.color.tsuyu_secondary));
         holder.online.setVisibility(summary.online ? View.VISIBLE : View.GONE);
+        holder.pin.setVisibility(summary.pinned ? View.VISIBLE : View.GONE);
+        if (summary.unread > 0) {
+            holder.unread.setVisibility(View.VISIBLE);
+            holder.unread.setText(summary.unread > 99 ? "99+" : Integer.toString(summary.unread));
+        } else {
+            holder.unread.setVisibility(View.GONE);
+        }
+        int state = listener.ownMessageState(summary);
+        if (state > 0) {
+            holder.previewStatus.setVisibility(View.VISIBLE);
+            holder.previewStatus.setImageResource(state == 2 ? R.drawable.ic_checks : R.drawable.ic_check);
+            holder.previewStatus.setColorFilter(holder.itemView.getContext().getColor(
+                    state == 2 ? R.color.tsuyu_blue : R.color.tsuyu_secondary));
+        } else {
+            holder.previewStatus.setVisibility(View.GONE);
+        }
+        holder.divider.setVisibility(position == items.size() - 1 ? View.GONE : View.VISIBLE);
         bindAvatar(holder.avatar, holder.initial, peer, title);
-        holder.itemView.setContentDescription("Диалог с " + title + ". " + preview);
+        String description = "Диалог с " + title + ". " + preview
+                + (summary.unread > 0 ? ". Непрочитанных: " + summary.unread : "");
+        holder.itemView.setContentDescription(description);
         holder.itemView.setOnClickListener(v -> listener.onChatSelected(summary));
+        holder.itemView.setOnLongClickListener(v -> {
+            listener.onChatLongPress(summary);
+            return true;
+        });
         String key = summary.chatId == null ? title : summary.chatId;
         if (animated.add(key)) holder.itemView.startAnimation(AnimationUtils.loadAnimation(holder.itemView.getContext(), R.anim.message_enter));
+    }
+
+    /** Today shows the clock, yesterday a word, older messages a short date — like Telegram. */
+    private static String formatStamp(long at) {
+        Calendar now = Calendar.getInstance();
+        Calendar then = Calendar.getInstance();
+        then.setTimeInMillis(at);
+        boolean sameYear = now.get(Calendar.YEAR) == then.get(Calendar.YEAR);
+        boolean sameDay = sameYear && now.get(Calendar.DAY_OF_YEAR) == then.get(Calendar.DAY_OF_YEAR);
+        if (sameDay) return new SimpleDateFormat("HH:mm", Locale.getDefault()).format(new Date(at));
+        Calendar yesterday = Calendar.getInstance();
+        yesterday.add(Calendar.DAY_OF_YEAR, -1);
+        boolean isYesterday = sameYear && yesterday.get(Calendar.DAY_OF_YEAR) == then.get(Calendar.DAY_OF_YEAR);
+        if (isYesterday) return "вчера";
+        return new SimpleDateFormat(sameYear ? "d MMM" : "d MMM yy", new Locale("ru")).format(new Date(at));
     }
 
     public static void bindAvatar(ShapeableImageView image, TextView initial, Profile profile, String displayName) {
@@ -104,6 +150,10 @@ public final class ChatListAdapter extends RecyclerView.Adapter<ChatListAdapter.
         final TextView name;
         final TextView time;
         final TextView preview;
+        final ImageView previewStatus;
+        final ImageView pin;
+        final TextView unread;
+        final View divider;
         Holder(View itemView) {
             super(itemView);
             avatar = itemView.findViewById(R.id.chat_avatar);
@@ -112,6 +162,10 @@ public final class ChatListAdapter extends RecyclerView.Adapter<ChatListAdapter.
             name = itemView.findViewById(R.id.chat_name);
             time = itemView.findViewById(R.id.chat_time);
             preview = itemView.findViewById(R.id.chat_preview);
+            previewStatus = itemView.findViewById(R.id.chat_preview_status);
+            pin = itemView.findViewById(R.id.chat_pin);
+            unread = itemView.findViewById(R.id.chat_unread);
+            divider = itemView.findViewById(R.id.chat_row_divider);
         }
     }
 }

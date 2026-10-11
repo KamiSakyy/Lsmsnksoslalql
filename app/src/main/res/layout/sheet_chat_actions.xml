@@ -20,7 +20,7 @@
     <TextView
         android:layout_width="match_parent"
         android:layout_height="wrap_content"
-        android:text="Действия в чате"
+        android:text="@string/chat_menu_title"
         android:textAppearance="@style/TextAppearance.Tsuyu.SheetTitle" />
 
     <TextView
@@ -28,7 +28,7 @@
         android:layout_height="wrap_content"
         android:layout_marginTop="@dimen/space_2xs"
         android:layout_marginBottom="@dimen/space_md"
-        android:text="Переписка, профиль и безопасность"
+        android:text="@string/chat_menu_subtitle"
         android:textAppearance="@style/TextAppearance.Tsuyu.RowSubtitle" />
 
     <LinearLayout
@@ -73,6 +73,104 @@
                 android:layout_height="wrap_content"
                 android:layout_marginTop="2dp"
                 android:text="Фото, имя и сведения"
+                android:textAppearance="@style/TextAppearance.Tsuyu.RowMeta"
+                android:textSize="12sp" />
+        </LinearLayout>
+    </LinearLayout>
+
+    <LinearLayout
+        android:id="@+id/chat_menu_pin"
+        android:layout_width="match_parent"
+        android:layout_height="@dimen/row_sheet_action_height"
+        android:background="?attr/selectableItemBackground"
+        android:clickable="true"
+        android:focusable="true"
+        android:gravity="center_vertical"
+        android:orientation="horizontal">
+
+        <FrameLayout
+            android:layout_width="@dimen/row_icon_tile"
+            android:layout_height="@dimen/row_icon_tile"
+            android:background="@drawable/bg_menu_icon">
+
+            <ImageView
+                android:layout_width="@dimen/row_icon_size"
+                android:layout_height="@dimen/row_icon_size"
+                android:layout_gravity="center"
+                android:contentDescription=""
+                android:src="@drawable/ic_pin"
+                app:tint="@color/tsuyu_secondary" />
+        </FrameLayout>
+
+        <LinearLayout
+            android:layout_width="0dp"
+            android:layout_height="wrap_content"
+            android:layout_marginStart="@dimen/space_md"
+            android:layout_weight="1"
+            android:orientation="vertical">
+
+            <TextView
+            android:id="@+id/chat_menu_pin_title"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:text="Закрепить чат"
+                android:textAppearance="@style/TextAppearance.Tsuyu.RowItemTitle" />
+
+            <TextView
+            android:id="@+id/chat_menu_pin_subtitle"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:layout_marginTop="2dp"
+                android:text="Всегда сверху списка"
+                android:textAppearance="@style/TextAppearance.Tsuyu.RowMeta"
+                android:textSize="12sp" />
+        </LinearLayout>
+    </LinearLayout>
+
+    <LinearLayout
+        android:id="@+id/chat_menu_read"
+        android:layout_width="match_parent"
+        android:layout_height="@dimen/row_sheet_action_height"
+        android:background="?attr/selectableItemBackground"
+        android:clickable="true"
+        android:focusable="true"
+        android:gravity="center_vertical"
+        android:orientation="horizontal">
+
+        <FrameLayout
+            android:layout_width="@dimen/row_icon_tile"
+            android:layout_height="@dimen/row_icon_tile"
+            android:background="@drawable/bg_menu_icon">
+
+            <ImageView
+                android:layout_width="@dimen/row_icon_size"
+                android:layout_height="@dimen/row_icon_size"
+                android:layout_gravity="center"
+                android:contentDescription=""
+                android:src="@drawable/ic_checks"
+                app:tint="@color/tsuyu_secondary" />
+        </FrameLayout>
+
+        <LinearLayout
+            android:layout_width="0dp"
+            android:layout_height="wrap_content"
+            android:layout_marginStart="@dimen/space_md"
+            android:layout_weight="1"
+            android:orientation="vertical">
+
+            <TextView
+            android:id="@+id/chat_menu_read_title"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:text="Отметить как прочитанное"
+                android:textAppearance="@style/TextAppearance.Tsuyu.RowItemTitle" />
+
+            <TextView
+            android:id="@+id/chat_menu_read_subtitle"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:layout_marginTop="2dp"
+                android:text="Сбросить значок непрочитанного"
                 android:textAppearance="@style/TextAppearance.Tsuyu.RowMeta"
                 android:textSize="12sp" />
         </LinearLayout>
@@ -167,6 +265,53 @@
                 android:layout_height="wrap_content"
                 android:layout_marginTop="2dp"
                 android:text="Сверить защиту сообщений"
+                android:textAppearance="@style/TextAppearance.Tsuyu.RowMeta"
+                android:textSize="12sp" />
+        </LinearLayout>
+    </LinearLayout>
+
+    <LinearLayout
+        android:id="@+id/chat_menu_clear"
+        android:layout_width="match_parent"
+        android:layout_height="@dimen/row_sheet_action_height"
+        android:background="?attr/selectableItemBackground"
+        android:clickable="true"
+        android:focusable="true"
+        android:gravity="center_vertical"
+        android:orientation="horizontal">
+
+        <FrameLayout
+            android:layout_width="@dimen/row_icon_tile"
+            android:layout_height="@dimen/row_icon_tile"
+            android:background="@drawable/bg_menu_icon">
+
+            <ImageView
+                android:layout_width="@dimen/row_icon_size"
+                android:layout_height="@dimen/row_icon_size"
+                android:layout_gravity="center"
+                android:contentDescription=""
+                android:src="@drawable/ic_delete"
+                app:tint="@color/tsuyu_red" />
+        </FrameLayout>
+
+        <LinearLayout
+            android:layout_width="0dp"
+            android:layout_height="wrap_content"
+            android:layout_marginStart="@dimen/space_md"
+            android:layout_weight="1"
+            android:orientation="vertical">
+
+            <TextView
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:text="Очистить историю"
+                android:textAppearance="@style/TextAppearance.Tsuyu.RowItemTitle" />
+
+            <TextView
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:layout_marginTop="2dp"
+                android:text="Удалить сообщения с этого устройства"
                 android:textAppearance="@style/TextAppearance.Tsuyu.RowMeta"
                 android:textSize="12sp" />
         </LinearLayout>

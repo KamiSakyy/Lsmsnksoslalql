@@ -56,7 +56,9 @@ import com.google.firebase.database.DatabaseReference;
 import com.google.firebase.database.FirebaseDatabase;
 import com.google.firebase.database.ValueEventListener;
 import com.google.firebase.messaging.FirebaseMessaging;
+import com.tsuyu.messenger.data.TsuyuStore;
 import com.tsuyu.messenger.crypto.LocalMessageCache;
+import com.tsuyu.messenger.crypto.LocalVault;
 import com.tsuyu.messenger.crypto.SignalE2ee;
 import com.tsuyu.messenger.data.ChatMessage;
 import com.tsuyu.messenger.data.ChatRepository;
@@ -78,6 +80,7 @@ import java.io.InputStream;
 import java.nio.charset.StandardCharsets;
 import java.text.SimpleDateFormat;
 import java.util.ArrayList;
+import java.util.Calendar;
 import java.util.Collections;
 import java.util.Date;
 import java.util.HashMap;
@@ -100,6 +103,19 @@ public final class MainActivity extends AppCompatActivity {
     private PresenceManager presenceManager;
     private SignalE2ee crypto;
     private LocalMessageCache messageCache;
+    private LocalVault vault;
+    private TsuyuStore store;
+    private String homeFilter = "all";
+    private TextView homeFilterAll;
+    private TextView homeFilterUnread;
+    private View homeOfflineBanner;
+    private TextView homeEmptyTitle;
+    private TextView homeEmptyDescription;
+    private View homeFindPeople;
+    private View chatScrollBottom;
+    private ValueEventListener connectionListener;
+    private boolean onlineNow = true;
+    private List<ChatMessage> cachedMessages = new ArrayList<>();
     private FirebaseAuth.AuthStateListener authListener;
 
     private String uid;
@@ -239,6 +255,9 @@ public final class MainActivity extends AppCompatActivity {
                 uid = null;
                 crypto = null;
                 messageCache = null;
+                store = null;
+                vault = null;
+                cachedMessages = new ArrayList<>();
                 myProfile = null;
                 peerProfile = null;
                 isNewProfile = false;
@@ -297,6 +316,8 @@ public final class MainActivity extends AppCompatActivity {
         uid = accountUid;
         crypto = new SignalE2ee(this, uid);
         messageCache = new LocalMessageCache(this, uid);
+        vault = new LocalVault(uid);
+        store = new TsuyuStore(this, uid, vault);
         String presenceUid = accountUid;
         database.getReference("users").child(presenceUid).child("private").child("settings").child("ghost").get()
                 .addOnSuccessListener(snapshot -> {
@@ -305,6 +326,7 @@ public final class MainActivity extends AppCompatActivity {
                     else presenceManager.start(presenceUid);
                 }).addOnFailureListener(error -> { if (presenceUid.equals(uid)) presenceManager.start(presenceUid); });
         startBackgroundSync();
+        dataQueue.execute(this::replayOutbox);
         FirebaseMessaging.getInstance().getToken().addOnSuccessListener(token -> FirebaseMessagingSetup.saveToken(FirebaseApp.getInstance(), token));
         cryptoQueue.execute(() -> {
             try {
@@ -314,14 +336,24 @@ public final class MainActivity extends AppCompatActivity {
                 ui.post(() -> toast("Не удалось подключиться. Проверьте интернет и попробуйте снова."));
             }
         });
+        final boolean fromCache = seedFromLocalCache();
         profileRepository.getProfile(uid, profile -> {
             if (!uid.equals(accountUid)) return;
             if (profile == null || profile.username == null || profile.username.isEmpty()) {
-                showProfileEditor(true);
-            } else {
-                myProfile = profile;
+                if (fromCache || myProfile != null) {
+                    if (!"home".equals(page)) { attachUserChatsListener(); showHome(); }
+                } else {
+                    showProfileEditor(true);
+                }
+                return;
+            }
+            myProfile = profile;
+            if (store != null) store.putProfile(profile);
+            if (!"home".equals(page)) {
                 attachUserChatsListener();
                 showHome();
+            } else {
+                renderChatList();
             }
         });
     }
@@ -436,14 +468,27 @@ public final class MainActivity extends AppCompatActivity {
         chatList.setItemAnimator(new androidx.recyclerview.widget.DefaultItemAnimator());
         chatListAdapter = new ChatListAdapter(new ChatListAdapter.Listener() {
             @Override public void onChatSelected(ChatSummary summary) { openChat(summary); }
+            @Override public void onChatLongPress(ChatSummary summary) { showChatMenu(summary); }
             @Override public String previewFor(ChatSummary summary) { return MainActivity.this.previewFor(summary); }
+            @Override public int ownMessageState(ChatSummary summary) { return MainActivity.this.ownMessageState(summary); }
         });
         chatList.setAdapter(chatListAdapter);
         homeEmptyState = root.findViewById(R.id.home_empty_state);
         homeLoadingState = root.findViewById(R.id.home_loading_state);
         homeNewChat = root.findViewById(R.id.home_new_chat);
+        homeEmptyTitle = root.findViewById(R.id.home_empty_title);
+        homeEmptyDescription = root.findViewById(R.id.home_empty_description);
+        homeFindPeople = root.findViewById(R.id.home_find_people);
         homeNewChat.setOnClickListener(v -> showSearchScreen());
-        root.findViewById(R.id.home_find_people).setOnClickListener(v -> showSearchScreen());
+        homeFindPeople.setOnClickListener(v -> showSearchScreen());
+        homeFilterAll = root.findViewById(R.id.home_filter_all);
+        homeFilterUnread = root.findViewById(R.id.home_filter_unread);
+        homeFilterAll.setOnClickListener(v -> { homeFilter = "all"; renderChatList(); });
+        homeFilterUnread.setOnClickListener(v -> { homeFilter = "unread"; renderChatList(); });
+        homeOfflineBanner = root.findViewById(R.id.home_offline_banner);
+        if (homeOfflineBanner != null) homeOfflineBanner.setVisibility(onlineNow ? View.GONE : View.VISIBLE);
+        updateFilterChips();
+        watchConnection();
         setupBottomNavigation(root, R.id.nav_chats);
         attachUserChatsListener();
         renderChatList();
@@ -497,9 +542,13 @@ public final class MainActivity extends AppCompatActivity {
             }
         }
         for (String chatId : ids) {
-            if (!summaries.containsKey(chatId) && loadingSummaryIds.add(chatId)) {
-                dataQueue.execute(() -> loadOneSummary(chatId));
+            ChatSummary cached = summaries.get(chatId);
+            if (cached != null && cached.peerUid != null) {
+                dataQueue.execute(() -> refreshSummary(chatId, cached));
+                continue;
             }
+            if (!loadingSummaryIds.add(chatId)) continue;
+            dataQueue.execute(() -> loadOneSummary(chatId));
         }
         renderChatList();
     }
@@ -548,16 +597,28 @@ public final class MainActivity extends AppCompatActivity {
             summary.online = online;
             summary.typing = typingNow;
             summary.lastMessage = last;
-            ChatSummary optimistic = summaries.get(chatId);
-            if (optimistic != null && optimistic.lastMessage != null
-                    && (last == null || optimistic.lastAt > at)) {
-                summary.lastAt = optimistic.lastAt;
-                summary.lastMessage = optimistic.lastMessage;
-                summary.encryptedPreview = null;
+            ChatSummary previous = summaries.get(chatId);
+            if (previous != null) {
+                summary.pinned = previous.pinned;
+                summary.unread = previous.unread;
+                summary.lastSeen = previous.lastSeen;
+                boolean keepLocalPreview = previous.lastMessage != null
+                        && previous.lastMessage.localPayload != null
+                        && (last == null || previous.lastAt >= at);
+                if (keepLocalPreview) {
+                    summary.lastAt = previous.lastAt;
+                    summary.lastMessage = previous.lastMessage;
+                    summary.encryptedPreview = null;
+                }
             }
             summaries.put(chatId, summary);
             watchSummaryRealtime(chatId, peerUid);
             if (summary.lastMessage != null) maybeDecryptPreview(summary, summary.lastMessage);
+            if (store != null) {
+                summary.unread = Math.max(summary.unread, store.unread(chatId));
+                cachePreview(summary);
+                persistSummary(summary);
+            }
         } catch (Exception error) {
             android.util.Log.w("Tsuyu", "Could not load chat summary " + chatId, error);
         } finally {
@@ -582,7 +643,11 @@ public final class MainActivity extends AppCompatActivity {
             ValueEventListener listener = new ValueEventListener() {
                 @Override public void onDataChange(DataSnapshot snapshot) {
                     ChatSummary summary = summaries.get(chatId);
-                    if (summary != null) { summary.online = Boolean.TRUE.equals(snapshot.getValue(Boolean.class)); renderChatList(); }
+                    if (summary != null) {
+                        summary.online = Boolean.TRUE.equals(snapshot.getValue(Boolean.class));
+                        if (store != null) store.setPresence(chatId, summary.online, 0L);
+                        renderChatList();
+                    }
                 }
                 @Override public void onCancelled(DatabaseError error) { }
             };
@@ -627,6 +692,20 @@ public final class MainActivity extends AppCompatActivity {
                     summary.encryptedPreview = summary.lastMessage == null || preserveLocalPreview
                             ? null : summary.lastMessage.cipher;
                     if (summary.lastMessage != null && !preserveLocalPreview) maybeDecryptPreview(summary, summary.lastMessage);
+                    if (store != null) {
+                        ChatMessage newest = summary.lastMessage;
+                        if (newest != null && newest.id != null) {
+                            String payload = newest.localPayload;
+                            if (payload == null && messageCache != null) payload = messageCache.get(chatId, newest.id);
+                            if (payload != null) {
+                                summary.lastPreview = previewFromJson(payload);
+                                summary.lastKind = kindFromJson(payload);
+                                store.updatePayload(chatId, newest.id, payload);
+                            }
+                            if (!preserveLocalPreview) countIncoming(summary, newest);
+                        }
+                        persistSummary(summary);
+                    }
                     renderChatList();
                 }
                 @Override public void onCancelled(DatabaseError error) { }
@@ -668,6 +747,15 @@ public final class MainActivity extends AppCompatActivity {
                 byte[] plaintext = crypto.decrypt(summary.peerUid, message.signalType, message.cipher);
                 String json = new String(plaintext, StandardCharsets.UTF_8);
                 if (messageCache != null) messageCache.put(summary.chatId, message.id, json);
+                if (store != null) {
+                    store.updatePayload(summary.chatId, message.id, json);
+                    if (summary.lastMessage != null && message.id != null && message.id.equals(summary.lastMessage.id)) {
+                        summary.lastPreview = previewFromJson(json);
+                        summary.lastKind = kindFromJson(json);
+                        store.updatePreview(summary.chatId, summary.lastPreview, summary.lastKind,
+                                summary.lastAt, message.senderUid, summary.lastState);
+                    }
+                }
                 runOnUiThread(this::renderChatList);
             } catch (Exception ignored) { }
             finally { decrypting.remove(key); }
@@ -689,25 +777,39 @@ public final class MainActivity extends AppCompatActivity {
 
     private void renderChatList() {
         if (!"home".equals(page) || chatList == null || chatListAdapter == null) return;
-        List<ChatSummary> items = new ArrayList<>(summaries.values());
-        items.sort((a, b) -> Long.compare(b.lastAt, a.lastAt));
+        List<ChatSummary> items = new ArrayList<>();
+        for (ChatSummary summary : summaries.values()) {
+            if ("unread".equals(homeFilter) && summary.unread <= 0) continue;
+            items.add(summary);
+        }
+        items.sort((a, b) -> {
+            if (a.pinned != b.pinned) return a.pinned ? -1 : 1;
+            return Long.compare(b.lastAt, a.lastAt);
+        });
         chatListAdapter.submit(items);
+        updateFilterChips();
         if (items.isEmpty()) {
             chatList.setVisibility(View.GONE);
             homeLoadingState.setVisibility(chatIndexLoaded ? View.GONE : View.VISIBLE);
             homeEmptyState.setVisibility(chatIndexLoaded ? View.VISIBLE : View.GONE);
             if (homeNewChat != null) homeNewChat.setVisibility(View.GONE);
+            applyEmptyStateCopy("unread".equals(homeFilter));
         } else {
             chatList.setVisibility(View.VISIBLE);
             homeLoadingState.setVisibility(View.GONE);
             homeEmptyState.setVisibility(View.GONE);
             if (homeNewChat != null) homeNewChat.setVisibility(View.VISIBLE);
+            applyEmptyStateCopy(false);
         }
     }
 
     private String previewFor(ChatSummary summary) {
         ChatMessage message = summary.lastMessage;
-        if (message == null) return "Начните переписку";
+        if (message == null) {
+            if (summary.typing) return "печатает…";
+            if (summary.lastPreview != null && !summary.lastPreview.isEmpty()) return summary.lastPreview;
+            return summary.lastAt > 0 ? "Сообщение" : "Начните переписку";
+        }
         if (message.localPayload != null) return previewFromJson(message.localPayload);
         String cached = message.id == null || messageCache == null ? null : messageCache.get(summary.chatId, message.id);
         if (cached != null) return previewFromJson(cached);
@@ -716,6 +818,7 @@ public final class MainActivity extends AppCompatActivity {
             if (local != null && local.localPayload != null) return previewFromJson(local.localPayload);
         }
         if (message.failed) return "Не отправлено · нажмите, чтобы повторить";
+        if (summary.lastPreview != null && !summary.lastPreview.isEmpty()) return summary.lastPreview;
         return "";
     }
 
@@ -829,6 +932,21 @@ public final class MainActivity extends AppCompatActivity {
         }
         root.<TextView>findViewById(R.id.chat_peer_name).setText(firstProfile.displayNameOrUsername());
         bindAvatar(avatar, avatarInitial, firstProfile, firstProfile.displayNameOrUsername(), firstProfile.avatarBase64);
+        if (peerProfile == null && store != null) {
+            Profile cachedPeer = store.getProfile(peerUid);
+            if (cachedPeer != null) {
+                cachedPeer.uid = peerUid;
+                peerProfile = cachedPeer;
+                root.<TextView>findViewById(R.id.chat_peer_name).setText(cachedPeer.displayNameOrUsername());
+                bindAvatar(avatar, avatarInitial, cachedPeer, cachedPeer.displayNameOrUsername(), cachedPeer.avatarBase64);
+            }
+        }
+        if (store != null) {
+            store.markChatOpened(chatId, null, 0L);
+            ChatSummary opened = summaries.get(chatId);
+            if (opened != null) opened.unread = 0;
+        }
+        loadCachedMessages(chatId, peerUid);
 
         messageList = root.findViewById(R.id.message_list);
         LinearLayoutManager messageLayout = new LinearLayoutManager(this);
@@ -845,6 +963,27 @@ public final class MainActivity extends AppCompatActivity {
                     @Override public void onGalleryImage(String encodedImage) { showImageDialog(encodedImage); }
                 });
         messageList.setAdapter(messageListAdapter);
+        chatScrollBottom = root.findViewById(R.id.chat_scroll_bottom);
+        if (chatScrollBottom != null) {
+            chatScrollBottom.setVisibility(View.GONE);
+            chatScrollBottom.setOnClickListener(v -> {
+                if (messageList != null && messageListAdapter != null && messageListAdapter.getItemCount() > 0) {
+                    messageList.smoothScrollToPosition(messageListAdapter.getItemCount() - 1);
+                }
+                chatScrollBottom.setVisibility(View.GONE);
+            });
+            messageList.addOnScrollListener(new androidx.recyclerview.widget.RecyclerView.OnScrollListener() {
+                @Override public void onScrolled(androidx.recyclerview.widget.RecyclerView recyclerView, int dx, int dy) {
+                    if (chatScrollBottom == null || messageListAdapter == null) return;
+                    androidx.recyclerview.widget.LinearLayoutManager manager =
+                            (androidx.recyclerview.widget.LinearLayoutManager) recyclerView.getLayoutManager();
+                    if (manager == null) return;
+                    int last = manager.findLastVisibleItemPosition();
+                    boolean awayFromBottom = last >= 0 && last < messageListAdapter.getItemCount() - 3;
+                    chatScrollBottom.setVisibility(awayFromBottom ? View.VISIBLE : View.GONE);
+                }
+            });
+        }
         chatEmptyState = root.findViewById(R.id.chat_empty_state);
         composer = root.findViewById(R.id.chat_composer);
         replyBanner = root.findViewById(R.id.reply_banner);
@@ -922,6 +1061,15 @@ public final class MainActivity extends AppCompatActivity {
                 for (DataSnapshot child : snapshot.getChildren()) {
                     ChatMessage message = child.getValue(ChatMessage.class);
                     if (message != null) { message.id = child.getKey(); messages.add(message); }
+                }
+                if (store != null) {
+                    ChatMessage newest = null;
+                    for (ChatMessage message : messages) {
+                        if (newest == null || message.sentAt >= newest.sentAt) newest = message;
+                    }
+                    if (newest != null) store.markChatOpened(chatId, newest.id, newest.sentAt);
+                    ChatSummary openedSummary = summaries.get(chatId);
+                    if (openedSummary != null) openedSummary.unread = 0;
                 }
                 renderMessages(messages, peerUid);
                 if (!presenceManager.isGhostMode()) chatRepository.markRead(chatId, uid);
@@ -1057,6 +1205,13 @@ public final class MainActivity extends AppCompatActivity {
             if (local.clientId != null && serverClientIds.contains(local.clientId)) continue;
             visible.add(local);
         }
+        Set<String> visibleIds = new HashSet<>();
+        for (ChatMessage visibleMessage : visible) if (visibleMessage.id != null) visibleIds.add(visibleMessage.id);
+        for (ChatMessage cachedMessage : cachedMessages) {
+            if (cachedMessage.id == null || !renderChatId.equals(cachedMessage.localChatId)) continue;
+            if (!visibleIds.add(cachedMessage.id)) continue;
+            visible.add(cachedMessage);
+        }
         visible.sort((first, second) -> {
             int time = Long.compare(first.sentAt, second.sentAt);
             if (time != 0) return time;
@@ -1064,7 +1219,12 @@ public final class MainActivity extends AppCompatActivity {
         });
 
         List<MessageListAdapter.Row> rows = new ArrayList<>();
+        final List<ChatMessage> persistBatch = new ArrayList<>();
+        final List<String> persistPayloadBatch = new ArrayList<>();
+        String lastDayKey = null;
+        int visibleIndex = 0;
         for (ChatMessage message : visible) {
+            visibleIndex++;
             String payload = message.localPayload;
             if (payload == null && activeCache != null && message.id != null) payload = activeCache.get(renderChatId, message.id);
             String key = renderChatId + ":" + message.id;
@@ -1091,12 +1251,41 @@ public final class MainActivity extends AppCompatActivity {
                     } finally { decrypting.remove(key); }
                 });
             }
+            if (message.sentAt > 0) {
+                String dayKey = dayKey(message.sentAt);
+                if (!dayKey.equals(lastDayKey)) {
+                    rows.add(new MessageListAdapter.Row(dateLabelFor(message.sentAt)));
+                    lastDayKey = dayKey;
+                }
+            }
+            if (payload != null && message.id != null && !message.id.startsWith("local_")
+                    && visible.size() - visibleIndex < 90) {
+                persistBatch.add(message);
+                persistPayloadBatch.add(payload);
+            }
             Set<String> reactions = messageReactions.get(message.id);
             int reactionCount = reactions == null ? 0 : reactions.size();
             boolean read = message.sentAt > 0 && peerReadAt >= message.sentAt;
             rows.add(new MessageListAdapter.Row(message, payload, reactionCount, read));
         }
 
+        final TsuyuStore activeStore = store;
+        if (activeStore != null && !persistBatch.isEmpty()) {
+            final String storeChatId = renderChatId;
+            final List<ChatMessage> batch = new ArrayList<>(persistBatch);
+            final List<String> batchPayloads = new ArrayList<>(persistPayloadBatch);
+            final long readWatermark = peerReadAt;
+            dataQueue.execute(() -> {
+                for (int i = 0; i < batch.size(); i++) {
+                    ChatMessage message = batch.get(i);
+                    int state = message.pending ? TsuyuStore.STATE_PENDING
+                            : (message.failed ? TsuyuStore.STATE_FAILED
+                            : (readWatermark > 0 && message.sentAt > 0 && readWatermark >= message.sentAt
+                                    ? TsuyuStore.STATE_READ : TsuyuStore.STATE_SENT));
+                    activeStore.upsertMessage(storeChatId, message, batchPayloads.get(i), state);
+                }
+            });
+        }
         messageListAdapter.setTextStyle(textSize(), isTextBold(),
                 getSharedPreferences("tsuyu_settings", MODE_PRIVATE).getBoolean("italic", false));
         messageListAdapter.submit(rows);
@@ -1318,6 +1507,10 @@ public final class MainActivity extends AppCompatActivity {
         local.localPayload = payloadJson;
         optimisticMessages.put(clientId, local);
         if (messageCache != null) messageCache.put(chatId, local.id, payloadJson);
+        if (store != null) {
+            store.upsertMessage(chatId, local, payloadJson, TsuyuStore.STATE_PENDING);
+            store.enqueue(clientId, chatId, peerUid, payloadJson);
+        }
 
         ChatSummary summary = summaries.get(chatId);
         if (summary == null) {
@@ -1330,6 +1523,10 @@ public final class MainActivity extends AppCompatActivity {
         summary.lastAt = local.sentAt;
         summary.lastMessage = local;
         summary.encryptedPreview = null;
+        summary.lastPreview = previewFromJson(payloadJson);
+        summary.lastKind = kindFromJson(payloadJson);
+        summary.lastState = TsuyuStore.STATE_PENDING;
+        if (store != null) persistSummary(summary);
         watchSummaryRealtime(chatId, peerUid);
         renderChatList();
         if (chatId.equals(activeChatId) && "chat".equals(page)) renderMessages(lastRemoteMessages, peerUid);
@@ -1343,6 +1540,7 @@ public final class MainActivity extends AppCompatActivity {
         if (chatId == null || peerUid == null || senderUid == null || crypto == null || local.localPayload == null) {
             local.pending = false;
             local.failed = true;
+            if (store != null && local.id != null) store.updateState(local.id, TsuyuStore.STATE_FAILED);
             if (chatId != null && chatId.equals(activeChatId)) renderMessages(lastRemoteMessages, activePeerUid);
             return;
         }
@@ -1360,6 +1558,15 @@ public final class MainActivity extends AppCompatActivity {
                                 current.pending = false;
                                 current.failed = false;
                             }
+                            if (store != null && local.id != null) {
+                                store.promoteLocalMessage(local.id, messageId, local.localPayload);
+                                store.dequeue(local.clientId);
+                                ChatSummary stored = summaries.get(chatId);
+                                if (stored != null) {
+                                    stored.lastState = TsuyuStore.STATE_SENT;
+                                    persistSummary(stored);
+                                }
+                            }
                             if (chatId.equals(activeChatId)) renderMessages(lastRemoteMessages, peerUid);
                             ChatSummary summary = summaries.get(chatId);
                             if (summary != null && summary.lastMessage != null
@@ -1375,6 +1582,15 @@ public final class MainActivity extends AppCompatActivity {
                                 current.pending = false;
                                 current.failed = true;
                             }
+                            if (store != null && local.id != null) {
+                                store.updateState(local.id, TsuyuStore.STATE_FAILED);
+                                store.noteAttempt(local.clientId);
+                                ChatSummary stored = summaries.get(chatId);
+                                if (stored != null) {
+                                    stored.lastState = TsuyuStore.STATE_FAILED;
+                                    persistSummary(stored);
+                                }
+                            }
                             if (chatId.equals(activeChatId)) renderMessages(lastRemoteMessages, peerUid);
                             renderChatList();
                             toast(error);
@@ -1383,6 +1599,7 @@ public final class MainActivity extends AppCompatActivity {
         } catch (Exception error) {
             local.pending = false;
             local.failed = true;
+            if (store != null && local.id != null) store.updateState(local.id, TsuyuStore.STATE_FAILED);
             if (chatId.equals(activeChatId)) renderMessages(lastRemoteMessages, peerUid);
             toast("Не удалось отправить сообщение.");
         }
@@ -1395,6 +1612,10 @@ public final class MainActivity extends AppCompatActivity {
             return;
         }
         optimisticMessages.remove(failed.clientId, failed);
+        if (store != null) {
+            if (failed.id != null) store.deleteMessage(failed.id);
+            if (failed.clientId != null) store.dequeue(failed.clientId);
+        }
         ChatMessage retry = new ChatMessage();
         retry.clientId = UUID.randomUUID().toString();
         retry.id = "local_" + retry.clientId;
@@ -1405,6 +1626,10 @@ public final class MainActivity extends AppCompatActivity {
         retry.localPayload = failed.localPayload;
         optimisticMessages.put(retry.clientId, retry);
         if (messageCache != null) messageCache.put(retry.localChatId, retry.id, retry.localPayload);
+        if (store != null) {
+            store.upsertMessage(retry.localChatId, retry, retry.localPayload, TsuyuStore.STATE_PENDING);
+            if (activePeerUid != null) store.enqueue(retry.clientId, retry.localChatId, activePeerUid, retry.localPayload);
+        }
         ChatSummary summary = summaries.get(retry.localChatId);
         if (summary != null) { summary.lastAt = retry.sentAt; summary.lastMessage = retry; renderChatList(); }
         renderMessages(lastRemoteMessages, activePeerUid);
@@ -1412,23 +1637,138 @@ public final class MainActivity extends AppCompatActivity {
     }
 
 
-    private void showChatMenu() {
+    private void showChatMenu() { showChatMenu(null); }
+
+    /** Bottom-sheet actions for the active chat or for a row long-pressed in the list. */
+    private void showChatMenu(ChatSummary target) {
+        final String chatId = target != null ? target.chatId : activeChatId;
+        final String targetPeerUid = target != null ? target.peerUid : activePeerUid;
+        if (chatId == null) return;
+        final boolean fromList = target != null;
+        ChatSummary known = summaries.get(chatId);
+        boolean pinned = known != null && known.pinned;
+        int unread = known == null ? 0 : known.unread;
         BottomSheetDialog sheet = new BottomSheetDialog(this);
         View content = getLayoutInflater().inflate(R.layout.sheet_chat_actions, null, false);
+        TextView pinTitle = content.findViewById(R.id.chat_menu_pin_title);
+        TextView pinSubtitle = content.findViewById(R.id.chat_menu_pin_subtitle);
+        if (pinned) {
+            pinTitle.setText(R.string.chat_menu_unpin_title);
+            pinSubtitle.setText(R.string.chat_menu_unpin_subtitle);
+        }
+        TextView readTitle = content.findViewById(R.id.chat_menu_read_title);
+        TextView readSubtitle = content.findViewById(R.id.chat_menu_read_subtitle);
+        if (unread > 0) {
+            readTitle.setText("Отметить как прочитанное");
+            readSubtitle.setText("Сбросить значок непрочитанного");
+        } else {
+            readTitle.setText(R.string.chat_menu_mark_unread_title);
+            readSubtitle.setText(R.string.chat_menu_mark_unread_subtitle);
+        }
+        if (fromList) {
+            content.findViewById(R.id.chat_menu_export).setVisibility(View.GONE);
+            content.findViewById(R.id.chat_menu_keys).setVisibility(View.GONE);
+        }
+        final boolean currentlyPinned = pinned;
+        final boolean currentlyUnread = unread > 0;
         content.findViewById(R.id.chat_menu_profile).setOnClickListener(v -> {
             sheet.dismiss();
-            showPeerProfile();
+            openPeerProfile(targetPeerUid);
+        });
+        content.findViewById(R.id.chat_menu_pin).setOnClickListener(v -> {
+            sheet.dismiss();
+            togglePinned(chatId, !currentlyPinned);
+        });
+        content.findViewById(R.id.chat_menu_read).setOnClickListener(v -> {
+            sheet.dismiss();
+            if (currentlyUnread) markChatRead(chatId); else markChatUnread(chatId);
         });
         content.findViewById(R.id.chat_menu_export).setOnClickListener(v -> {
             sheet.dismiss();
+            showChat(chatId, targetPeerUid);
             exportCurrentChat();
         });
         content.findViewById(R.id.chat_menu_keys).setOnClickListener(v -> {
             sheet.dismiss();
             showKeySettings();
         });
+        content.findViewById(R.id.chat_menu_clear).setOnClickListener(v -> {
+            sheet.dismiss();
+            confirmClearHistory(chatId);
+        });
         sheet.setContentView(content);
         sheet.show();
+    }
+
+    private void openPeerProfile(String peerUid) {
+        if (peerUid == null) return;
+        if (peerProfile == null || !peerUid.equals(peerProfile.uid)) {
+            Profile cached = store == null ? null : store.getProfile(peerUid);
+            if (cached == null) {
+                cached = new Profile();
+                cached.displayName = "Собеседник";
+            }
+            cached.uid = peerUid;
+            peerProfile = cached;
+        }
+        showPeerProfile();
+        profileRepository.getProfile(peerUid, profile -> {
+            if (profile == null) return;
+            profile.uid = peerUid;
+            peerProfile = profile;
+        });
+    }
+
+    private void togglePinned(String chatId, boolean pinned) {
+        ChatSummary summary = summaries.get(chatId);
+        if (summary != null) {
+            summary.pinned = pinned;
+            renderChatList();
+        }
+        if (store != null) store.setPinned(chatId, pinned);
+        toast(getString(pinned ? R.string.chat_pinned_toast : R.string.chat_unpinned_toast));
+    }
+
+    private void markChatRead(String chatId) {
+        ChatSummary summary = summaries.get(chatId);
+        if (summary != null) {
+            summary.unread = 0;
+            renderChatList();
+        }
+        if (store != null) store.setUnread(chatId, 0);
+    }
+
+    private void markChatUnread(String chatId) {
+        ChatSummary summary = summaries.get(chatId);
+        if (summary != null) {
+            summary.unread = Math.max(1, summary.unread);
+            renderChatList();
+        }
+        if (store != null) store.setUnread(chatId, 1);
+    }
+
+    private void confirmClearHistory(final String chatId) {
+        new AlertDialog.Builder(this)
+                .setTitle(R.string.chat_clear_title)
+                .setMessage(R.string.chat_clear_message)
+                .setNegativeButton("Отмена", null)
+                .setPositiveButton(R.string.chat_clear_confirm, (dialog, which) -> {
+                    if (store != null) store.clearMessages(chatId);
+                    ChatSummary summary = summaries.get(chatId);
+                    if (summary != null) {
+                        summary.lastMessage = null;
+                        summary.lastPreview = null;
+                        summary.unread = 0;
+                        renderChatList();
+                    }
+                    if (chatId.equals(activeChatId)) {
+                        cachedMessages = new ArrayList<>();
+                        lastRemoteMessages = new ArrayList<>();
+                        optimisticMessages.clear();
+                        renderMessages(lastRemoteMessages, activePeerUid);
+                    }
+                    toast(getString(R.string.chat_clear_done));
+                }).show();
     }
 
     private void showPeerProfile() {
@@ -2016,7 +2356,8 @@ public final class MainActivity extends AppCompatActivity {
         messagesListener = null; typingListener = null; reactionsListener = null; peerPresenceListener = null; peerPresenceRef = null;
         peerLastSeenListener = null; peerLastSeenRef = null; receiptListener = null; receiptRef = null; peerReadAt = 0;
         peerTyping = false; peerOnline = false; peerLastSeenVisible = false; peerLastSeen = 0;
-        messageList = null; messageListAdapter = null; chatEmptyState = null;
+        messageList = null; messageListAdapter = null; chatEmptyState = null; chatScrollBottom = null;
+        cachedMessages = new ArrayList<>();
         composer = null; replyBanner = null; replyBannerText = null; chatStatus = null; chatAvatarDot = null;
         ui.removeCallbacks(clearTyping);
         messageReactions.clear();
@@ -2040,7 +2381,201 @@ public final class MainActivity extends AppCompatActivity {
         try { stopService(new Intent(this, com.tsuyu.messenger.notifications.TsuyuSyncService.class)); }
         catch (Exception ignored) { }
     }
-    private void detachRealtimeListeners() { detachUserChatsListener(); detachChatListeners(); if (presenceManager != null) presenceManager.signOut(); }
+    private void detachRealtimeListeners() {
+        detachUserChatsListener();
+        detachChatListeners();
+        if (connectionListener != null && database != null) {
+            database.getReference(".info/connected").removeEventListener(connectionListener);
+            connectionListener = null;
+        }
+        homeFilterAll = null;
+        homeFilterUnread = null;
+        homeOfflineBanner = null;
+        homeEmptyTitle = null;
+        homeEmptyDescription = null;
+        homeFindPeople = null;
+        if (presenceManager != null) presenceManager.signOut();
+    }
+    // ------------------------------------------------------------------
+    // Offline-first local layer: instant list, cached history, outbox replay
+    // ------------------------------------------------------------------
+
+    /** Paints the device copy of the chat list before any network round-trip happens. */
+    private boolean seedFromLocalCache() {
+        if (store == null) return false;
+        boolean hadData = false;
+        Profile cachedProfile = store.getProfile(uid);
+        if (cachedProfile != null && cachedProfile.username != null && !cachedProfile.username.trim().isEmpty()) {
+            myProfile = cachedProfile;
+            hadData = true;
+        }
+        List<ChatSummary> cached = store.listChats();
+        for (ChatSummary summary : cached) {
+            if (summary.chatId == null) continue;
+            summaries.put(summary.chatId, summary);
+            hadData = true;
+        }
+        if (!cached.isEmpty()) chatIndexLoaded = true;
+        return hadData;
+    }
+
+    private void persistSummary(ChatSummary summary) {
+        if (store == null || summary == null || summary.chatId == null) return;
+        store.upsertChat(summary);
+        store.setPresence(summary.chatId, summary.online, summary.lastSeen);
+    }
+
+    private void cachePreview(ChatSummary summary) {
+        if (summary == null) return;
+        String preview = previewFor(summary);
+        if (preview != null && !preview.isEmpty() && !"Начните переписку".equals(preview)) {
+            summary.lastPreview = preview;
+            if (summary.lastMessage != null) summary.lastKind = kindFromJson(summary.lastMessage.localPayload);
+        }
+    }
+
+    private void countIncoming(ChatSummary summary, ChatMessage message) {
+        if (store == null || summary == null || summary.chatId == null || message == null) return;
+        if (message.senderUid == null || message.senderUid.equals(uid)) return;
+        if (summary.chatId.equals(activeChatId)) {
+            store.markChatOpened(summary.chatId, message.id, message.sentAt);
+            summary.unread = 0;
+            return;
+        }
+        store.countIncoming(summary.chatId, message.id, message.sentAt);
+        summary.unread = store.unread(summary.chatId);
+    }
+
+    private static String kindFromJson(String payload) {
+        if (payload == null) return null;
+        try { return new JSONObject(payload).optString("kind", null); }
+        catch (Exception ignored) { return null; }
+    }
+
+    private static String dayKey(long at) {
+        return new SimpleDateFormat("yyyyMMdd", Locale.getDefault()).format(new Date(at));
+    }
+
+    private static String dateLabelFor(long at) {
+        Calendar now = Calendar.getInstance();
+        Calendar then = Calendar.getInstance();
+        then.setTimeInMillis(at);
+        if (now.get(Calendar.YEAR) == then.get(Calendar.YEAR)) {
+            if (now.get(Calendar.DAY_OF_YEAR) == then.get(Calendar.DAY_OF_YEAR)) return "Сегодня";
+            Calendar yesterday = Calendar.getInstance();
+            yesterday.add(Calendar.DAY_OF_YEAR, -1);
+            if (yesterday.get(Calendar.DAY_OF_YEAR) == then.get(Calendar.DAY_OF_YEAR)) return "Вчера";
+        }
+        return new SimpleDateFormat(now.get(Calendar.YEAR) == then.get(Calendar.YEAR) ? "d MMMM" : "d MMMM yyyy",
+                new Locale("ru")).format(new Date(at));
+    }
+
+    private int ownMessageState(ChatSummary summary) {
+        if (summary == null || summary.lastMessage == null || uid == null) return 0;
+        ChatMessage last = summary.lastMessage;
+        if (!uid.equals(last.senderUid)) return 0;
+        if (last.pending || last.failed) return 1;
+        return summary.peerReadAt > 0 && last.sentAt > 0 && summary.peerReadAt >= last.sentAt ? 2 : 1;
+    }
+
+    private void watchConnection() {
+        if (connectionListener != null || database == null) return;
+        connectionListener = new ValueEventListener() {
+            @Override public void onDataChange(DataSnapshot snapshot) {
+                onlineNow = Boolean.TRUE.equals(snapshot.getValue(Boolean.class));
+                if (homeOfflineBanner != null) homeOfflineBanner.setVisibility(onlineNow ? View.GONE : View.VISIBLE);
+                if (onlineNow) dataQueue.execute(MainActivity.this::replayOutbox);
+            }
+            @Override public void onCancelled(DatabaseError error) { }
+        };
+        database.getReference(".info/connected").addValueEventListener(connectionListener);
+    }
+
+    /** Re-sends everything that was queued while the device had no connectivity. */
+    private void replayOutbox() {
+        final TsuyuStore activeStore = store;
+        if (activeStore == null || crypto == null || uid == null) return;
+        List<TsuyuStore.OutboxItem> queued = activeStore.outbox();
+        int replayed = 0;
+        for (TsuyuStore.OutboxItem item : queued) {
+            if (item.chatId == null || item.peerUid == null || item.payload == null) {
+                activeStore.dequeue(item.clientId);
+                continue;
+            }
+            if (item.attempts > 6) {
+                activeStore.updateState("local_" + item.clientId, TsuyuStore.STATE_FAILED);
+                continue;
+            }
+            final TsuyuStore.OutboxItem entry = item;
+            ChatMessage message = new ChatMessage();
+            message.id = "local_" + entry.clientId;
+            message.clientId = entry.clientId;
+            message.senderUid = uid;
+            message.sentAt = entry.createdAt > 0 ? entry.createdAt : System.currentTimeMillis();
+            message.pending = true;
+            message.localChatId = entry.chatId;
+            message.localPayload = entry.payload;
+            ui.post(() -> {
+                optimisticMessages.put(entry.clientId, message);
+                activeStore.noteAttempt(entry.clientId);
+                dispatchOptimisticMessage(message, entry.peerUid);
+            });
+            replayed++;
+            if (replayed >= 8) break;
+        }
+    }
+
+    /** Reads the device copy of a conversation so the screen is never empty offline. */
+    private void loadCachedMessages(final String chatId, final String peerUid) {
+        final TsuyuStore activeStore = store;
+        if (activeStore == null) return;
+        dataQueue.execute(() -> {
+            List<ChatMessage> cached = activeStore.messages(chatId, 90);
+            List<ChatMessage> pending = activeStore.pendingMessages(chatId);
+            ui.post(() -> {
+                if (!chatId.equals(activeChatId)) return;
+                List<ChatMessage> page = new ArrayList<>(cached);
+                Set<String> known = new HashSet<>();
+                for (ChatMessage message : cached) if (message.id != null) known.add(message.id);
+                for (ChatMessage message : pending) {
+                    if (message.id != null && known.add(message.id)) page.add(message);
+                }
+                page.sort((first, second) -> {
+                    int time = Long.compare(first.sentAt, second.sentAt);
+                    if (time != 0) return time;
+                    return String.valueOf(first.id).compareTo(String.valueOf(second.id));
+                });
+                cachedMessages = page;
+                renderMessages(lastRemoteMessages, peerUid);
+            });
+        });
+    }
+
+    private void updateFilterChips() {
+        if (homeFilterAll == null || homeFilterUnread == null) return;
+        boolean showAll = !"unread".equals(homeFilter);
+        styleFilterChip(homeFilterAll, showAll);
+        styleFilterChip(homeFilterUnread, !showAll);
+    }
+
+    private void styleFilterChip(TextView chip, boolean selected) {
+        if (chip == null) return;
+        chip.setBackgroundResource(selected ? R.drawable.bg_filter_selected : R.drawable.bg_filter_idle);
+        chip.setTextColor(getColor(selected ? R.color.tsuyu_blue : R.color.tsuyu_secondary));
+    }
+
+    private void applyEmptyStateCopy(boolean unreadOnly) {
+        if (homeEmptyTitle != null) {
+            homeEmptyTitle.setText(unreadOnly ? "Непрочитанных нет" : getString(R.string.no_chats_title));
+        }
+        if (homeEmptyDescription != null) {
+            homeEmptyDescription.setText(unreadOnly
+                    ? "Новые сообщения появятся здесь, и чат поднимется наверх списка."
+                    : getString(R.string.no_chats_description));
+        }
+        if (homeFindPeople != null) homeFindPeople.setVisibility(unreadOnly ? View.GONE : View.VISIBLE);
+    }
+
     private void toast(String text) { if (Looper.myLooper() == Looper.getMainLooper()) Toast.makeText(this, text, Toast.LENGTH_SHORT).show(); else runOnUiThread(() -> Toast.makeText(this, text, Toast.LENGTH_SHORT).show()); }
     private String authError(Exception e) { return "Не удалось войти. Проверьте почту и пароль или попробуйте позже."; }
     private static long number(Object value) { return value instanceof Number ? ((Number) value).longValue() : 0L; }
