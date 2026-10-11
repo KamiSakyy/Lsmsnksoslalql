@@ -20,8 +20,8 @@
             android:layout_height="260dp"
             app:cardBackgroundColor="@color/tsuyu_black"
             app:cardCornerRadius="130dp"
-            app:strokeColor="@color/tsuyu_white"
-            app:strokeWidth="4dp">
+            app:strokeColor="@android:color/transparent"
+            app:strokeWidth="0dp">
 
             <androidx.camera.view.PreviewView
                 android:id="@+id/circle_preview"

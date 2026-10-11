@@ -504,8 +504,41 @@ public final class MessageListAdapter extends RecyclerView.Adapter<RecyclerView.
             return true;
         });
         attachSwipeToReply(holder, message);
+        // Фото и видео показываются без «рамки»: у такой строки нет полей пузыря и его фона,
+        // поэтому кадр занимает всю площадь, а не сидит в цветной окантовке. Текст, время,
+        // галочки и реакции остаются на своих местах.
+        boolean mediaOnly = "image".equals(kind) || "collage".equals(kind)
+                || "video".equals(kind) || "circle".equals(kind);
+        applyBubbleFrame(holder, outgoing, mediaOnly);
         String key = message.id != null ? message.id : message.clientId;
         // Мгновенная отрисовка: строки не «влетают» с анимацией.
+    }
+
+    /**
+     * Поля пузыря. Для сообщений с фото и видео полей нет и фон пузыря прозрачный — кадр
+     * виден целиком, без цветной окантовки вокруг него. Для остальных сообщений пузырь
+     * остаётся как обычно.
+     */
+    private void applyBubbleFrame(Holder holder, boolean outgoing, boolean mediaOnly) {
+        android.content.Context context = holder.itemView.getContext();
+        android.view.ViewGroup card = holder.bubble;
+        android.view.View content = card.getChildCount() > 0 ? card.getChildAt(0) : null;
+        int side = context.getResources().getDimensionPixelSize(R.dimen.bubble_padding_horizontal);
+        int top = context.getResources().getDimensionPixelSize(R.dimen.bubble_padding_top);
+        int bottom = context.getResources().getDimensionPixelSize(R.dimen.bubble_padding_bottom);
+        if (content != null) {
+            if (mediaOnly) content.setPadding(0, 0, 0, 0);
+            else content.setPadding(side, top, side, bottom);
+        }
+        if (holder.time != null && holder.time.getParent() instanceof android.view.View) {
+            // Подпись с временем остаётся читаемой и под кадром, но не липнет к краю.
+            android.view.View footer = (android.view.View) holder.time.getParent();
+            if (mediaOnly) footer.setPadding(side, 0, side, bottom);
+            else footer.setPadding(0, 0, 0, 0);
+        }
+        holder.bubble.setCardBackgroundColor(mediaOnly
+                ? android.graphics.Color.TRANSPARENT
+                : context.getColor(outgoing ? R.color.tsuyu_outgoing : R.color.tsuyu_incoming));
     }
 
     /** Restores the default bubble look so recycled holders never keep sticker/circle styling. */
@@ -595,15 +628,13 @@ public final class MessageListAdapter extends RecyclerView.Adapter<RecyclerView.
     private void bindCircleNote(Holder holder, org.json.JSONObject object, String payload, ChatMessage message) {
         android.content.Context context = holder.itemView.getContext();
         android.util.DisplayMetrics metrics = context.getResources().getDisplayMetrics();
-        int cap = Math.max(Math.round(220 * metrics.density), Math.round(metrics.widthPixels * 0.78f));
-        int side = Math.min(Math.round(248 * metrics.density), cap);
+        // Кружочек как был: тот же размер, что и раньше, — ничего не раздуваем и не обрезаем.
+        int cap = Math.max(Math.round(200 * metrics.density), Math.round(metrics.widthPixels * 0.72f));
+        int side = Math.min(Math.round(200 * metrics.density), cap);
         ViewGroup.LayoutParams params = holder.circle.getLayoutParams();
         params.width = side;
         params.height = side;
         holder.circle.setLayoutParams(params);
-        // Кружочек — чистое видео в круге: никакой обводки.
-        holder.circleCard.setStrokeWidth(0);
-        holder.circleCard.setStrokeColor(android.graphics.Color.TRANSPARENT);
         holder.circleCard.setShapeAppearanceModel(ShapeAppearanceModel.builder()
                 .setAllCornerSizes(ShapeAppearanceModel.PILL).build());
         holder.circle.setVisibility(View.VISIBLE);
