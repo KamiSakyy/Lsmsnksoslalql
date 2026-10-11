@@ -29,7 +29,10 @@ DATABASE = os.environ.get(
     "TSUYU_DATABASE_URL", "https://meowmessenger-default-rtdb.europe-west1.firebasedatabase.app"
 ).rstrip("/")
 HOST = urllib.parse.urlparse(DATABASE).netloc
-SCOPE = "https://www.googleapis.com/auth/firebase.database https://www.googleapis.com/auth/userinfo.email"
+SCOPE = ("https://www.googleapis.com/auth/firebase.database "
+         "https://www.googleapis.com/auth/cloud-platform "
+         "https://www.googleapis.com/auth/userinfo.email")
+LAST_ERROR = {"code": None, "body": ""}
 
 
 def find_key() -> pathlib.Path | None:
@@ -96,9 +99,13 @@ def publish(token: str, url: str) -> bool:
             print(f"{url} -> HTTP {response.status} {reply[:200]}")
             return response.status == 200
     except urllib.error.HTTPError as failure:
-        print(f"{url} -> HTTP {failure.code} {failure.read().decode('utf-8', 'replace')[:300]}")
+        body = failure.read().decode("utf-8", "replace")[:300]
+        LAST_ERROR["code"] = failure.code
+        LAST_ERROR["body"] = body.replace("%", "%25").replace("\n", " ")
+        print(f"{url} -> HTTP {failure.code} {body}")
         return False
     except Exception as failure:  # noqa: BLE001 - сеть в CI бывает недоступна
+        LAST_ERROR["body"] = str(failure).replace("%", "%25").replace("\n", " ")
         print(f"{url} -> {failure}")
         return False
 
@@ -133,7 +140,9 @@ def main() -> int:
         if publish(token, url):
             print("::notice title=Правила базы::database.rules.json опубликован")
             return 0
-    print("::warning title=Правила базы::не удалось опубликовать database.rules.json")
+    # Причину печатаем прямо в аннотацию: журнал шага в CI читать не всегда удобно.
+    reason = f"{LAST_ERROR['code'] or 'сеть'} {LAST_ERROR['body']}".strip()
+    print(f"::warning title=Правила базы::не удалось опубликовать database.rules.json — {reason[:220]}")
     return 0
 
 

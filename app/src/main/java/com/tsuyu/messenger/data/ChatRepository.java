@@ -219,14 +219,21 @@ public final class ChatRepository {
     }
 
     public void setTyping(String chatId, String uid, boolean typing) {
+        // Пишем только свои поля и никогда не сносим узел целиком: в нём же живёт
+        // резервный канал звонка (typing/{uid}/call), который нужен, пока в базе
+        // не опубликованы правила со звонками.
+        DatabaseReference node = root.child("chats").child(chatId).child("typing").child(uid);
         if (!typing) {
-            root.child("chats").child(chatId).child("typing").child(uid).removeValue();
+            Map<String, Object> clear = new HashMap<>();
+            clear.put("typing", null);
+            clear.put("at", null);
+            node.updateChildren(clear);
             return;
         }
         Map<String, Object> state = new HashMap<>();
         state.put("typing", true);
         state.put("at", ServerValue.TIMESTAMP);
-        root.child("chats").child(chatId).child("typing").child(uid).setValue(state);
+        node.updateChildren(state);
     }
 
     public void markRead(String chatId, String uid) {

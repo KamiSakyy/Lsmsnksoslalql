@@ -81,6 +81,9 @@ public final class CallSignal {
             update.put("endedBy", uid);
             update.put("endedAt", ServerValue.TIMESTAMP);
             node(chatId, callId).updateChildren(update);
+            // Тот же отказ — в свой ящик в узле typing: он работает и по старым правилам.
+            FirebaseDatabase.getInstance().getReference("chats").child(chatId)
+                    .child("typing").child(uid).child("call").child(callId).updateChildren(update);
         } catch (Exception ignored) { }
         try {
             if (peerUid != null) FcmPushSender.pushCall(context, chatId, callId, uid, peerUid, false, TYPE_END);

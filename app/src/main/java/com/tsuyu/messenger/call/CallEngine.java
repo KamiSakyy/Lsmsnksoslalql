@@ -78,6 +78,11 @@ public final class CallEngine {
 
     private DatabaseReference callRef;
     private DatabaseReference iceRef;
+    /** Резервный канал: свой «почтовый ящик» в узле typing, который уже разрешён правилами. */
+    private DatabaseReference mirrorRef;
+    private DatabaseReference peerMirrorRef;
+    /** Кандидаты приходят с двух каналов: одинаковые не применяем дважды. */
+    private final java.util.Set<String> appliedCandidates = new java.util.HashSet<>();
     private ValueEventListener answerListener;
     private ValueEventListener offerListener;
     private ValueEventListener stateListener;
@@ -182,6 +187,7 @@ public final class CallEngine {
         this.videoCall = video;
         this.incoming = false;
         this.finished = false;
+        appliedCandidates.clear();
         callRef = FirebaseDatabase.getInstance().getReference("chats").child(chatId).child("calls").push();
         callId = callRef.getKey();
         Map<String, Object> call = new HashMap<>();
@@ -192,6 +198,9 @@ public final class CallEngine {
         call.put("createdAt", ServerValue.TIMESTAMP);
         callRef.updateChildren(call);
         iceRef = callRef.child("ice").child(myUid);
+        clearMirror(chatId, myUid);
+        mirrorRef = mirrorNode(chatId, myUid, callId);
+        peerMirrorRef = mirrorNode(chatId, peerUid, callId);
         notifyState("ringing", null);
         CallService.start(this.context);
         // Приоритет мобильного трафика: звонок идёт через сотовую сеть, а не через Wi-Fi.
@@ -216,8 +225,12 @@ public final class CallEngine {
         this.incoming = true;
         this.finished = false;
         this.callId = callId;
+        appliedCandidates.clear();
         callRef = FirebaseDatabase.getInstance().getReference("chats").child(chatId).child("calls").child(callId);
         iceRef = callRef.child("ice").child(myUid);
+        clearMirror(chatId, myUid);
+        mirrorRef = mirrorNode(chatId, myUid, callId);
+        peerMirrorRef = mirrorNode(chatId, peerUid, callId);
         listenToCall();
         notifyState("ringing", null);
         NetworkPriority.refresh(this.context);
@@ -244,11 +257,11 @@ public final class CallEngine {
     }
 
     public void decline() {
-        if (callRef != null) {
+        if (callRef != null || mirrorRef != null) {
             Map<String, Object> update = new HashMap<>();
             update.put(FIELD_STATE, "declined");
             update.put("endedBy", myUid);
-            callRef.updateChildren(update);
+            publish(update);
         }
         notifyState("declined", null);
         CallSignal.cancel(this.context, chatId, callId, myUid, peerUid, "declined");
@@ -256,12 +269,12 @@ public final class CallEngine {
     }
 
     public void hangup() {
-        if (callRef != null && !finished) {
+        if (!finished) {
             Map<String, Object> update = new HashMap<>();
             update.put(FIELD_STATE, "ended");
             update.put("endedBy", myUid);
             update.put("endedAt", ServerValue.TIMESTAMP);
-            callRef.updateChildren(update);
+            publish(update);
         }
         notifyState("ended", null);
         CallSignal.cancel(this.context, chatId, callId, myUid, peerUid, "ended");
@@ -274,13 +287,11 @@ public final class CallEngine {
         ringTimeout = () -> {
             ringTimeout = null;
             if (pendingActive || finished) return;
-            if (callRef != null) {
-                Map<String, Object> update = new HashMap<>();
-                update.put(FIELD_STATE, "missed");
-                update.put("endedBy", myUid);
-                update.put("endedAt", ServerValue.TIMESTAMP);
-                callRef.updateChildren(update);
-            }
+            Map<String, Object> update = new HashMap<>();
+            update.put(FIELD_STATE, "missed");
+            update.put("endedBy", myUid);
+            update.put("endedAt", ServerValue.TIMESTAMP);
+            publish(update);
             CallSignal.cancel(context, chatId, callId, myUid, peerUid, "missed");
             notifyState("missed", null);
             finish();
@@ -330,6 +341,17 @@ public final class CallEngine {
         if (remoteRenderer != null) { remoteRenderer.release(); remoteRenderer = null; }
         if (eglBase != null) { eglBase.release(); eglBase = null; }
         if (factory != null) { factory.dispose(); factory = null; }
+        final DatabaseReference staleMirror = mirrorRef;
+        if (staleMirror != null) {
+            // Ящик чистим с задержкой: «звонок завершён» должен успеть дойти до собеседника,
+            // даже если база ещё живёт по старым правилам и основной узел закрыт.
+            main.postDelayed(() -> {
+                try { staleMirror.removeValue(); } catch (Exception ignored) { }
+            }, 4000L);
+        }
+        mirrorRef = null;
+        peerMirrorRef = null;
+        appliedCandidates.clear();
         CallNotifier.clear(context);
         CallService.stop(context);
         // Возвращаем выбранный режим сети: после разговора снова мобильный приоритет.
@@ -396,6 +418,27 @@ public final class CallEngine {
         }
     }
 
+    /** Сносим остатки прошлых звонков из своего ящика: он наш, и правила это разрешают. */
+    private static void clearMirror(String chatId, String uid) {
+        if (chatId == null || uid == null) return;
+        try {
+            FirebaseDatabase.getInstance().getReference("chats").child(chatId)
+                    .child("typing").child(uid).child("call").removeValue();
+        } catch (Exception ignored) { }
+    }
+
+    /** Узел резервного канала: chats/{chatId}/typing/{uid}/call/{callId}. */
+    private static DatabaseReference mirrorNode(String chatId, String uid, String callId) {
+        return FirebaseDatabase.getInstance().getReference("chats").child(chatId)
+                .child("typing").child(uid).child("call").child(callId);
+    }
+
+    /** Пишем сразу в два места: основной узел звонка и резервный ящик. */
+    private void publish(Map<String, Object> values) {
+        if (callRef != null) callRef.updateChildren(values);
+        if (mirrorRef != null) mirrorRef.updateChildren(values);
+    }
+
     private void createOffer() {
         peerConnection.createOffer(new SimpleSdpObserver() {
             @Override public void onCreateSuccess(SessionDescription description) {
@@ -404,7 +447,7 @@ public final class CallEngine {
                         Map<String, Object> update = new HashMap<>();
                         update.put(FIELD_OFFER, description.description);
                         update.put(FIELD_STATE, "connecting");
-                        callRef.updateChildren(update);
+                        publish(update);
                         notifyState("connecting", null);
                     }
                 }, description);
@@ -424,7 +467,7 @@ public final class CallEngine {
         offerListener = new ValueEventListener() {
             @Override public void onDataChange(DataSnapshot snapshot) {
                 String offer = snapshot.getValue(String.class);
-                if (offer == null || !incoming) return;
+                if (offer == null || !incoming || appliedRemoteDescription) return;
                 peerConnection.setRemoteDescription(new SimpleSdpObserver() {
                     @Override public void onSetSuccess() {
                         appliedRemoteDescription = true;
@@ -440,6 +483,7 @@ public final class CallEngine {
             @Override public void onCancelled(DatabaseError error) { }
         };
         callRef.child(FIELD_OFFER).addValueEventListener(offerListener);
+        if (peerMirrorRef != null) peerMirrorRef.child(FIELD_OFFER).addValueEventListener(offerListener);
     }
 
     private void createAnswer() {
@@ -450,7 +494,7 @@ public final class CallEngine {
                         Map<String, Object> update = new HashMap<>();
                         update.put(FIELD_ANSWER, description.description);
                         update.put(FIELD_STATE, "active");
-                        callRef.updateChildren(update);
+                        publish(update);
                         notifyState("active", null);
                     }
                 }, description);
@@ -490,6 +534,7 @@ public final class CallEngine {
             @Override public void onCancelled(DatabaseError error) { }
         };
         callRef.addValueEventListener(stateListener);
+        if (peerMirrorRef != null) peerMirrorRef.addValueEventListener(stateListener);
     }
 
     private void applyRemoteAnswer(String answer) {
@@ -514,6 +559,7 @@ public final class CallEngine {
             @Override public void onCancelled(DatabaseError error) { }
         };
         callRef.child(FIELD_ANSWER).addValueEventListener(answerListener);
+        if (peerMirrorRef != null) peerMirrorRef.child(FIELD_ANSWER).addValueEventListener(answerListener);
     }
 
     private void listenToRemoteIce() {
@@ -524,6 +570,8 @@ public final class CallEngine {
                 String mid = snapshot.child("mid").getValue(String.class);
                 Integer index = snapshot.child("index").getValue(Integer.class);
                 if (sdp == null) return;
+                String fingerprint = mid + ":" + index + ":" + sdp;
+                if (!appliedCandidates.add(fingerprint)) return;
                 try {
                     peerConnection.addIceCandidate(new IceCandidate(mid, index == null ? 0 : index, sdp));
                 } catch (Exception ignored) { }
@@ -535,14 +583,31 @@ public final class CallEngine {
             @Override public void onCancelled(DatabaseError error) { }
         };
         callRef.child("ice").child(peerUid).addChildEventListener(iceListener);
+        if (peerMirrorRef != null) peerMirrorRef.child("ice").addChildEventListener(iceListener);
     }
 
     private void detachListeners() {
-        if (callRef == null) return;
-        if (answerListener != null) { callRef.child(FIELD_ANSWER).removeEventListener(answerListener); answerListener = null; }
-        if (offerListener != null) { callRef.child(FIELD_OFFER).removeEventListener(offerListener); offerListener = null; }
-        if (stateListener != null) { callRef.removeEventListener(stateListener); stateListener = null; }
-        if (iceListener != null) { callRef.child("ice").child(peerUid).removeEventListener(iceListener); iceListener = null; }
+        if (callRef == null && peerMirrorRef == null) return;
+        if (answerListener != null) {
+            if (callRef != null) callRef.child(FIELD_ANSWER).removeEventListener(answerListener);
+            if (peerMirrorRef != null) peerMirrorRef.child(FIELD_ANSWER).removeEventListener(answerListener);
+            answerListener = null;
+        }
+        if (offerListener != null) {
+            if (callRef != null) callRef.child(FIELD_OFFER).removeEventListener(offerListener);
+            if (peerMirrorRef != null) peerMirrorRef.child(FIELD_OFFER).removeEventListener(offerListener);
+            offerListener = null;
+        }
+        if (stateListener != null) {
+            if (callRef != null) callRef.removeEventListener(stateListener);
+            if (peerMirrorRef != null) peerMirrorRef.removeEventListener(stateListener);
+            stateListener = null;
+        }
+        if (iceListener != null) {
+            if (callRef != null) callRef.child("ice").child(peerUid).removeEventListener(iceListener);
+            if (peerMirrorRef != null) peerMirrorRef.child("ice").removeEventListener(iceListener);
+            iceListener = null;
+        }
     }
 
     private final PeerConnection.Observer observer = new PeerConnection.Observer() {
@@ -588,12 +653,13 @@ public final class CallEngine {
         @Override public void onIceCandidatesRemoved(IceCandidate[] candidates) { }
 
         @Override public void onIceCandidate(IceCandidate candidate) {
-            if (iceRef == null || candidate == null) return;
+            if (candidate == null) return;
             Map<String, Object> value = new HashMap<>();
             value.put("sdp", candidate.sdp);
             value.put("mid", candidate.sdpMid);
             value.put("index", candidate.sdpMLineIndex);
-            iceRef.push().setValue(value);
+            if (iceRef != null) iceRef.push().setValue(value);
+            if (mirrorRef != null) mirrorRef.child("ice").push().setValue(value);
         }
 
         @Override public void onAddStream(MediaStream stream) { }
@@ -616,7 +682,8 @@ public final class CallEngine {
                 @Override public void onCreateSuccess(SessionDescription description) {
                     peerConnection.setLocalDescription(new SimpleSdpObserver() {
                         @Override public void onSetSuccess() {
-                            callRef.child(FIELD_OFFER).setValue(description.description);
+                            if (callRef != null) callRef.child(FIELD_OFFER).setValue(description.description);
+                            if (mirrorRef != null) mirrorRef.child(FIELD_OFFER).setValue(description.description);
                         }
                     }, description);
                 }
