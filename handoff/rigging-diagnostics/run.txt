@@ -1,11 +1,6 @@
-Run: https://github.com/KamiSakyy/Lsmsnksoslalql/actions/runs/38088562259
+Run: https://github.com/KamiSakyy/Lsmsnksoslalql/actions/runs/38111736347
 anime-girl-rigged.fbx 11232172 bytes
 anime-girl-full.glb 79754500 bytes
-rest-pose.png 644885 bytes
-skeleton.png 440992 bytes
-README_RU.md 6031 bytes
 anime-girl-rigged.glb 18071540 bytes
 rig-report.json 8432 bytes
-animation-preview.gif 4105456 bytes
-anime-girl-rigged.blend 110269180 bytes
 khronos-validation.json 6260 bytes
