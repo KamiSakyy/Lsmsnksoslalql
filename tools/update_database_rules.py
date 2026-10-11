@@ -32,7 +32,6 @@ HOST = urllib.parse.urlparse(DATABASE).netloc
 SCOPE = ("https://www.googleapis.com/auth/firebase.database "
          "https://www.googleapis.com/auth/cloud-platform "
          "https://www.googleapis.com/auth/userinfo.email")
-LAST_ERROR = {"code": None, "body": ""}
 
 
 def find_key() -> pathlib.Path | None:
@@ -88,38 +87,49 @@ def access_token(key: dict) -> str:
 RESULTS: list[str] = []
 
 
+def attempt(name: str, url: str, body: bytes, headers: dict) -> bool:
+    request = urllib.request.Request(url, data=body, method="PUT", headers=headers)
+    try:
+        with urllib.request.urlopen(request, timeout=45) as response:
+            reply = response.read().decode("utf-8", "replace")
+            RESULTS.append(f"{name}:{response.status}")
+            print(f"{name} -> HTTP {response.status} {reply[:200]}")
+            return response.status == 200
+    except urllib.error.HTTPError as failure:
+        detail = " ".join(failure.read().decode("utf-8", "replace").split())[:140]
+        RESULTS.append(f"{name}:{failure.code} {detail}")
+        print(f"{name} -> HTTP {failure.code} {detail}")
+        return False
+    except Exception as failure:  # noqa: BLE001 - сеть в CI бывает недоступна
+        RESULTS.append(f"{name}:сеть {str(failure)[:80]}")
+        print(f"{name} -> {failure}")
+        return False
+
+
 def publish(token: str, url: str) -> bool:
-    """Пишем правила тремя способами: региональный хост, токен в заголовке, алиас."""
-    body = RULES.read_bytes()
-    host = urllib.parse.urlparse(url).netloc
-    attempts = [
-        ("query", f"{url}/.settings/rules.json?access_token={urllib.parse.quote(token)}",
-         {"Content-Type": "application/json"}),
-        ("bearer", f"{url}/.settings/rules.json",
+    """Региональный хост принимает правила и в обёртке, и без неё, с любым charset.
+
+    Поэтому перебираем формы тела и заголовок авторизации: одно из сочетаний
+    подходит любой базе, а какое именно — видно в аннотации, если ничего не сработало.
+    """
+    document = json.loads(RULES.read_text(encoding="utf-8"))
+    wrapped = json.dumps(document, ensure_ascii=False).encode("utf-8")
+    inner = json.dumps(document["rules"], ensure_ascii=False).encode("utf-8")
+    quoted = urllib.parse.quote(token)
+    variants = [
+        ("что видно в базе", f"{url}/.settings/rules.json?access_token={quoted}", wrapped,
+         {"Content-Type": "application/json; charset=utf-8"}),
+        ("без обёртки", f"{url}/.settings/rules.json?access_token={quoted}", inner,
+         {"Content-Type": "application/json; charset=utf-8"}),
+        ("без обёртки, ascii", f"{url}/.settings/rules.json?access_token={quoted}",
+         json.dumps(document["rules"]).encode("utf-8"),
+         {"Content-Type": "application/json; charset=utf-8"}),
+        ("токен в заголовке", f"{url}/.settings/rules.json", wrapped,
          {"Content-Type": "application/json", "Authorization": f"Bearer {token}"}),
-        ("alias", f"https://{host.split('.')[0]}.firebaseio.com/.settings/rules.json"
-                  f"?access_token={urllib.parse.quote(token)}",
-         {"Content-Type": "application/json"}),
     ]
-    for name, target, headers in attempts:
-        request = urllib.request.Request(target, data=body, method="PUT", headers=headers)
-        try:
-            with urllib.request.urlopen(request, timeout=45) as response:
-                reply = response.read().decode("utf-8", "replace")
-                RESULTS.append(f"{name}:{response.status}")
-                print(f"{name} {target} -> HTTP {response.status} {reply[:200]}")
-                if response.status == 200:
-                    return True
-        except urllib.error.HTTPError as failure:
-            detail = failure.read().decode("utf-8", "replace")[:200]
-            RESULTS.append(f"{name}:{failure.code}")
-            LAST_ERROR["code"] = failure.code
-            LAST_ERROR["body"] = detail.replace("%", "%25").replace("\n", " ")
-            print(f"{name} {target} -> HTTP {failure.code} {detail}")
-        except Exception as failure:  # noqa: BLE001 - сеть в CI бывает недоступна
-            RESULTS.append(f"{name}:сеть")
-            LAST_ERROR["body"] = str(failure).replace("%", "%25").replace("\n", " ")
-            print(f"{name} {target} -> {failure}")
+    for name, target, body, headers in variants:
+        if attempt(name, target, body, headers):
+            return True
     return False
 
 
@@ -151,9 +161,8 @@ def main() -> int:
     if publish(token, DATABASE):
         print("::notice title=Правила базы::database.rules.json опубликован")
         return 0
-    # Все попытки и причину печатаем в аннотацию: журнал шага в CI читать не всегда удобно.
-    reason = f"{LAST_ERROR['code'] or 'сеть'} {LAST_ERROR['body']}".strip()
-    print(f"::warning title=Правила базы::не опубликованы [{', '.join(RESULTS)}] — {reason[:200]}")
+    # Все попытки печатаем в аннотацию: журнал шага в CI читать не всегда удобно.
+    print("::warning title=Правила базы::не опубликованы — " + " | ".join(RESULTS)[:700])
     return 0
 
 
