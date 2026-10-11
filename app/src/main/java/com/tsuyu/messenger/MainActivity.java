@@ -700,7 +700,7 @@ public final class MainActivity extends AppCompatActivity {
                             if (payload != null) {
                                 summary.lastPreview = previewFromJson(payload);
                                 summary.lastKind = kindFromJson(payload);
-                                store.updatePayload(chatId, newest.id, payload);
+                                store.updatePayload(newest.id, payload);
                             }
                             if (!preserveLocalPreview) countIncoming(summary, newest);
                         }
@@ -748,7 +748,7 @@ public final class MainActivity extends AppCompatActivity {
                 String json = new String(plaintext, StandardCharsets.UTF_8);
                 if (messageCache != null) messageCache.put(summary.chatId, message.id, json);
                 if (store != null) {
-                    store.updatePayload(summary.chatId, message.id, json);
+                    store.updatePayload(message.id, json);
                     if (summary.lastMessage != null && message.id != null && message.id.equals(summary.lastMessage.id)) {
                         summary.lastPreview = previewFromJson(json);
                         summary.lastKind = kindFromJson(json);
@@ -2417,6 +2417,47 @@ public final class MainActivity extends AppCompatActivity {
         }
         if (!cached.isEmpty()) chatIndexLoaded = true;
         return hadData;
+    }
+
+    /** Refreshes a conversation that is already painted from the local cache. */
+    private void refreshSummary(String chatId, ChatSummary summary) {
+        if (summary == null || !loadingSummaryIds.add(chatId)) return;
+        try {
+            if (summary.peerUid != null) watchSummaryRealtime(chatId, summary.peerUid);
+            DataSnapshot meta = readOptionalSnapshot(chatRepository.chatMeta(chatId));
+            Long at = meta == null ? null : number(meta.child("lastAt").getValue());
+            ChatMessage last = meta == null ? null : meta.child("lastMessage").getValue(ChatMessage.class);
+            if (last != null) last.id = meta.child("lastMessageId").getValue(String.class);
+            if (last != null) reconcileOptimisticMessage(chatId, last);
+            boolean keepLocal = summary.lastMessage != null && summary.lastMessage.localPayload != null
+                    && (at == null || summary.lastAt >= at);
+            if (!keepLocal && at != null) {
+                summary.lastAt = at;
+                summary.lastMessage = last;
+                summary.encryptedPreview = last == null ? null : last.cipher;
+                if (last != null) {
+                    if (last.senderUid != null && last.senderUid.equals(uid)) {
+                        ChatMessage local = last.clientId == null ? null : optimisticMessages.get(last.clientId);
+                        if (local != null && local.localPayload != null) {
+                            summary.lastPreview = previewFromJson(local.localPayload);
+                            summary.lastKind = kindFromJson(local.localPayload);
+                        }
+                    } else {
+                        maybeDecryptPreview(summary, last);
+                    }
+                }
+            }
+            if (store != null) {
+                summary.unread = Math.max(summary.unread, store.unread(chatId));
+                cachePreview(summary);
+                persistSummary(summary);
+            }
+            runOnUiThread(this::renderChatList);
+        } catch (Exception error) {
+            android.util.Log.w("Tsuyu", "Could not refresh chat summary " + chatId, error);
+        } finally {
+            loadingSummaryIds.remove(chatId);
+        }
     }
 
     private void persistSummary(ChatSummary summary) {

@@ -315,7 +315,7 @@ public final class TsuyuStore extends SQLiteOpenHelper {
         db.update("messages", updates, "account = ? AND message_id = ?", new String[]{account, message.id});
     }
 
-    public synchronized void updatePayload(String chatId, String messageId, String payload) {
+    public synchronized void updatePayload(String messageId, String payload) {
         if (payload == null || messageId == null) return;
         ContentValues values = new ContentValues();
         values.put("payload", seal(payload));
