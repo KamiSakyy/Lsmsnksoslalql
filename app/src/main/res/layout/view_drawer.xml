@@ -3,7 +3,7 @@
 <LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
     xmlns:app="http://schemas.android.com/apk/res-auto"
     android:id="@+id/drawer_root"
-    android:layout_width="320dp"
+    android:layout_width="@dimen/drawer_width"
     android:layout_height="match_parent"
     android:layout_gravity="start"
     android:background="@color/tsuyu_surface"
@@ -15,16 +15,16 @@
         android:layout_height="wrap_content"
         android:background="@color/tsuyu_input"
         android:orientation="vertical"
-        android:paddingStart="18dp"
-        android:paddingTop="24dp"
-        android:paddingEnd="18dp"
-        android:paddingBottom="24dp">
+        android:paddingStart="@dimen/screen_gutter"
+        android:paddingTop="18dp"
+        android:paddingEnd="@dimen/screen_gutter"
+        android:paddingBottom="18dp">
 
         <FrameLayout
             android:id="@+id/drawer_avatar_frame"
-            android:layout_width="72dp"
-            android:layout_height="72dp"
-            android:layout_marginBottom="4dp"
+            android:layout_width="64dp"
+            android:layout_height="64dp"
+            android:layout_marginBottom="6dp"
             android:background="@drawable/bg_avatar_ring"
             android:clickable="true"
             android:focusable="true">
@@ -48,14 +48,14 @@
 
             <ImageView
                 android:id="@+id/drawer_avatar_edit"
-                android:layout_width="26dp"
-                android:layout_height="26dp"
+                android:layout_width="24dp"
+                android:layout_height="24dp"
                 android:layout_gravity="bottom|end"
                 android:background="@drawable/bg_avatar_edit"
                 android:clickable="true"
                 android:contentDescription="@string/drawer_avatar_edit"
                 android:focusable="true"
-                android:padding="5dp"
+                android:padding="4dp"
                 android:src="@drawable/ic_camera"
                 app:tint="@color/tsuyu_black" />
         </FrameLayout>
@@ -64,7 +64,11 @@
             android:id="@+id/drawer_name"
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
-            android:layout_marginTop="8dp"
+            android:layout_marginTop="2dp"
+            android:autoSizeMaxTextSize="18sp"
+            android:autoSizeMinTextSize="15sp"
+            android:autoSizeStepGranularity="1sp"
+            android:autoSizeTextType="uniform"
             android:ellipsize="end"
             android:fontFamily="sans-serif-medium"
             android:maxLines="1"
@@ -97,8 +101,12 @@
                 android:layout_width="0dp"
                 android:layout_height="wrap_content"
                 android:layout_weight="1"
+                android:autoSizeMaxTextSize="13sp"
+                android:autoSizeMinTextSize="11sp"
+                android:autoSizeStepGranularity="1sp"
+                android:autoSizeTextType="uniform"
                 android:ellipsize="end"
-                android:maxLines="2"
+                android:maxLines="3"
                 android:text="@string/drawer_status_hint"
                 android:textColor="@color/tsuyu_drawer_icon"
                 android:textSize="13sp" />
@@ -129,10 +137,10 @@
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
             android:orientation="vertical"
-            android:paddingStart="10dp"
-            android:paddingTop="12dp"
-            android:paddingEnd="10dp"
-            android:paddingBottom="12dp">
+            android:paddingStart="8dp"
+            android:paddingTop="8dp"
+            android:paddingEnd="8dp"
+            android:paddingBottom="8dp">
 
             <LinearLayout
                 android:id="@+id/drawer_item_stealth"
@@ -155,7 +163,7 @@
             <LinearLayout
                 android:id="@+id/drawer_item_sound"
                 style="@style/Widget.Tsuyu.DrawerRow"
-                android:layout_marginTop="6dp">
+                android:layout_marginTop="2dp">
 
                 <ImageView
                     style="@style/Widget.Tsuyu.DrawerIcon"
@@ -174,7 +182,7 @@
             <LinearLayout
                 android:id="@+id/drawer_item_encrypt"
                 style="@style/Widget.Tsuyu.DrawerRow"
-                android:layout_marginTop="6dp">
+                android:layout_marginTop="2dp">
 
                 <ImageView
                     style="@style/Widget.Tsuyu.DrawerIcon"
@@ -193,7 +201,7 @@
             <LinearLayout
                 android:id="@+id/drawer_item_cache"
                 style="@style/Widget.Tsuyu.DrawerRow"
-                android:layout_marginTop="6dp">
+                android:layout_marginTop="2dp">
 
                 <ImageView
                     style="@style/Widget.Tsuyu.DrawerIcon"
@@ -209,7 +217,7 @@
             <LinearLayout
                 android:id="@+id/drawer_item_profile"
                 style="@style/Widget.Tsuyu.DrawerRow"
-                android:layout_marginTop="6dp">
+                android:layout_marginTop="2dp">
 
                 <ImageView
                     style="@style/Widget.Tsuyu.DrawerIcon"
@@ -224,7 +232,7 @@
             <LinearLayout
                 android:id="@+id/drawer_item_avatar"
                 style="@style/Widget.Tsuyu.DrawerRow"
-                android:layout_marginTop="6dp">
+                android:layout_marginTop="2dp">
 
                 <ImageView
                     style="@style/Widget.Tsuyu.DrawerIcon"
@@ -239,7 +247,7 @@
             <LinearLayout
                 android:id="@+id/drawer_item_pin"
                 style="@style/Widget.Tsuyu.DrawerRow"
-                android:layout_marginTop="6dp">
+                android:layout_marginTop="2dp">
 
                 <ImageView
                     style="@style/Widget.Tsuyu.DrawerIcon"
@@ -255,7 +263,7 @@
             <LinearLayout
                 android:id="@+id/drawer_item_cloud"
                 style="@style/Widget.Tsuyu.DrawerRow"
-                android:layout_marginTop="6dp">
+                android:layout_marginTop="2dp">
 
                 <ImageView
                     style="@style/Widget.Tsuyu.DrawerIcon"
@@ -270,7 +278,7 @@
             <LinearLayout
                 android:id="@+id/drawer_item_settings"
                 style="@style/Widget.Tsuyu.DrawerRow"
-                android:layout_marginTop="6dp">
+                android:layout_marginTop="2dp">
 
                 <ImageView
                     style="@style/Widget.Tsuyu.DrawerIcon"
@@ -285,7 +293,7 @@
             <LinearLayout
                 android:id="@+id/drawer_item_logout"
                 style="@style/Widget.Tsuyu.DrawerRow"
-                android:layout_marginTop="18dp">
+                android:layout_marginTop="10dp">
 
                 <ImageView
                     style="@style/Widget.Tsuyu.DrawerIcon"

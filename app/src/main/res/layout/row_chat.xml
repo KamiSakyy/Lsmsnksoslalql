@@ -67,6 +67,10 @@
 
                 <TextView
                     android:id="@+id/chat_name"
+                    android:autoSizeMaxTextSize="15sp"
+                    android:autoSizeMinTextSize="12sp"
+                    android:autoSizeStepGranularity="1sp"
+                    android:autoSizeTextType="uniform"
                     android:layout_width="0dp"
                     android:layout_height="wrap_content"
                     android:layout_weight="1"

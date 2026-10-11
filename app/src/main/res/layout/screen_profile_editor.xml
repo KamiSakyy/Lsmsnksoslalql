@@ -134,15 +134,22 @@
                 android:layout_height="wrap_content"
                 android:layout_marginBottom="@dimen/space_sm">
 
+                <!-- Описание адаптивное: поле ровно по тексту, от одной строки до пяти,
+                     а длинная строка сама уменьшает кегль вместо переноса «лестницей». -->
                 <com.google.android.material.textfield.TextInputEditText
                     android:id="@+id/profile_about"
                     style="@style/Widget.Tsuyu.Input.EditText"
                     android:layout_width="match_parent"
                     android:layout_height="wrap_content"
+                    android:autoSizeMaxTextSize="16sp"
+                    android:autoSizeMinTextSize="13sp"
+                    android:autoSizeStepGranularity="1sp"
+                    android:autoSizeTextType="uniform"
                     android:gravity="top|start"
                     android:hint="@string/profile_about_hint"
                     android:inputType="textCapSentences|textMultiLine"
-                    android:minLines="3" />
+                    android:maxLines="5"
+                    android:minLines="1" />
             </com.google.android.material.textfield.TextInputLayout>
 
             <TextView

@@ -18,6 +18,7 @@
 
     <!-- Screen grid -->
     <dimen name="screen_gutter">16dp</dimen>
+    <dimen name="drawer_width">296dp</dimen>
     <dimen name="hairline">1dp</dimen>
 
     <!-- Corner radii -->

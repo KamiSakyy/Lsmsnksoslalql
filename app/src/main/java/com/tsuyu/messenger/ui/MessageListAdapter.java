@@ -247,6 +247,12 @@ public final class MessageListAdapter extends RecyclerView.Adapter<RecyclerView.
             holder.bubble.setCardBackgroundColor(holder.itemView.getContext().getColor(R.color.tsuyu_accent_tint_strong));
         }
         holder.body.setTextSize(textSize);
+        // Ширина пузыря считается от экрана, а не от жёстких 272dp: текст и медиа
+        // занимают одну и ту же долю полосы на телефоне, складном экране и планшете.
+        android.util.DisplayMetrics metrics = holder.itemView.getContext().getResources().getDisplayMetrics();
+        int adaptiveCap = Math.max(Math.round(200 * metrics.density), Math.round(metrics.widthPixels * 0.72f));
+        holder.body.setMaxWidth(adaptiveCap);
+        scaleMedia(holder, metrics, adaptiveCap);
         int style = bold ? Typeface.BOLD : Typeface.NORMAL;
         if (italic) style |= Typeface.ITALIC;
         holder.body.setTypeface(Typeface.create(Typeface.DEFAULT, style));
@@ -377,6 +383,27 @@ public final class MessageListAdapter extends RecyclerView.Adapter<RecyclerView.
     }
 
     /** Restores the default bubble look so recycled holders never keep sticker/circle styling. */
+    /** Медиа внутри пузыря масштабируется пропорционально выбранной ширине полосы. */
+    /** Медиа внутри пузыря масштабируется пропорционально выбранной ширине полосы. */
+    private void scaleMedia(Holder holder, android.util.DisplayMetrics metrics, int adaptiveCap) {
+        android.content.Context context = holder.itemView.getContext();
+        int baseWidth = context.getResources().getDimensionPixelSize(R.dimen.media_width);
+        float scale = Math.min(1f, adaptiveCap / (float) baseWidth);
+        applySize(holder.image, context, R.dimen.media_width, R.dimen.media_height_image, scale);
+        applySize(holder.video, context, R.dimen.media_width, R.dimen.media_height_video, scale);
+        applySize(holder.gallery, context, R.dimen.media_width, R.dimen.media_height_gallery, scale);
+    }
+
+    /** Размер считается заново от dimens, поэтому переработанные строки не «сжимаются». */
+    private void applySize(View view, android.content.Context context, int widthRes, int heightRes, float scale) {
+        if (view == null) return;
+        android.view.ViewGroup.LayoutParams params = view.getLayoutParams();
+        if (params == null) return;
+        params.width = Math.round(context.getResources().getDimensionPixelSize(widthRes) * scale);
+        params.height = Math.round(context.getResources().getDimensionPixelSize(heightRes) * scale);
+        view.setLayoutParams(params);
+    }
+
     private void resetBubbleChrome(Holder holder, boolean outgoing) {
         android.content.Context context = holder.itemView.getContext();
         holder.bubble.setCardBackgroundColor(context.getColor(
