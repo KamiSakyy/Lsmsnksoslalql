@@ -21,7 +21,7 @@ from mathutils import Matrix, Quaternion, Vector
 from PIL import Image, ImageDraw, ImageFont
 
 from core import (capsule_weights, extract_glb, load_profile, make_full_resolution,
-                  pack_four_weights, read_accessor, read_glb, sha256, smooth_weights,
+                  pack_four_weights, read_accessor, read_glb, repair_runtime_tangents, sha256, smooth_weights,
                   surface_distances, surface_topology, transfer_weights, two_bone_ik, validate_skin)
 
 CLIPS = {'Idle': 4.0, 'Walk_InPlace': 1.2, 'Run_InPlace': 0.8, 'Wave': 3.0, 'Dance': 4.0}
@@ -527,6 +527,8 @@ def render_previews(rig, bones, actions, camera, output):
 
 def write_readme(output, report):
     run_url = os.environ.get('GITHUB_SERVER_URL', 'https://github.com') + '/' + os.environ.get('GITHUB_REPOSITORY', 'KamiSakyy/Lsmsnksoslalql') + '/actions/runs/' + os.environ.get('GITHUB_RUN_ID', '')
+    preview_note = ('- **skeleton.png**, **rest-pose.png**, **animation-preview.gif** — настоящий рендер и демонстрация движений.\n'
+                    if report.get('previews_generated') else '')
     content = f'''# Девушка Tripo: скелет и анимации
 
 Модель из исходного ZIP обработана автоматически в GitHub Actions с помощью **Blender {bpy.app.version_string}, NumPy и SciPy**, без аккаунта Mixamo и без GPU.
@@ -537,8 +539,7 @@ def write_readme(output, report):
 - **anime-girl-full.glb** — исходные {report['source']['vertices']:,} вершин и {report['source']['triangles']:,} треугольников, исходные текстуры и геометрия **без упрощения**, тот же скелет и анимации. В полном артефакте Actions, не дублируется в Git.
 - **anime-girl-rigged.blend** — редактируемая сцена Blender. Объект `AnimeGirl_Animated` видим; оригинал `AnimeGirl_Original_HighDetail` тоже имеет веса и Armature, но скрыт, чтобы не рисовать две поверхности одновременно. Снимите скрытие оригинала и скройте облегчённую копию для полной детализации.
 - **anime-girl-rigged.fbx** — облегчённая модель со скелетом, текстурами и клипами для Blender/Unity/Unreal.
-- **skeleton.png**, **rest-pose.png**, **animation-preview.gif** — настоящий рендер и демонстрация всех движений.
-- **rig-report.json**, **khronos-validation.json** — машинные проверки.
+{preview_note}- **rig-report.json**, **khronos-validation.json** — машинные проверки.
 
 [Запуск и полный артефакт GitHub Actions]({run_url}) → раздел **Artifacts** → `anime-girl-rigged`.
 
@@ -569,7 +570,7 @@ python -m pip install -r tools/rigging/requirements.txt
 python tools/rigging/rig_model.py --archive handoff/d247d7c3_46ba_414e_b821_b731d4b67026_ab2fefced0df785fa9f396410d0b5905.zip --output build/rigged --render
 ```
 
-Исходный ZIP не изменяется, секреты и сервер приложения не используются. Большие `.blend`/FBX/полный GLB хранятся в Actions artifact (90 дней); скачайте их для долговременного хранения. Облегчённый GLB, отчёт и превью сохранены в этой ветке Git.
+Исходный ZIP не изменяется, секреты и сервер приложения не используются. Большие `.blend` и полный GLB хранятся в Actions artifact (90 дней); скачайте их для долговременного хранения. Облегчённый GLB, FBX, отчёт и инструкция сохранены в этой ветке Git. Для этой сборки не требуется эмулятор или сайт.
 '''
     (output / 'README_RU.md').write_text(content)
 
@@ -622,6 +623,8 @@ def main():
         pose.location = (0, 0, 0)
     bpy.context.scene.frame_set(0)
     export_models(runtime, rig, output)
+    tangent_repairs = repair_runtime_tangents(output / 'anime-girl-rigged.glb')
+    log(f'Exported tangent frames repaired: {tangent_repairs}')
     runtime_skin = validate_skin(output / 'anime-girl-rigged.glb', set(CLIPS))
     log(f'Runtime GLB skin validated: {runtime_skin}')
     log('Transferring skin weights to the original high-detail Blender mesh')
@@ -638,12 +641,13 @@ def main():
                          [b.name for b in bones], full_indexes, full_quantized)
     full_skin = validate_skin(output / 'anime-girl-full.glb', set(CLIPS))
     report = {
+        'previews_generated': bool(args.render),
         'toolchain': {'blender': bpy.app.version_string, 'method': rig['rigging_method'], 'fps': FPS},
         'source': {'file': source.name, 'archive_sha256': sha256(args.archive), 'glb_sha256': sha256(source),
                    'vertices': source_vertices, 'triangles': source_triangles,
                    'original_skins': len(document.get('skins', [])), 'original_animations': len(document.get('animations', []))},
         'runtime': {'file': 'anime-girl-rigged.glb', 'vertices': len(positions), 'triangles': len(triangles),
-                    'skin': runtime_skin, 'topology': topology, 'bytes': (output / 'anime-girl-rigged.glb').stat().st_size},
+                    'skin': runtime_skin, 'topology': topology, 'tangent_repairs': tangent_repairs, 'bytes': (output / 'anime-girl-rigged.glb').stat().st_size},
         'full_resolution': {'file': 'anime-girl-full.glb', 'geometry_and_textures_preserved': True,
                             'skin': full_skin, 'bytes': (output / 'anime-girl-full.glb').stat().st_size},
         'bones': [{'name': b.name, 'parent': b.parent, 'category': b.category} for b in bones],
@@ -678,12 +682,16 @@ def main():
 
 
 if __name__ == '__main__':
-    main()
-    # bpy embeds Blender's native runtime in CPython. Do not tear its worker
-    # threads down a second time during CPython finalization. This is reached
-    # only after every export, skin check, render and save completed normally;
-    # exceptions/crashes in main still fail the job, and Khronos checks follow.
     import sys
+    import traceback
+    # Avoid bpy's native teardown crash on both success and Python exceptions.
+    # Real native crashes are not intercepted; Python failures retain exit code 1.
+    try:
+        main()
+        exit_code = 0
+    except Exception:
+        traceback.print_exc()
+        exit_code = 1
     sys.stdout.flush()
     sys.stderr.flush()
-    os._exit(0)
+    os._exit(exit_code)

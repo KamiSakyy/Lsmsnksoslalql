@@ -478,3 +478,69 @@ def make_full_resolution(source_path: Path, runtime_path: Path, output_path: Pat
         document['animations'].append(animation)
     document['asset']['generator'] = 'Blender 4.2 LTS + SciPy; original Tripo mesh preserved'
     write_glb(output_path, document, binary)
+
+
+def orthonormal_tangents(normals: np.ndarray, tangents: np.ndarray) -> tuple[np.ndarray, int]:
+    """Repair degenerate UV tangents without removing the normal map or geometry.
+
+    Valid frames remain byte-for-byte unchanged. For a zero/projected-zero vector,
+    choose the coordinate axis least parallel to the normal to form a stable basis.
+    """
+    normals = np.asarray(normals, dtype=np.float64)
+    result = np.asarray(tangents, dtype=np.float32).copy()
+    if normals.shape != (len(result), 3) or result.shape != (len(result), 4):
+        raise ValueError('Normal/tangent attribute shape mismatch')
+    if not np.all(np.isfinite(normals)) or not np.all(np.isfinite(result)):
+        raise ValueError('Non-finite normal or tangent')
+    normal_lengths = np.linalg.norm(normals, axis=1)
+    if np.any(np.abs(normal_lengths - 1) > 1e-3):
+        raise ValueError('Normals must already be unit length')
+    normals = normals / normal_lengths[:, None]
+    xyz = result[:, :3].astype(np.float64)
+    dot = np.sum(normals * xyz, axis=1)
+    invalid = ((np.abs(np.linalg.norm(xyz, axis=1) - 1) > 1e-5)
+               | (np.abs(dot) > 1e-5) | (np.abs(result[:, 3]) != 1))
+    if not np.any(invalid):
+        return result, 0
+    n = normals[invalid]
+    projected = xyz[invalid] - n * dot[invalid, None]
+    lengths = np.linalg.norm(projected, axis=1)
+    degenerate = lengths < 1e-8
+    if np.any(degenerate):
+        basis = np.eye(3)[np.argmin(np.abs(n[degenerate]), axis=1)]
+        projected[degenerate] = np.cross(n[degenerate], basis)
+        lengths[degenerate] = np.linalg.norm(projected[degenerate], axis=1)
+    result[invalid, :3] = projected / lengths[:, None]
+    result[invalid, 3] = np.where(result[invalid, 3] < 0, -1, 1)
+    return result, int(np.sum(invalid))
+
+
+def repair_runtime_tangents(path: Path) -> dict:
+    """Patch only exported TANGENT bytes; preserve every other binary attribute."""
+    document, raw = read_glb(path)
+    binary = bytearray(raw)
+    corrected = 0
+    visited = set()
+    for mesh in document.get('meshes', []):
+        for primitive in mesh['primitives']:
+            attrs = primitive['attributes']
+            index = attrs.get('TANGENT')
+            if index is None or index in visited:
+                continue
+            visited.add(index)
+            accessor = document['accessors'][index]
+            if accessor['componentType'] != 5126 or accessor['type'] != 'VEC4':
+                raise ValueError('Expected FLOAT VEC4 tangent accessor')
+            normals = read_accessor(document, binary, attrs['NORMAL'])
+            tangents = read_accessor(document, binary, index)
+            repaired, count = orthonormal_tangents(normals, tangents)
+            if count:
+                view = document['bufferViews'][accessor['bufferView']]
+                target = np.ndarray((accessor['count'], 4), dtype='<f4', buffer=binary,
+                                    offset=view.get('byteOffset', 0) + accessor.get('byteOffset', 0),
+                                    strides=(view.get('byteStride', 16), 4))
+                target[:] = repaired
+                corrected += count
+    if corrected:
+        write_glb(path, document, binary)
+    return {'corrected_vertices': corrected, 'method': 'orthonormal fallback for degenerate UV tangents'}

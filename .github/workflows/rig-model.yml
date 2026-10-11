@@ -9,6 +9,11 @@ on:
       - tools/rigging/**
       - tests/rigging/**
   workflow_dispatch:
+    inputs:
+      render_previews:
+        description: Generate optional offline renders (not required for model files)
+        type: boolean
+        default: false
 
 permissions:
   contents: write
@@ -26,6 +31,7 @@ jobs:
       OPENBLAS_NUM_THREADS: '2'
       OMP_NUM_THREADS: '2'
       PYTHONUNBUFFERED: '1'
+      RENDER_PREVIEWS: ${{ inputs.render_previews || false }}
       SOURCE_ARCHIVE: handoff/d247d7c3_46ba_414e_b821_b731d4b67026_ab2fefced0df785fa9f396410d0b5905.zip
     steps:
       - name: Check out the same working branch
@@ -65,11 +71,15 @@ jobs:
         run: |
           set -euo pipefail
           mkdir -p build
+          preview_args=()
+          if [[ "$RENDER_PREVIEWS" == "true" ]]; then
+            preview_args+=(--render)
+          fi
           python -X faulthandler tools/rigging/rig_model.py \
             --archive "$SOURCE_ARCHIVE" \
             --output build/rigged \
             --target-triangles 160000 \
-            --validate-gltf --render 2>&1 | tee build/rigging.log
+            --validate-gltf "${preview_args[@]}" 2>&1 | tee build/rigging.log
 
       - name: Upload complete editable and full-resolution results
         uses: actions/upload-artifact@v7.0.2
@@ -92,22 +102,33 @@ jobs:
         run: |
           set -euo pipefail
           mkdir -p handoff/rigged
-          cp build/rigged/anime-girl-rigged.glb handoff/rigged/
+          cp build/rigged/anime-girl-rigged.glb build/rigged/anime-girl-rigged.fbx handoff/rigged/
           cp build/rigged/rig-report.json build/rigged/khronos-validation.json handoff/rigged/
-          cp build/rigged/rest-pose.png build/rigged/skeleton.png build/rigged/animation-preview.gif handoff/rigged/
+          # Never publish outdated renders as if they belonged to the new model.
+          for preview in rest-pose.png skeleton.png animation-preview.gif; do
+            if test -f "build/rigged/$preview"; then
+              cp "build/rigged/$preview" handoff/rigged/
+            else
+              rm -f -- "handoff/rigged/$preview"
+            fi
+          done
+          mkdir -p handoff/rigging-diagnostics
+          cp build/rigged/rig-report.json build/rigged/khronos-validation.json handoff/rigging-diagnostics/
+          grep -E '^\[|\.glb: [0-9]+ errors' build/rigging.log > handoff/rigging-diagnostics/last-run.log
+          printf 'Run: %s/%s/actions/runs/%s\nStatus: success\n' "$GITHUB_SERVER_URL" "$GITHUB_REPOSITORY" "$GITHUB_RUN_ID" > handoff/rigging-diagnostics/run.txt
           cp build/rigged/README_RU.md handoff/rigged/
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-          git add -- handoff/rigged
+          git add -- handoff/rigged handoff/rigging-diagnostics
           if ! git diff --cached --quiet; then
-            git commit -m "Add rigged girl model, five animations and validated previews"
+            git commit -m "Save verified girl GLB, FBX and five animation clips"
             git push origin HEAD:arena/1e52fcec-lsmsnksoslalql
           fi
           {
             echo '## Модель со скелетом и анимациями готова'
             echo '- 48 костей: тело, волосы, пальто, юбка; не более 4 влияний на вершину.'
             echo '- 5 процедурных клипов: Idle, Walk_InPlace, Run_InPlace, Wave, Dance.'
-            echo '- Облегчённый GLB и превью сохранены в handoff/rigged этой ветки.'
+            echo '- GLB, FBX и проверки сохранены в handoff/rigged этой ветки. Эмулятор не нужен.'
             echo '- Полный GLB без упрощения, Blender и FBX: артефакт anime-girl-rigged (90 дней).'
             echo '- Проверены bind-матрицы, веса, деформации и оба GLB валидатором Khronos.'
             echo '- Это автоматический стартовый FK-риг: без мимики, отдельных пальцев и физической ткани.'

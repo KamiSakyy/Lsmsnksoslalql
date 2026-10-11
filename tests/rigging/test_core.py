@@ -9,7 +9,7 @@ import numpy as np
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[2] / 'tools' / 'rigging'))
 from core import (Bone, capsule_weights, extract_glb, load_profile, make_full_resolution,
-                  node_matrix, pack_four_weights, read_accessor, read_glb, smooth_weights,
+                  node_matrix, orthonormal_tangents, pack_four_weights, read_accessor, read_glb, repair_runtime_tangents, smooth_weights,
                   surface_distances, surface_topology, two_bone_ik, validate_skin, world_matrices, write_glb)
 
 PROFILE = Path(__file__).resolve().parents[2] / 'tools' / 'rigging' / 'model_profile.json'
@@ -170,6 +170,42 @@ class CoreTests(unittest.TestCase):
             self.assertTrue(np.all(read_accessor(full, full_binary, attrs['JOINTS_0']) == 0))
             self.assertEqual(len(full['accessors']), 6)  # No redundant runtime geometry accessor.
             self.assertEqual(validate_skin(root / 'full.glb', {'Idle'})['unweighted_vertices'], 0)
+
+    def test_degenerate_tangents_get_a_unit_orthogonal_basis(self):
+        normals = np.tile([0., 0., 1.], (4, 1))
+        tangents = np.array([[0, 0, 0, 1], [0, 0, 2, -1],
+                             [3, 0, 1, 0], [1, 0, 0, -1]], dtype=np.float32)
+        result, count = orthonormal_tangents(normals, tangents)
+        self.assertEqual(count, 3)
+        np.testing.assert_allclose(np.linalg.norm(result[:, :3], axis=1), 1, atol=1e-6)
+        np.testing.assert_allclose(np.sum(result[:, :3]*normals, axis=1), 0, atol=1e-6)
+        np.testing.assert_array_equal(result[-1], tangents[-1])
+        np.testing.assert_array_equal(result[:, 3], [1, -1, 1, -1])
+
+    def test_tangent_repair_does_not_hide_invalid_normals(self):
+        with self.assertRaises(ValueError):
+            orthonormal_tangents(np.zeros((1, 3)), np.zeros((1, 4)))
+
+    def test_glb_tangent_patch_preserves_all_other_binary_bytes(self):
+        with tempfile.TemporaryDirectory() as directory:
+            path = Path(directory) / 'tangents.glb'
+            normals = np.array([[0, 0, 1], [0, 1, 0]], dtype='<f4')
+            tangents = np.array([[0, 0, 0, 1], [1, 0, 0, -1]], dtype='<f4')
+            payload = normals.tobytes() + tangents.tobytes() + b'original texture'
+            document = {'asset': {'version': '2.0'},
+                        'meshes': [{'primitives': [{'attributes': {'NORMAL': 0, 'TANGENT': 1}}]}],
+                        'bufferViews': [{'buffer': 0, 'byteOffset': 0, 'byteLength': 24},
+                                        {'buffer': 0, 'byteOffset': 24, 'byteLength': 32}],
+                        'accessors': [{'bufferView': 0, 'componentType': 5126, 'count': 2, 'type': 'VEC3'},
+                                      {'bufferView': 1, 'componentType': 5126, 'count': 2, 'type': 'VEC4'}]}
+            write_glb(path, document, payload)
+            _, before = read_glb(path)
+            self.assertEqual(repair_runtime_tangents(path)['corrected_vertices'], 1)
+            after_doc, after = read_glb(path)
+            self.assertEqual(after[:24], before[:24])
+            self.assertEqual(after[40:], before[40:])
+            np.testing.assert_array_equal(read_accessor(after_doc, after, 0), normals)
+            self.assertEqual(repair_runtime_tangents(path)['corrected_vertices'], 0)
 
     def test_node_hierarchy_transforms(self):
         doc = {'nodes': [{'translation': [2, 0, 0], 'children': [1]},
