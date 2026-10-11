@@ -190,6 +190,7 @@ public final class MessageListAdapter extends RecyclerView.Adapter<RecyclerView.
         }
         ChatMessage one = first.message;
         ChatMessage two = second.message;
+        if (one == null || two == null) return one == two;
         if (one.pending != two.pending || one.failed != two.failed || one.edited != two.edited) return false;
         if (!String.valueOf(first.payload).equals(String.valueOf(second.payload))) return false;
         return one.sentAt == two.sentAt;
@@ -222,7 +223,25 @@ public final class MessageListAdapter extends RecyclerView.Adapter<RecyclerView.
             ((DateHolder) holder).label.setText(row.dateLabel);
             return;
         }
-        bindMessage((Holder) holder, row, position);
+        try {
+            bindMessage((Holder) holder, row, position);
+        } catch (Throwable error) {
+            // Одно «сломанное» сообщение не имеет права ронять весь экран переписки.
+            showFallback((Holder) holder);
+        }
+    }
+
+    /** Минимальный безопасный вид пузыря, если конкретное сообщение не удалось отрисовать. */
+    private void showFallback(Holder holder) {
+        try {
+            holder.loading.setVisibility(View.GONE);
+            holder.image.setVisibility(View.GONE);
+            holder.gallery.setVisibility(View.GONE);
+            holder.video.setVisibility(View.GONE);
+            holder.audio.setVisibility(View.GONE);
+            holder.body.setVisibility(View.VISIBLE);
+            holder.body.setText(R.string.message_fallback);
+        } catch (Throwable ignored) { }
     }
 
     private void bindMessage(Holder holder, Row row, int position) {
@@ -327,13 +346,21 @@ public final class MessageListAdapter extends RecyclerView.Adapter<RecyclerView.
             holder.image.setOnClickListener(v -> listener.onOpenPayload(payload));
         } else if ("poll".equals(kind)) {
             // Опрос: вопрос, варианты и проценты — всё внутри пузыря.
-            holder.body.setText(pollText(object, message));
+            try {
+                holder.body.setText(pollText(object, message));
+            } catch (Throwable ignored) {
+                holder.body.setText(object.optString("question", ""));
+            }
             holder.body.setOnClickListener(v -> listener.onVote(message, payload));
         } else if ("contact".equals(kind)) {
             holder.body.setText(contactText(object));
         } else if ("call".equals(kind)) {
             // Итог звонка как обычная строка переписки, а не системный мусор.
-            holder.body.setText(callLogText(holder.itemView.getContext(), message, object));
+            try {
+                holder.body.setText(callLogText(holder.itemView.getContext(), message, object));
+            } catch (Throwable ignored) {
+                holder.body.setText("Звонок");
+            }
         } else if ("voice".equals(kind) || "audio".equals(kind)) {
             holder.body.setVisibility(View.GONE);
             holder.audio.setVisibility(View.VISIBLE);
@@ -347,6 +374,7 @@ public final class MessageListAdapter extends RecyclerView.Adapter<RecyclerView.
         if (message.sentAt > 0) holder.time.setText(new SimpleDateFormat("HH:mm", Locale.getDefault()).format(new Date(message.sentAt)));
         else holder.time.setText("");
         int burn = burnSeconds(payload);
+        try {
         if (burn > 0) {
             // Оранжевый пунктир и бейдж таймера: видно, что сообщение сгорит само.
             long left = message.sentAt > 0
@@ -356,6 +384,9 @@ public final class MessageListAdapter extends RecyclerView.Adapter<RecyclerView.
             holder.time.setTextColor(holder.itemView.getContext().getColor(R.color.tsuyu_burn));
             holder.bubble.setForeground(holder.itemView.getContext()
                     .getDrawable(R.drawable.bg_burn_bubble));
+        }
+        } catch (Throwable ignored) {
+            // Таймер сгорания рисуем, только если это безопасно для пузыря.
         }
         if (message.edited) holder.edited.setVisibility(View.VISIBLE);
         if (outgoing && message.pending) {

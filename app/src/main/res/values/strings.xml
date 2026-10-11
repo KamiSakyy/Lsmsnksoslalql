@@ -208,6 +208,8 @@
     <string name="call_log_video">Видео</string>
     <string name="call_log_declined">Звонок отклонён</string>
     <string name="call_log_no_answer">Нет ответа</string>
+    <string name="message_fallback">Сообщение</string>
+    <string name="chat_open_failed">Чат не открылся, но приложение работает. Причина: %1$s</string>
     <string name="call_menu_audio_hint">Голосом, без видео</string>
     <string name="call_menu_video_hint">С видео и звуком</string>
     <string name="call_in_progress">Уже идёт другой звонок</string>

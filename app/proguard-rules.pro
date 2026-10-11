@@ -46,6 +46,9 @@
 -dontwarn edu.umd.**
 -dontwarn **
 
-# WebRTC: нативный слой ищет классы по именам, JNI-мосты нельзя переименовывать.
+# Stream WebRTC для Android (io.getstream:stream-webrtc-android): тот же org.webrtc API.
+# Нативный слой ищет классы по именам, поэтому JNI-мосты не переименовываем.
 -keep class org.webrtc.** { *; }
 -dontwarn org.webrtc.**
+-dontwarn io.getstream.**
+-dontwarn org.jetbrains.annotations.**

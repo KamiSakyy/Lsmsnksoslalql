@@ -1033,6 +1033,33 @@ public final class MainActivity extends AppCompatActivity {
 
 
     private void showChat(String chatId, String peerUid) {
+        try {
+            showChatInner(chatId, peerUid);
+        } catch (Throwable error) {
+            // Переписка не имеет права ронять приложение: показываем причину и остаёмся живы.
+            recordChatError(error);
+            try {
+                detachChatListeners();
+                showHome();
+            } catch (Throwable ignored) { }
+        }
+    }
+
+    /** Любая ошибка открытия чата остаётся на устройстве и показывается текстом, а не вылетом. */
+    private void recordChatError(Throwable error) {
+        try {
+            String reason = error == null ? "неизвестно" : error.getClass().getSimpleName();
+            String message = error == null ? "" : String.valueOf(error.getMessage());
+            if (!message.isEmpty()) reason = reason + ": " + message;
+            if (reason.length() > 160) reason = reason.substring(0, 160);
+            getSharedPreferences("tsuyu_crash", MODE_PRIVATE).edit()
+                    .putString("last_chat", reason)
+                    .putLong("at", System.currentTimeMillis()).apply();
+            toast(getString(R.string.chat_open_failed, reason));
+        } catch (Throwable ignored) { }
+    }
+
+    private void showChatInner(String chatId, String peerUid) {
         if (uid == null || chatId == null || peerUid == null) return;
         detachChatListeners();
         if (peerProfile == null || !peerUid.equals(peerProfile.uid)) peerProfile = null;
@@ -1052,10 +1079,12 @@ public final class MainActivity extends AppCompatActivity {
             showHome();
         });
         root.findViewById(R.id.chat_more).setOnClickListener(v -> showChatMenu());
-        View voiceCall = root.findViewById(R.id.chat_voice_call);
-        if (voiceCall != null) voiceCall.setOnClickListener(v -> startCall(chatId, peerUid, false));
-        View videoCall = root.findViewById(R.id.chat_video_call);
-        if (videoCall != null) videoCall.setOnClickListener(v -> startCall(chatId, peerUid, true));
+        try {
+            View voiceCall = root.findViewById(R.id.chat_voice_call);
+            if (voiceCall != null) voiceCall.setOnClickListener(v -> startCall(chatId, peerUid, false));
+            View videoCall = root.findViewById(R.id.chat_video_call);
+            if (videoCall != null) videoCall.setOnClickListener(v -> startCall(chatId, peerUid, true));
+        } catch (Throwable ignored) { }
         ShapeableImageView avatar = root.findViewById(R.id.chat_peer_avatar);
         TextView avatarInitial = root.findViewById(R.id.chat_peer_initial);
         chatStatus = root.findViewById(R.id.chat_peer_status);
@@ -1093,10 +1122,11 @@ public final class MainActivity extends AppCompatActivity {
         }
         loadCachedMessages(chatId, peerUid);
 
-        applyChatWallpaper(chatId);
-        attachPollVotesListener(chatId);
-        applyScreenGuard();
         messageList = root.findViewById(R.id.message_list);
+        applyScreenGuard();
+        // Новые функции не мешают открытию переписки: каждая работает в своём щите.
+        try { attachPollVotesListener(chatId); } catch (Throwable ignored) { }
+        try { applyChatWallpaper(chatId); } catch (Throwable ignored) { }
         LinearLayoutManager messageLayout = new LinearLayoutManager(this);
         messageLayout.setStackFromEnd(true);
         messageList.setLayoutManager(messageLayout);
@@ -1252,7 +1282,11 @@ public final class MainActivity extends AppCompatActivity {
                     ChatSummary openedSummary = summaries.get(chatId);
                     if (openedSummary != null) openedSummary.unread = 0;
                 }
-                renderMessages(messages, peerUid);
+                try {
+                    renderMessages(messages, peerUid);
+                } catch (Throwable error) {
+                    recordChatError(error);
+                }
                 if (!presenceManager.isGhostMode()) chatRepository.markRead(chatId, uid);
             }
             @Override public void onCancelled(DatabaseError error) { toast("Не удалось загрузить сообщения. Проверьте подключение и попробуйте снова."); }
@@ -1407,19 +1441,25 @@ public final class MainActivity extends AppCompatActivity {
         final List<String> persistPayloadBatch = new ArrayList<>();
         String lastDayKey = null;
         boolean unreadDividerPlaced = false;
+        boolean hasBurnTimer = false;
         int visibleIndex = 0;
         for (ChatMessage message : visible) {
             visibleIndex++;
             String payload = message.localPayload;
             if (payload == null && activeCache != null && message.id != null) payload = activeCache.get(renderChatId, message.id);
             String key = renderChatId + ":" + message.id;
-            if (isBurnExpired(payload, message)) {
-                // Сообщение с истёкшим таймером сгорания исчезает само: у автора — из базы.
-                if (uid != null && uid.equals(message.senderUid) && message.id != null
-                        && !message.id.startsWith("local_")) {
-                    chatRepository.deleteMessage(renderChatId, message.id, NOOP_RESULT);
+            try {
+                if (burnSeconds(payload) > 0) hasBurnTimer = true;
+                if (isBurnExpired(payload, message)) {
+                    // Сообщение с истёкшим таймером сгорания исчезает само: у автора — из базы.
+                    if (uid != null && uid.equals(message.senderUid) && message.id != null
+                            && !message.id.startsWith("local_")) {
+                        chatRepository.deleteMessage(renderChatId, message.id, NOOP_RESULT);
+                    }
+                    continue;
                 }
-                continue;
+            } catch (Throwable ignored) {
+                // Таймер сгорания не имеет права ломать отрисовку переписки.
             }
             if (payload == null && decryptFailures.contains(key)) payload = "{\"kind\":\"decrypt_error\"}";
             if (payload == null && message.senderUid != null && !uid.equals(message.senderUid)
@@ -1486,9 +1526,11 @@ public final class MainActivity extends AppCompatActivity {
         }
         messageListAdapter.setTextStyle(textSize(), isTextBold(),
                 getSharedPreferences("tsuyu_settings", MODE_PRIVATE).getBoolean("italic", false));
-        messageListAdapter.setPollVotes(pollVotes);
+        try {
+            messageListAdapter.setPollVotes(pollVotes);
+        } catch (Throwable ignored) { }
         messageListAdapter.submit(rows);
-        scheduleBurnRefresh(renderChatId);
+        if (hasBurnTimer) scheduleBurnRefresh(renderChatId);
         if (chatEmptyState != null) chatEmptyState.setVisibility(rows.isEmpty() ? View.VISIBLE : View.GONE);
         if (!rows.isEmpty() && keepBottomPinned) messageList.post(() -> {
             if (renderChatId.equals(activeChatId) && messageListAdapter.getItemCount() > 0) {

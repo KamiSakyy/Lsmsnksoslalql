@@ -113,8 +113,9 @@ dependencies {
 
     // Official Signal Protocol implementation (PQXDH + Double Ratchet).
     implementation 'org.signal:libsignal-android:0.105.0'
-    // P2P звонки: свежая сборка WebRTC (M144, сентябрь 2026) с arm64-нативом.
-    implementation 'io.github.webrtc-sdk:android:144.7559.15'
+    // P2P звонки: Stream WebRTC для Android — новая Android-сборка WebRTC
+    // (io.getstream:stream-webrtc-android, Maven Central 2026), arm64-натив внутри.
+    implementation 'io.getstream:stream-webrtc-android:1.3.10'
 
     testImplementation 'junit:junit:4.13.2'
     androidTestImplementation 'androidx.test:core:1.6.1'
