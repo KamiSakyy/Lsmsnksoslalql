@@ -7,23 +7,135 @@
     android:background="@color/tsuyu_black"
     android:orientation="vertical">
 
-    <com.google.android.material.appbar.MaterialToolbar
-        android:id="@+id/home_toolbar"
-        style="@style/Widget.Tsuyu.Toolbar"
+    <!-- Header: menu · VK Tsuyu / Cloud E2EE · lock (web .header) -->
+    <LinearLayout
+        android:id="@+id/home_header"
         android:layout_width="match_parent"
         android:layout_height="@dimen/toolbar_height"
-        app:menu="@menu/home_toolbar"
-        app:subtitle="@string/home_subtitle"
-        app:title="@string/nav_chats" />
+        android:background="@color/tsuyu_header"
+        android:gravity="center_vertical"
+        android:orientation="horizontal"
+        android:paddingStart="@dimen/space_2xs"
+        android:paddingEnd="@dimen/space_2xs">
 
-    <HorizontalScrollView
+        <ImageView
+            android:id="@+id/home_menu_btn"
+            android:layout_width="@dimen/header_menu_button"
+            android:layout_height="@dimen/header_menu_button"
+            android:layout_marginStart="@dimen/space_sm"
+            android:background="@drawable/bg_header_btn_strong"
+            android:clickable="true"
+            android:contentDescription="@string/home_menu"
+            android:focusable="true"
+            android:padding="9dp"
+            android:src="@drawable/ic_menu"
+            app:tint="@color/tsuyu_white" />
+
+        <LinearLayout
+            android:id="@+id/home_title_block"
+            android:layout_width="0dp"
+            android:layout_height="wrap_content"
+            android:layout_marginStart="@dimen/space_md"
+            android:layout_weight="1"
+            android:clickable="true"
+            android:focusable="true"
+            android:orientation="vertical">
+
+            <TextView
+                android:id="@+id/home_title_main"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:ellipsize="end"
+                android:fontFamily="sans-serif-medium"
+                android:letterSpacing="0.04"
+                android:maxLines="1"
+                android:text="@string/home_title"
+                android:textColor="@color/tsuyu_white"
+                android:textSize="20sp" />
+
+            <TextView
+                android:id="@+id/home_title_sub"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:ellipsize="end"
+                android:maxLines="1"
+                android:text="@string/home_subtitle"
+                android:textAppearance="@style/TextAppearance.Tsuyu.ToolbarSubtitle" />
+        </LinearLayout>
+
+        <ImageView
+            android:id="@+id/home_encrypt_btn"
+            android:layout_width="@dimen/header_button"
+            android:layout_height="@dimen/header_button"
+            android:layout_marginEnd="@dimen/space_sm"
+            android:background="@drawable/bg_header_btn"
+            android:clickable="true"
+            android:contentDescription="@string/home_encryption"
+            android:focusable="true"
+            android:padding="10dp"
+            android:src="@drawable/ic_lock"
+            app:tint="@color/tsuyu_white" />
+    </LinearLayout>
+
+    <!-- Search bar (web .search-bar-container) -->
+    <LinearLayout
+        android:id="@+id/home_search_bar"
         android:layout_width="match_parent"
         android:layout_height="wrap_content"
-        android:clipToPadding="false"
-        android:paddingStart="@dimen/screen_gutter"
-        android:paddingEnd="@dimen/screen_gutter"
+        android:background="@color/tsuyu_header"
+        android:orientation="vertical"
+        android:paddingStart="@dimen/space_md"
         android:paddingTop="@dimen/space_sm"
-        android:paddingBottom="@dimen/space_xs"
+        android:paddingEnd="@dimen/space_md"
+        android:paddingBottom="@dimen/space_sm">
+
+        <LinearLayout
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:background="@drawable/bg_home_search"
+            android:gravity="center_vertical"
+            android:orientation="horizontal"
+            android:paddingStart="@dimen/space_md"
+            android:paddingEnd="@dimen/space_md">
+
+            <ImageView
+                android:layout_width="18dp"
+                android:layout_height="18dp"
+                android:layout_marginEnd="@dimen/space_sm"
+                android:contentDescription=""
+                android:src="@drawable/ic_search"
+                app:tint="@color/tsuyu_secondary" />
+
+            <EditText
+                android:id="@+id/home_search_input"
+                android:layout_width="0dp"
+                android:layout_height="wrap_content"
+                android:layout_weight="1"
+                android:background="@null"
+                android:hint="@string/home_search_hint"
+                android:imeOptions="actionSearch"
+                android:inputType="text"
+                android:maxLines="1"
+                android:minHeight="40dp"
+                android:paddingTop="@dimen/space_sm"
+                android:paddingBottom="@dimen/space_sm"
+                android:textColor="@color/tsuyu_white"
+                android:textColorHint="@color/tsuyu_time"
+                android:textSize="14sp" />
+        </LinearLayout>
+    </LinearLayout>
+
+    <!-- Folder chips (web .folder-tabs) -->
+    <HorizontalScrollView
+        android:id="@+id/home_filter_scroll"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:background="@color/tsuyu_header"
+        android:clipToPadding="false"
+        android:paddingStart="@dimen/space_md"
+        android:paddingEnd="@dimen/space_md"
+        android:paddingTop="@dimen/space_sm"
+        android:paddingBottom="@dimen/space_sm"
         android:scrollbars="none">
 
         <LinearLayout
@@ -48,7 +160,7 @@
     <View
         android:layout_width="match_parent"
         android:layout_height="@dimen/hairline"
-        android:background="@color/tsuyu_border" />
+        android:background="@color/tsuyu_divider_soft" />
 
     <FrameLayout
         android:layout_width="match_parent"
@@ -60,7 +172,6 @@
             android:layout_width="match_parent"
             android:layout_height="match_parent"
             android:clipToPadding="false"
-            android:paddingTop="@dimen/space_xs"
             android:paddingBottom="104dp"
             android:scrollbars="none" />
 
@@ -69,7 +180,6 @@
             android:layout_width="match_parent"
             android:layout_height="match_parent"
             android:orientation="vertical"
-            android:paddingTop="@dimen/space_xs"
             android:visibility="gone">
 
             <include layout="@layout/row_chat_skeleton" />
@@ -103,17 +213,17 @@
             </FrameLayout>
 
             <TextView
+                android:id="@+id/home_empty_title"
                 android:layout_width="wrap_content"
                 android:layout_height="wrap_content"
-                android:id="@+id/home_empty_title"
                 android:layout_marginTop="@dimen/space_lg"
                 android:text="@string/no_chats_title"
                 android:textAppearance="@style/TextAppearance.Tsuyu.ScreenTitle" />
 
             <TextView
+                android:id="@+id/home_empty_description"
                 android:layout_width="match_parent"
                 android:layout_height="wrap_content"
-                android:id="@+id/home_empty_description"
                 android:layout_marginTop="@dimen/space_sm"
                 android:gravity="center"
                 android:text="@string/no_chats_description"
@@ -147,13 +257,13 @@
     <View
         android:layout_width="match_parent"
         android:layout_height="@dimen/hairline"
-        android:background="@color/tsuyu_border" />
+        android:background="@color/tsuyu_divider_soft" />
 
     <com.google.android.material.bottomnavigation.BottomNavigationView
         android:id="@+id/main_navigation"
         android:layout_width="match_parent"
         android:layout_height="wrap_content"
-        android:background="@color/tsuyu_black"
+        android:background="@color/tsuyu_header"
         android:elevation="0dp"
         app:itemActiveIndicatorStyle="@null"
         app:itemIconTint="@color/nav_item_tint"

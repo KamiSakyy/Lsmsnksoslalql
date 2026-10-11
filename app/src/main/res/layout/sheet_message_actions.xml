@@ -1,284 +1,127 @@
 <?xml version="1.0" encoding="utf-8"?>
+<!-- Message action sheet, mirrors the web client .action-sheet markup. -->
 <LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
     xmlns:app="http://schemas.android.com/apk/res-auto"
     android:layout_width="match_parent"
     android:layout_height="wrap_content"
     android:background="@drawable/bg_sheet_surface"
     android:orientation="vertical"
-    android:paddingStart="18dp"
-    android:paddingTop="@dimen/space_md"
-    android:paddingEnd="18dp"
-    android:paddingBottom="@dimen/space_xl">
-
-    <View
-        android:layout_width="@dimen/sheet_handle_width"
-        android:layout_height="@dimen/sheet_handle_height"
-        android:layout_gravity="center_horizontal"
-        android:layout_marginBottom="@dimen/space_lg"
-        android:background="@drawable/bg_sheet_handle" />
-
-    <TextView
-        android:layout_width="match_parent"
-        android:layout_height="wrap_content"
-        android:text="Сообщение"
-        android:textAppearance="@style/TextAppearance.Tsuyu.SheetTitle" />
-
-    <TextView
-        android:layout_width="match_parent"
-        android:layout_height="wrap_content"
-        android:layout_marginTop="@dimen/space_2xs"
-        android:layout_marginBottom="@dimen/space_md"
-        android:text="Выберите действие"
-        android:textAppearance="@style/TextAppearance.Tsuyu.RowSubtitle" />
-
-    <LinearLayout
-        android:id="@+id/message_react"
-        android:layout_width="match_parent"
-        android:layout_height="@dimen/row_sheet_action_height"
-        android:background="?attr/selectableItemBackground"
-        android:clickable="true"
-        android:focusable="true"
-        android:gravity="center_vertical"
-        android:orientation="horizontal"
-        android:visibility="gone">
-
-        <FrameLayout
-            android:layout_width="@dimen/row_icon_tile"
-            android:layout_height="@dimen/row_icon_tile"
-            android:background="@drawable/bg_menu_icon">
-
-            <ImageView
-                android:layout_width="@dimen/row_icon_size"
-                android:layout_height="@dimen/row_icon_size"
-                android:layout_gravity="center"
-                android:contentDescription=""
-                android:src="@drawable/ic_heart"
-                app:tint="@color/tsuyu_blue" />
-        </FrameLayout>
-
-        <LinearLayout
-            android:layout_width="0dp"
-            android:layout_height="wrap_content"
-            android:layout_marginStart="@dimen/space_md"
-            android:layout_weight="1"
-            android:orientation="vertical">
-
-            <TextView
-                android:layout_width="wrap_content"
-                android:layout_height="wrap_content"
-                android:text="Реакция"
-                android:textAppearance="@style/TextAppearance.Tsuyu.RowItemTitle" />
-
-            <TextView
-                android:layout_width="wrap_content"
-                android:layout_height="wrap_content"
-                android:layout_marginTop="2dp"
-                android:text="Отправить сердце"
-                android:textAppearance="@style/TextAppearance.Tsuyu.RowMeta"
-                android:textSize="12sp" />
-        </LinearLayout>
-    </LinearLayout>
+    android:padding="@dimen/sheet_padding">
 
     <LinearLayout
         android:id="@+id/message_reply"
-        android:layout_width="match_parent"
-        android:layout_height="@dimen/row_sheet_action_height"
-        android:background="?attr/selectableItemBackground"
-        android:clickable="true"
-        android:focusable="true"
-        android:gravity="center_vertical"
-        android:orientation="horizontal"
-        android:visibility="gone">
+        style="@style/Widget.Tsuyu.SheetActionRow">
 
-        <FrameLayout
-            android:layout_width="@dimen/row_icon_tile"
-            android:layout_height="@dimen/row_icon_tile"
-            android:background="@drawable/bg_menu_icon">
+        <ImageView
+            style="@style/Widget.Tsuyu.SheetActionIcon"
+            android:contentDescription=""
+            android:src="@drawable/ic_reply" />
 
-            <ImageView
-                android:layout_width="@dimen/row_icon_size"
-                android:layout_height="@dimen/row_icon_size"
-                android:layout_gravity="center"
-                android:contentDescription=""
-                android:src="@drawable/ic_reply"
-                app:tint="@color/tsuyu_secondary" />
-        </FrameLayout>
+        <TextView
+            style="@style/Widget.Tsuyu.SheetActionLabel"
+            android:text="@string/msg_reply" />
+    </LinearLayout>
 
-        <LinearLayout
-            android:layout_width="0dp"
-            android:layout_height="wrap_content"
-            android:layout_marginStart="@dimen/space_md"
-            android:layout_weight="1"
-            android:orientation="vertical">
+    <LinearLayout
+        android:id="@+id/message_pin"
+        style="@style/Widget.Tsuyu.SheetActionRow"
+        android:layout_marginTop="@dimen/sheet_gap">
 
-            <TextView
-                android:layout_width="wrap_content"
-                android:layout_height="wrap_content"
-                android:text="Ответить"
-                android:textAppearance="@style/TextAppearance.Tsuyu.RowItemTitle" />
+        <ImageView
+            style="@style/Widget.Tsuyu.SheetActionIcon"
+            android:contentDescription=""
+            android:src="@drawable/ic_pin" />
 
-            <TextView
-                android:layout_width="wrap_content"
-                android:layout_height="wrap_content"
-                android:layout_marginTop="2dp"
-                android:text="Процитировать сообщение"
-                android:textAppearance="@style/TextAppearance.Tsuyu.RowMeta"
-                android:textSize="12sp" />
-        </LinearLayout>
+        <TextView
+            android:id="@+id/message_pin_label"
+            style="@style/Widget.Tsuyu.SheetActionLabel"
+            android:text="@string/msg_pin" />
     </LinearLayout>
 
     <LinearLayout
         android:id="@+id/message_forward"
-        android:layout_width="match_parent"
-        android:layout_height="@dimen/row_sheet_action_height"
-        android:background="?attr/selectableItemBackground"
-        android:clickable="true"
-        android:focusable="true"
-        android:gravity="center_vertical"
-        android:orientation="horizontal">
+        style="@style/Widget.Tsuyu.SheetActionRow"
+        android:layout_marginTop="@dimen/sheet_gap">
 
-        <FrameLayout
-            android:layout_width="@dimen/row_icon_tile"
-            android:layout_height="@dimen/row_icon_tile"
-            android:background="@drawable/bg_menu_icon">
+        <ImageView
+            style="@style/Widget.Tsuyu.SheetActionIcon"
+            android:contentDescription=""
+            android:src="@drawable/ic_export" />
 
-            <ImageView
-                android:layout_width="@dimen/row_icon_size"
-                android:layout_height="@dimen/row_icon_size"
-                android:layout_gravity="center"
-                android:contentDescription=""
-                android:src="@drawable/ic_copy"
-                app:tint="@color/tsuyu_blue" />
-        </FrameLayout>
+        <TextView
+            style="@style/Widget.Tsuyu.SheetActionLabel"
+            android:text="@string/msg_forward" />
+    </LinearLayout>
 
-        <LinearLayout
-            android:layout_width="0dp"
-            android:layout_height="wrap_content"
-            android:layout_marginStart="@dimen/space_md"
-            android:layout_weight="1"
-            android:orientation="vertical">
+    <LinearLayout
+        android:id="@+id/message_copy"
+        style="@style/Widget.Tsuyu.SheetActionRow"
+        android:layout_marginTop="@dimen/sheet_gap">
 
-            <TextView
-                android:layout_width="wrap_content"
-                android:layout_height="wrap_content"
-                android:text="Скопировать текст"
-                android:textAppearance="@style/TextAppearance.Tsuyu.RowItemTitle" />
+        <ImageView
+            style="@style/Widget.Tsuyu.SheetActionIcon"
+            android:contentDescription=""
+            android:src="@drawable/ic_copy" />
 
-            <TextView
-                android:layout_width="wrap_content"
-                android:layout_height="wrap_content"
-                android:layout_marginTop="2dp"
-                android:text="Будет в буфере обмена"
-                android:textAppearance="@style/TextAppearance.Tsuyu.RowMeta"
-                android:textSize="12sp" />
-        </LinearLayout>
+        <TextView
+            style="@style/Widget.Tsuyu.SheetActionLabel"
+            android:text="@string/msg_copy" />
     </LinearLayout>
 
     <LinearLayout
         android:id="@+id/message_edit"
-        android:layout_width="match_parent"
-        android:layout_height="@dimen/row_sheet_action_height"
-        android:background="?attr/selectableItemBackground"
-        android:clickable="true"
-        android:focusable="true"
-        android:gravity="center_vertical"
-        android:orientation="horizontal"
-        android:visibility="gone">
+        style="@style/Widget.Tsuyu.SheetActionRow"
+        android:layout_marginTop="@dimen/sheet_gap">
 
-        <FrameLayout
-            android:layout_width="@dimen/row_icon_tile"
-            android:layout_height="@dimen/row_icon_tile"
-            android:background="@drawable/bg_menu_icon">
+        <ImageView
+            style="@style/Widget.Tsuyu.SheetActionIcon"
+            android:contentDescription=""
+            android:src="@drawable/ic_edit" />
 
-            <ImageView
-                android:layout_width="@dimen/row_icon_size"
-                android:layout_height="@dimen/row_icon_size"
-                android:layout_gravity="center"
-                android:contentDescription=""
-                android:src="@drawable/ic_edit"
-                app:tint="@color/tsuyu_secondary" />
-        </FrameLayout>
-
-        <LinearLayout
-            android:layout_width="0dp"
-            android:layout_height="wrap_content"
-            android:layout_marginStart="@dimen/space_md"
-            android:layout_weight="1"
-            android:orientation="vertical">
-
-            <TextView
-                android:layout_width="wrap_content"
-                android:layout_height="wrap_content"
-                android:text="Редактировать"
-                android:textAppearance="@style/TextAppearance.Tsuyu.RowItemTitle" />
-
-            <TextView
-                android:layout_width="wrap_content"
-                android:layout_height="wrap_content"
-                android:layout_marginTop="2dp"
-                android:text="Изменить текст сообщения"
-                android:textAppearance="@style/TextAppearance.Tsuyu.RowMeta"
-                android:textSize="12sp" />
-        </LinearLayout>
+        <TextView
+            style="@style/Widget.Tsuyu.SheetActionLabel"
+            android:text="@string/msg_edit" />
     </LinearLayout>
-
-    <View
-        android:id="@+id/message_actions_divider"
-        android:layout_width="match_parent"
-        android:layout_height="@dimen/hairline"
-        android:layout_marginStart="@dimen/space_sm"
-        android:layout_marginTop="@dimen/space_2xs"
-        android:layout_marginEnd="@dimen/space_sm"
-        android:layout_marginBottom="@dimen/space_2xs"
-        android:background="@color/tsuyu_border"
-        android:visibility="gone" />
 
     <LinearLayout
         android:id="@+id/message_delete"
-        android:layout_width="match_parent"
-        android:layout_height="@dimen/row_sheet_action_height"
-        android:background="?attr/selectableItemBackground"
-        android:clickable="true"
-        android:focusable="true"
-        android:gravity="center_vertical"
-        android:orientation="horizontal"
-        android:visibility="gone">
+        style="@style/Widget.Tsuyu.SheetActionRow"
+        android:layout_marginTop="@dimen/sheet_gap">
 
-        <FrameLayout
-            android:layout_width="@dimen/row_icon_tile"
-            android:layout_height="@dimen/row_icon_tile"
-            android:background="@drawable/bg_menu_icon">
+        <ImageView
+            style="@style/Widget.Tsuyu.SheetActionIcon"
+            android:contentDescription=""
+            android:src="@drawable/ic_delete"
+            app:tint="@color/tsuyu_danger" />
 
-            <ImageView
-                android:layout_width="@dimen/row_icon_size"
-                android:layout_height="@dimen/row_icon_size"
-                android:layout_gravity="center"
-                android:contentDescription=""
-                android:src="@drawable/ic_delete"
-                app:tint="@color/tsuyu_red" />
-        </FrameLayout>
-
-        <LinearLayout
-            android:layout_width="0dp"
-            android:layout_height="wrap_content"
-            android:layout_marginStart="@dimen/space_md"
-            android:layout_weight="1"
-            android:orientation="vertical">
-
-            <TextView
-                android:layout_width="wrap_content"
-                android:layout_height="wrap_content"
-                android:text="Удалить у всех"
-                android:textAppearance="@style/TextAppearance.Tsuyu.RowItemTitle"
-                android:textColor="@color/tsuyu_red" />
-
-            <TextView
-                android:layout_width="wrap_content"
-                android:layout_height="wrap_content"
-                android:layout_marginTop="2dp"
-                android:text="Действие необратимо"
-                android:textAppearance="@style/TextAppearance.Tsuyu.RowMeta"
-                android:textSize="12sp" />
-        </LinearLayout>
+        <TextView
+            style="@style/Widget.Tsuyu.SheetActionLabel"
+            android:text="@string/msg_delete"
+            android:textColor="@color/tsuyu_danger" />
     </LinearLayout>
+
+    <LinearLayout
+        android:id="@+id/message_cancel"
+        style="@style/Widget.Tsuyu.SheetActionRow"
+        android:layout_marginTop="@dimen/sheet_gap"
+        android:gravity="center">
+
+        <TextView
+            style="@style/Widget.Tsuyu.SheetActionLabel"
+            android:text="@string/msg_cancel"
+            android:textColor="@color/tsuyu_preview" />
+    </LinearLayout>
+
+    <!-- Kept for compatibility with the existing sheet logic; never shown. -->
+    <View
+        android:id="@+id/message_react"
+        android:layout_width="0dp"
+        android:layout_height="0dp"
+        android:visibility="gone" />
+
+    <View
+        android:id="@+id/message_actions_divider"
+        android:layout_width="0dp"
+        android:layout_height="0dp"
+        android:visibility="gone" />
 </LinearLayout>

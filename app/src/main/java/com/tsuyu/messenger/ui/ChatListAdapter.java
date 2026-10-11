@@ -99,13 +99,12 @@ public final class ChatListAdapter extends RecyclerView.Adapter<ChatListAdapter.
         String title = peer.displayNameOrUsername();
         holder.name.setText(title);
         holder.time.setText(summary.lastAt <= 0 ? "" : formatStamp(summary.lastAt));
-        holder.time.setTextColor(holder.itemView.getContext().getColor(
-                summary.unread > 0 ? R.color.tsuyu_blue : R.color.tsuyu_secondary));
+        holder.time.setTextColor(holder.itemView.getContext().getColor(R.color.tsuyu_time));
         String preview = summary.typing ? "печатает…" : listener.previewFor(summary);
         holder.preview.setText(preview);
         holder.preview.setTextColor(summary.typing
                 ? holder.itemView.getContext().getColor(R.color.tsuyu_blue)
-                : holder.itemView.getContext().getColor(R.color.tsuyu_secondary));
+                : holder.itemView.getContext().getColor(R.color.tsuyu_preview));
         holder.online.setVisibility(summary.online ? View.VISIBLE : View.GONE);
         holder.pin.setVisibility(summary.pinned ? View.VISIBLE : View.GONE);
         if (summary.unread > 0) {

@@ -25,6 +25,7 @@ import android.widget.LinearLayout;
 import android.view.animation.AnimationUtils;
 import android.view.inputmethod.InputMethodManager;
 import android.util.Base64;
+import android.widget.EditText;
 import android.widget.FrameLayout;
 import android.widget.TextView;
 import android.widget.Toast;
@@ -112,8 +113,22 @@ public final class MainActivity extends AppCompatActivity {
     private LocalMessageCache messageCache;
     private LocalVault vault;
     private TsuyuStore store;
+    private static final String ARCHIVE_FOLDER_ID = "__archive";
     private String homeFilter = "all";
     private LinearLayout homeFilters;
+    private EditText homeSearchInput;
+    private String chatListQuery = "";
+    private View chatPinnedBar;
+    private TextView chatPinnedText;
+    private String pinnedMessageId;
+    private boolean selecting;
+    private final java.util.LinkedHashSet<String> selectedMessageIds = new java.util.LinkedHashSet<>();
+    private View multiSelectBar;
+    private View chatVoiceButton;
+    private View chatCircleButton;
+    private View chatStickerButton;
+    private View composerPanel;
+    private TextView multiSelectCount;
     private final Map<String, String> folderNames = new java.util.LinkedHashMap<>();
     private final Map<String, Set<String>> folderMembers = new java.util.LinkedHashMap<>();
     private long unreadDividerAt;
@@ -242,11 +257,17 @@ public final class MainActivity extends AppCompatActivity {
                 }
             } else {
                 String kind = pendingMediaKind == null ? "image" : pendingMediaKind;
+                pendingMediaKind = null;
                 sendPickedMedia(uri, kind);
             }
         });
         documentPicker = registerForActivityResult(new ActivityResultContracts.OpenDocument(), uri -> {
-            if (uri == null) return;
+            if (uri == null) { pendingMediaKind = null; return; }
+            if ("circle".equals(pendingMediaKind)) {
+                sendPickedMedia(uri, "circle");
+                pendingMediaKind = null;
+                return;
+            }
             if ("sound".equals(pendingMediaKind)) {
                 try {
                     NotificationSounds.setSound(this, uri);
@@ -461,20 +482,27 @@ public final class MainActivity extends AppCompatActivity {
         activeChatId = null;
         activePeerUid = null;
         View root = showScreen(R.layout.screen_home);
-        MaterialToolbar toolbar = root.findViewById(R.id.home_toolbar);
-        toolbar.setOnMenuItemClickListener(item -> {
-            if (item.getItemId() == R.id.action_search) { showSearchScreen(); return true; }
-            if (item.getItemId() == R.id.action_profile) { showProfileEditor(false); return true; }
-            return false;
-        });
-        android.view.MenuItem profileItem = toolbar.getMenu().findItem(R.id.action_profile);
-        if (profileItem != null && profileItem.getActionView() != null) {
-            View profileAction = profileItem.getActionView();
-            ShapeableImageView avatar = profileAction.findViewById(R.id.action_profile_avatar);
-            TextView initial = profileAction.findViewById(R.id.action_profile_initial);
-            bindAvatar(avatar, initial, myProfile, myProfile == null ? "T" : myProfile.displayNameOrUsername(),
-                    myProfile == null ? null : myProfile.avatarBase64);
-            profileAction.setOnClickListener(v -> showProfileEditor(false));
+        View menuButton = root.findViewById(R.id.home_menu_btn);
+        if (menuButton != null) menuButton.setOnClickListener(v -> showSettings());
+        View encryptButton = root.findViewById(R.id.home_encrypt_btn);
+        if (encryptButton != null) encryptButton.setOnClickListener(v -> showKeySettings());
+        View titleBlock = root.findViewById(R.id.home_title_block);
+        if (titleBlock != null) titleBlock.setOnClickListener(v -> showProfileEditor(false));
+        homeSearchInput = root.findViewById(R.id.home_search_input);
+        if (homeSearchInput != null) {
+            homeSearchInput.setText(chatListQuery);
+            homeSearchInput.addTextChangedListener(new TextWatcher() {
+                @Override public void beforeTextChanged(CharSequence s, int start, int count, int after) { }
+                @Override public void onTextChanged(CharSequence s, int start, int before, int count) {
+                    chatListQuery = s == null ? "" : s.toString().trim();
+                    renderChatList();
+                }
+                @Override public void afterTextChanged(Editable s) { }
+            });
+            homeSearchInput.setOnEditorActionListener((view, actionId, event) -> {
+                showSearchScreen();
+                return true;
+            });
         }
         chatList = root.findViewById(R.id.chats_list);
         chatList.setLayoutManager(new LinearLayoutManager(this));
@@ -798,10 +826,18 @@ public final class MainActivity extends AppCompatActivity {
                 folderFilter = null;
             }
         }
+        java.util.Set<String> archived = folderMembers.get(ARCHIVE_FOLDER_ID);
         List<ChatSummary> items = new ArrayList<>();
         for (ChatSummary summary : summaries.values()) {
+            boolean inArchive = summary.chatId != null && archived != null && archived.contains(summary.chatId);
+            if ("archive".equals(homeFilter)) {
+                if (!inArchive) continue;
+            } else if (inArchive) {
+                continue;
+            }
             if ("unread".equals(homeFilter) && summary.unread <= 0) continue;
             if (folderFilter != null && (summary.chatId == null || !folderFilter.contains(summary.chatId))) continue;
+            if (!chatListQuery.isEmpty() && !matchesChatQuery(summary)) continue;
             items.add(summary);
         }
         items.sort((a, b) -> {
@@ -815,7 +851,10 @@ public final class MainActivity extends AppCompatActivity {
             homeLoadingState.setVisibility(chatIndexLoaded ? View.GONE : View.VISIBLE);
             homeEmptyState.setVisibility(chatIndexLoaded ? View.VISIBLE : View.GONE);
             if (homeNewChat != null) homeNewChat.setVisibility(View.GONE);
-            applyEmptyStateCopy(folderFilter != null ? "folder" : "unread".equals(homeFilter) ? "unread" : "all");
+            applyEmptyStateCopy(!chatListQuery.isEmpty() ? "search"
+                    : "archive".equals(homeFilter) ? "archive"
+                    : folderFilter != null ? "folder"
+                    : "unread".equals(homeFilter) ? "unread" : "all");
         } else {
             chatList.setVisibility(View.VISIBLE);
             homeLoadingState.setVisibility(View.GONE);
@@ -932,6 +971,7 @@ public final class MainActivity extends AppCompatActivity {
         lastRemoteChatId = chatId;
         getSharedPreferences("tsuyu_settings", MODE_PRIVATE).edit().putString("active_chat", chatId).apply();
         page = "chat";
+        exitSelectionMode();
         View root = showScreen(R.layout.screen_chat);
         root.findViewById(R.id.chat_back).setOnClickListener(v -> {
             detachChatListeners();
@@ -988,6 +1028,8 @@ public final class MainActivity extends AppCompatActivity {
                     @Override public void onRetry(ChatMessage message) { retryMessage(message); }
                     @Override public void onReact(ChatMessage message) { toggleHeart(message); }
                     @Override public void onGalleryImage(String encodedImage) { showImageDialog(encodedImage); }
+                    @Override public void onReply(ChatMessage message) { startReply(message, message.localPayload); }
+                    @Override public void onToggleSelect(ChatMessage message) { toggleMessageSelection(message); }
                 });
         messageList.setAdapter(messageListAdapter);
         chatScrollBottom = root.findViewById(R.id.chat_scroll_bottom);
@@ -1020,10 +1062,40 @@ public final class MainActivity extends AppCompatActivity {
             replyToText = null;
             replyBanner.setVisibility(View.GONE);
         });
+        chatPinnedBar = root.findViewById(R.id.chat_pinned_bar);
+        chatPinnedText = root.findViewById(R.id.pinned_message_text);
+        View pinnedClose = root.findViewById(R.id.pinned_message_close);
+        if (pinnedClose != null) pinnedClose.setOnClickListener(v -> unpinMessage());
+        if (chatPinnedBar != null) {
+            chatPinnedBar.setOnClickListener(v -> scrollToPinnedMessage());
+            restorePinnedMessage(chatId);
+        }
+        composerPanel = root.findViewById(R.id.composer_panel);
+        multiSelectBar = root.findViewById(R.id.multi_select_bar);
+        multiSelectCount = root.findViewById(R.id.multi_select_count);
+        if (multiSelectBar != null) {
+            root.findViewById(R.id.multi_select_cancel).setOnClickListener(v -> exitSelectionMode());
+            root.findViewById(R.id.multi_select_forward).setOnClickListener(v -> forwardSelectedMessages());
+            root.findViewById(R.id.multi_select_delete).setOnClickListener(v -> deleteSelectedMessages());
+        }
         root.findViewById(R.id.chat_attach).setOnClickListener(v -> showAttachmentMenu());
-        final MaterialButton sendButton = root.findViewById(R.id.chat_send);
+        chatVoiceButton = root.findViewById(R.id.chat_voice);
+        if (chatVoiceButton != null) chatVoiceButton.setOnClickListener(v -> toggleVoiceRecord());
+        chatCircleButton = root.findViewById(R.id.chat_circle);
+        if (chatCircleButton != null) chatCircleButton.setOnClickListener(v -> {
+            pendingMediaKind = "circle";
+            documentPicker.launch(new String[]{"video/*"});
+        });
+        chatStickerButton = root.findViewById(R.id.chat_sticker);
+        if (chatStickerButton != null) chatStickerButton.setOnClickListener(v -> {
+            pendingMediaKind = "sticker";
+            avatarPicker.launch("image/*");
+        });
+        View sendButton = root.findViewById(R.id.chat_send);
         sendButton.setEnabled(false);
+        sendButton.setVisibility(View.GONE);
         sendButton.setOnClickListener(v -> sendCurrentText());
+        setComposerMediaVisible(true);
         composer.setOnEditorActionListener((view, actionId, event) -> {
             if (actionId == android.view.inputmethod.EditorInfo.IME_ACTION_SEND
                     || (event != null && event.getKeyCode() == android.view.KeyEvent.KEYCODE_ENTER
@@ -1036,7 +1108,10 @@ public final class MainActivity extends AppCompatActivity {
         composer.addTextChangedListener(new TextWatcher() {
             @Override public void beforeTextChanged(CharSequence s, int start, int count, int after) { }
             @Override public void onTextChanged(CharSequence s, int start, int before, int count) {
-                sendButton.setEnabled(s != null && s.toString().trim().length() > 0);
+                boolean hasText = s != null && s.toString().trim().length() > 0;
+                sendButton.setEnabled(hasText);
+                sendButton.setVisibility(hasText ? View.VISIBLE : View.GONE);
+                setComposerMediaVisible(!hasText);
                 if (activeChatId != null && !presenceManager.isGhostMode()) {
                     long now = System.currentTimeMillis();
                     if (s != null && s.length() > 0 && now - lastTypingWrite > 800) {
@@ -1157,7 +1232,7 @@ public final class MainActivity extends AppCompatActivity {
             chatStatus.setTextColor(ContextCompat.getColor(this, R.color.tsuyu_blue));
         } else if (peerOnline) {
             chatStatus.setText("в сети");
-            chatStatus.setTextColor(ContextCompat.getColor(this, R.color.tsuyu_green));
+            chatStatus.setTextColor(ContextCompat.getColor(this, R.color.tsuyu_secondary));
         } else if (peerLastSeenVisible && peerLastSeen > 0) {
             String date = new SimpleDateFormat("HH:mm", Locale.getDefault()).format(new Date(peerLastSeen));
             chatStatus.setText("был(а) в сети в " + date);
@@ -1418,24 +1493,31 @@ public final class MainActivity extends AppCompatActivity {
         boolean persisted = message.id != null && !message.id.startsWith("local_") && !message.pending;
         boolean ownMessage = uid != null && uid.equals(message.senderUid);
 
-        content.findViewById(R.id.message_react).setVisibility(persisted ? View.VISIBLE : View.GONE);
-        content.findViewById(R.id.message_reply).setVisibility(persisted ? View.VISIBLE : View.GONE);
+        boolean pinnedAlready = message.id != null && message.id.equals(pinnedMessageId);
+        View pinLabel = content.findViewById(R.id.message_pin_label);
+        if (pinLabel instanceof TextView) {
+            ((TextView) pinLabel).setText(pinnedAlready ? R.string.msg_unpin : R.string.msg_pin);
+        }
+        int rowState = persisted ? View.VISIBLE : View.GONE;
+        content.findViewById(R.id.message_reply).setVisibility(rowState);
+        content.findViewById(R.id.message_pin).setVisibility(rowState);
+        content.findViewById(R.id.message_forward).setVisibility(rowState);
+        content.findViewById(R.id.message_copy).setVisibility(rowState);
         content.findViewById(R.id.message_edit).setVisibility(persisted && ownMessage ? View.VISIBLE : View.GONE);
-        content.findViewById(R.id.message_delete).setVisibility(persisted ? View.VISIBLE : View.GONE);
-        content.findViewById(R.id.message_actions_divider).setVisibility(persisted ? View.VISIBLE : View.GONE);
 
-        content.findViewById(R.id.message_react).setOnClickListener(v -> {
-            sheet.dismiss();
-            toggleHeart(message);
-        });
         content.findViewById(R.id.message_reply).setOnClickListener(v -> {
             sheet.dismiss();
-            replyToId = message.id;
-            replyToText = payload == null ? "Сообщение" : textFromPayload(payload);
-            if (replyBannerText != null) replyBannerText.setText(replyToText);
-            if (replyBanner != null) replyBanner.setVisibility(View.VISIBLE);
-            if (composer != null) composer.requestFocus();
+            startReply(message, payload);
         });
+        content.findViewById(R.id.message_pin).setOnClickListener(v -> {
+            sheet.dismiss();
+            if (pinnedAlready) unpinMessage(); else pinMessage(message, payload);
+        });
+        content.findViewById(R.id.message_copy).setOnClickListener(v -> {
+            sheet.dismiss();
+            copyMessageText(payload);
+        });
+        content.findViewById(R.id.message_cancel).setOnClickListener(v -> sheet.dismiss());
         content.findViewById(R.id.message_forward).setOnClickListener(v -> {
             sheet.dismiss();
             forwardMessage(payload);
@@ -1725,6 +1807,20 @@ public final class MainActivity extends AppCompatActivity {
         content.findViewById(R.id.chat_menu_keys).setOnClickListener(v -> {
             sheet.dismiss();
             showKeySettings();
+        });
+        final boolean archived = isChatArchived(chatId);
+        TextView archiveTitle = content.findViewById(R.id.chat_menu_archive_title);
+        if (archiveTitle != null) archiveTitle.setText(archived ? R.string.chat_menu_unarchive_title : R.string.chat_menu_archive_title);
+        TextView archiveSubtitle = content.findViewById(R.id.chat_menu_archive_subtitle);
+        if (archiveSubtitle != null) archiveSubtitle.setText(archived ? R.string.chat_menu_unarchive_subtitle : R.string.chat_menu_archive_subtitle);
+        content.findViewById(R.id.chat_menu_archive).setOnClickListener(v -> {
+            sheet.dismiss();
+            toggleChatArchive(chatId);
+        });
+        content.findViewById(R.id.chat_menu_select).setOnClickListener(v -> {
+            sheet.dismiss();
+            if (!"chat".equals(page) || !chatId.equals(activeChatId)) showChat(chatId, targetPeerUid);
+            enterSelectionMode();
         });
         content.findViewById(R.id.chat_menu_folders).setOnClickListener(v -> {
             sheet.dismiss();
@@ -2642,19 +2738,23 @@ public final class MainActivity extends AppCompatActivity {
         if (store == null) return;
         for (String[] row : store.listFolders()) {
             if (row[0] == null) continue;
+            if (ARCHIVE_FOLDER_ID.equals(row[0])) continue;
             folderNames.put(row[0], row[1] == null ? "Папка" : row[1]);
         }
+        java.util.Set<String> members = new HashSet<>(store.folderChats(java.util.Collections.singletonList(ARCHIVE_FOLDER_ID)));
+        folderMembers.put(ARCHIVE_FOLDER_ID, members);
         for (String folderId : folderNames.keySet()) {
             folderMembers.put(folderId, new HashSet<>(store.folderChats(java.util.Collections.singletonList(folderId))));
         }
     }
 
-    /** Rebuilds the chip strip above the chat list: Все, Непрочитанные, user folders, «+». */
+    /** Rebuilds the chip strip above the chat list: Личные, Непрочитанные, Архив, folders, «+». */
     private void rebuildFilterChips() {
         if (homeFilters == null) return;
         homeFilters.removeAllViews();
-        addFilterChip(getString(R.string.home_filter_all), "all", false);
+        addFilterChip(getString(R.string.home_filter_personal), "all", false);
         addFilterChip(getString(R.string.home_filter_unread), "unread", false);
+        addFilterChip(getString(R.string.home_filter_archive), "archive", false);
         for (Map.Entry<String, String> folder : folderNames.entrySet()) {
             addFilterChip(folder.getValue(), "folder:" + folder.getKey(), true);
         }
@@ -2670,15 +2770,15 @@ public final class MainActivity extends AppCompatActivity {
         chip.setGravity(android.view.Gravity.CENTER);
         chip.setTag(key);
         LinearLayout.LayoutParams params = new LinearLayout.LayoutParams(
-                LinearLayout.LayoutParams.WRAP_CONTENT, dp(36));
-        params.setMarginEnd(dp(8));
+                LinearLayout.LayoutParams.WRAP_CONTENT, dp(30));
+        params.setMarginEnd(dp(4));
         chip.setLayoutParams(params);
-        chip.setPadding(dp(16), 0, dp(16), 0);
+        chip.setPadding(dp(14), 0, dp(14), 0);
         chip.setBackgroundResource(R.drawable.bg_filter_idle);
         chip.setTextColor(getColor(R.color.tsuyu_secondary));
         if ("new".equals(key)) {
-            chip.setTextColor(getColor(R.color.tsuyu_blue));
             chip.setContentDescription(getString(R.string.folder_new));
+            chip.setTextSize(16f);
             chip.setOnClickListener(v -> createFolderDialog());
         } else {
             chip.setOnClickListener(v -> {
@@ -2766,6 +2866,7 @@ public final class MainActivity extends AppCompatActivity {
         View content = getLayoutInflater().inflate(R.layout.dialog_folder_pick, null, false);
         LinearLayout list = content.findViewById(R.id.folder_pick_list);
         List<String> current = store == null ? new ArrayList<>() : store.chatFolderIds(chatId);
+        final boolean keepArchived = current.contains(ARCHIVE_FOLDER_ID);
         final Map<String, MaterialCheckBox> boxes = new java.util.LinkedHashMap<>();
         for (Map.Entry<String, String> folder : folderNames.entrySet()) {
             MaterialCheckBox box = new MaterialCheckBox(this);
@@ -2795,6 +2896,7 @@ public final class MainActivity extends AppCompatActivity {
                 .setNegativeButton("Отмена", null)
                 .setPositiveButton("Готово", (dialog, which) -> {
                     List<String> selected = new ArrayList<>();
+                    if (keepArchived) selected.add(ARCHIVE_FOLDER_ID);
                     for (Map.Entry<String, MaterialCheckBox> entry : boxes.entrySet()) {
                         if (entry.getValue().isChecked()) selected.add(entry.getKey());
                     }
@@ -2903,7 +3005,7 @@ public final class MainActivity extends AppCompatActivity {
     private void styleFilterChip(TextView chip, boolean selected) {
         if (chip == null) return;
         chip.setBackgroundResource(selected ? R.drawable.bg_filter_selected : R.drawable.bg_filter_idle);
-        chip.setTextColor(getColor(selected ? R.color.tsuyu_blue : R.color.tsuyu_secondary));
+        chip.setTextColor(getColor(selected ? R.color.tsuyu_white : R.color.tsuyu_secondary));
     }
 
     private void applyEmptyStateCopy(String mode) {
@@ -2911,14 +3013,227 @@ public final class MainActivity extends AppCompatActivity {
         if (homeEmptyTitle != null) {
             if ("folder".equals(mode)) homeEmptyTitle.setText("В этой папке пусто");
             else if ("unread".equals(mode)) homeEmptyTitle.setText("Непрочитанных нет");
+            else if ("archive".equals(mode)) homeEmptyTitle.setText("Архив пуст");
+            else if ("search".equals(mode)) homeEmptyTitle.setText(getString(R.string.home_empty_search_title));
             else homeEmptyTitle.setText(getString(R.string.no_chats_title));
         }
         if (homeEmptyDescription != null) {
             if ("folder".equals(mode)) homeEmptyDescription.setText("Добавьте чаты в папку через меню чата.");
             else if ("unread".equals(mode)) homeEmptyDescription.setText("Новые сообщения появятся здесь, и чат поднимется наверх списка.");
+            else if ("archive".equals(mode)) homeEmptyDescription.setText("Чаты, отправленные в архив, будут ждать здесь.");
+            else if ("search".equals(mode)) homeEmptyDescription.setText(getString(R.string.home_empty_search_description));
             else homeEmptyDescription.setText(getString(R.string.no_chats_description));
         }
         if (homeFindPeople != null) homeFindPeople.setVisibility(filtered ? View.GONE : View.VISIBLE);
+    }
+
+    // ------------------------------------------------------------------
+    // Web-parity behaviour: composer switch, reply, pinned message, multi-select
+    // ------------------------------------------------------------------
+
+    /** The web client swaps the media buttons for a send button as soon as text appears. */
+    private void setComposerMediaVisible(boolean visible) {
+        if (selecting) visible = false;
+        int state = visible ? View.VISIBLE : View.GONE;
+        if (chatVoiceButton != null) chatVoiceButton.setVisibility(state);
+        if (chatCircleButton != null) chatCircleButton.setVisibility(state);
+        if (chatStickerButton != null) chatStickerButton.setVisibility(state);
+    }
+
+    private void startReply(ChatMessage message, String payload) {
+        if (message == null) return;
+        String text = payload == null ? "" : textFromPayload(payload);
+        if (text == null || text.trim().isEmpty()) text = "Сообщение";
+        replyToId = message.id;
+        replyToText = text;
+        if (replyBannerText != null) replyBannerText.setText(text);
+        if (replyBanner != null) replyBanner.setVisibility(View.VISIBLE);
+        if (composer != null) composer.requestFocus();
+    }
+
+    private void copyMessageText(String payload) {
+        String text = payload == null ? "" : textFromPayload(payload);
+        if (text == null || text.trim().isEmpty()) { toast("Нечего копировать."); return; }
+        ((ClipboardManager) getSystemService(CLIPBOARD_SERVICE)).setPrimaryClip(ClipData.newPlainText("Tsuyu", text));
+        toast("Скопировано");
+    }
+
+    private String pinIdKey(String chatId) { return "pin_id_" + chatId; }
+
+    private String pinTextKey(String chatId) { return "pin_text_" + chatId; }
+
+    /** Pinned message lives on the device, exactly like the web client's localStorage pin. */
+    private void restorePinnedMessage(String chatId) {
+        pinnedMessageId = null;
+        if (chatId == null) {
+            if (chatPinnedBar != null) chatPinnedBar.setVisibility(View.GONE);
+            return;
+        }
+        android.content.SharedPreferences prefs = getSharedPreferences("tsuyu_settings", MODE_PRIVATE);
+        String id = prefs.getString(pinIdKey(chatId), null);
+        String text = prefs.getString(pinTextKey(chatId), null);
+        if (id == null || text == null) {
+            if (chatPinnedBar != null) chatPinnedBar.setVisibility(View.GONE);
+            return;
+        }
+        pinnedMessageId = id;
+        if (chatPinnedText != null) chatPinnedText.setText(text);
+        if (chatPinnedBar != null) {
+            chatPinnedBar.setVisibility(View.VISIBLE);
+            chatPinnedBar.setAlpha(0f);
+            chatPinnedBar.animate().alpha(1f).setDuration(180).start();
+        }
+    }
+
+    private void pinMessage(ChatMessage message, String payload) {
+        if (activeChatId == null || message == null || message.id == null) return;
+        String text = payload == null ? "" : textFromPayload(payload);
+        if (text == null || text.trim().isEmpty()) text = "Сообщение";
+        if (text.length() > 160) text = text.substring(0, 160) + "…";
+        getSharedPreferences("tsuyu_settings", MODE_PRIVATE).edit()
+                .putString(pinIdKey(activeChatId), message.id)
+                .putString(pinTextKey(activeChatId), text).apply();
+        restorePinnedMessage(activeChatId);
+        toast(getString(R.string.pinned_message_toast));
+    }
+
+    private void unpinMessage() {
+        if (activeChatId == null) return;
+        getSharedPreferences("tsuyu_settings", MODE_PRIVATE).edit()
+                .remove(pinIdKey(activeChatId)).remove(pinTextKey(activeChatId)).apply();
+        restorePinnedMessage(activeChatId);
+        toast(getString(R.string.unpinned_message_toast));
+    }
+
+    private void scrollToPinnedMessage() {
+        if (pinnedMessageId == null || messageList == null || messageListAdapter == null) return;
+        int position = messageListAdapter.positionOf(pinnedMessageId);
+        if (position < 0) { toast("Закреплённое сообщение вне загруженной истории."); return; }
+        messageList.smoothScrollToPosition(position);
+    }
+
+    private boolean isChatArchived(String chatId) {
+        return store != null && chatId != null && store.chatFolderIds(chatId).contains(ARCHIVE_FOLDER_ID);
+    }
+
+    /** «Архив» is a reserved folder, so it rides on the existing folder storage. */
+    private void toggleChatArchive(String chatId) {
+        if (store == null || chatId == null) return;
+        List<String> current = new ArrayList<>(store.chatFolderIds(chatId));
+        boolean archived = current.contains(ARCHIVE_FOLDER_ID);
+        if (archived) current.remove(ARCHIVE_FOLDER_ID); else current.add(ARCHIVE_FOLDER_ID);
+        store.setChatFolders(chatId, current);
+        loadFolders();
+        rebuildFilterChips();
+        renderChatList();
+        toast(getString(archived ? R.string.chat_unarchived_toast : R.string.chat_archived_toast));
+    }
+
+    private boolean matchesChatQuery(ChatSummary summary) {
+        if (chatListQuery.isEmpty()) return true;
+        String needle = chatListQuery.toLowerCase(java.util.Locale.ROOT).replaceFirst("^@", "");
+        Profile peer = summary.peer == null ? new Profile() : summary.peer;
+        String name = peer.displayName == null ? "" : peer.displayName.toLowerCase(java.util.Locale.ROOT);
+        String username = peer.username == null ? "" : peer.username.toLowerCase(java.util.Locale.ROOT).replaceFirst("^@", "");
+        String preview = previewFor(summary);
+        if (preview == null) preview = "";
+        return name.contains(needle) || username.contains(needle)
+                || preview.toLowerCase(java.util.Locale.ROOT).contains(needle);
+    }
+
+    // --- multi-select (web .multi-select-bar) ---
+
+    private void enterSelectionMode() {
+        if (activeChatId == null || messageListAdapter == null) return;
+        selecting = true;
+        selectedMessageIds.clear();
+        messageListAdapter.setSelectionMode(true);
+        if (composerPanel != null) composerPanel.setVisibility(View.GONE);
+        if (multiSelectBar != null) {
+            multiSelectBar.setVisibility(View.VISIBLE);
+            multiSelectBar.setAlpha(0f);
+            multiSelectBar.animate().alpha(1f).setDuration(180).start();
+        }
+        refreshSelectionUi();
+    }
+
+    private void exitSelectionMode() {
+        selecting = false;
+        selectedMessageIds.clear();
+        if (messageListAdapter != null) messageListAdapter.setSelectionMode(false);
+        if (multiSelectBar != null) multiSelectBar.setVisibility(View.GONE);
+        if (composerPanel != null) composerPanel.setVisibility(View.VISIBLE);
+        boolean hasText = composer != null && composer.getText() != null
+                && composer.getText().toString().trim().length() > 0;
+        setComposerMediaVisible(!hasText);
+    }
+
+    private String selectionKey(ChatMessage message) {
+        if (message == null) return null;
+        return message.id != null ? message.id : message.clientId;
+    }
+
+    private void toggleMessageSelection(ChatMessage message) {
+        String key = selectionKey(message);
+        if (key == null) return;
+        if (!selectedMessageIds.remove(key)) selectedMessageIds.add(key);
+        refreshSelectionUi();
+    }
+
+    private void refreshSelectionUi() {
+        if (multiSelectCount != null) {
+            multiSelectCount.setText(getString(R.string.multi_select_count, selectedMessageIds.size()));
+        }
+        if (messageListAdapter != null) {
+            messageListAdapter.setSelectedKeys(new HashSet<>(selectedMessageIds));
+        }
+    }
+
+    private void forwardSelectedMessages() {
+        if (selectedMessageIds.isEmpty()) { toast(getString(R.string.multi_select_empty)); return; }
+        StringBuilder builder = new StringBuilder();
+        for (ChatMessage message : cachedMessages) {
+            String key = selectionKey(message);
+            if (key == null || !selectedMessageIds.contains(key)) continue;
+            String text = message.localPayload != null ? textFromPayload(message.localPayload) : null;
+            if ((text == null || text.isEmpty()) && messageCache != null && message.id != null && activeChatId != null) {
+                text = textFromPayload(messageCache.get(activeChatId, message.id));
+            }
+            if (text != null && !text.trim().isEmpty()) {
+                if (builder.length() > 0) builder.append('\n');
+                builder.append(text);
+            }
+        }
+        int count = selectedMessageIds.size();
+        exitSelectionMode();
+        if (builder.length() == 0) { toast("В выбранных сообщениях нет текста."); return; }
+        ((ClipboardManager) getSystemService(CLIPBOARD_SERVICE)).setPrimaryClip(ClipData.newPlainText("Tsuyu", builder.toString()));
+        toast("Скопировано сообщений: " + count + ". Выберите диалог и вставьте.");
+    }
+
+    private void deleteSelectedMessages() {
+        if (selectedMessageIds.isEmpty()) { toast(getString(R.string.multi_select_empty)); return; }
+        if (activeChatId == null) return;
+        final String chatId = activeChatId;
+        final List<String> ids = new ArrayList<>();
+        for (String key : selectedMessageIds) {
+            if (key != null && !key.startsWith("local_")) ids.add(key);
+        }
+        exitSelectionMode();
+        if (ids.isEmpty()) { toast("Можно удалить только отправленные сообщения."); return; }
+        new AlertDialog.Builder(this)
+                .setTitle("Удалить сообщений: " + ids.size() + "?")
+                .setMessage("Сообщения будут удалены у обоих участников.")
+                .setNegativeButton("Отмена", null)
+                .setPositiveButton("Удалить", (dialog, which) -> {
+                    for (String id : ids) {
+                        chatRepository.deleteMessage(chatId, id, new ChatRepository.Result<Void>() {
+                            @Override public void success(Void value) { }
+                            @Override public void error(String error) { toast(error); }
+                        });
+                    }
+                    toast("Удалено сообщений: " + ids.size());
+                }).show();
     }
 
     private void toast(String text) { if (Looper.myLooper() == Looper.getMainLooper()) Toast.makeText(this, text, Toast.LENGTH_SHORT).show(); else runOnUiThread(() -> Toast.makeText(this, text, Toast.LENGTH_SHORT).show()); }
@@ -2927,6 +3242,7 @@ public final class MainActivity extends AppCompatActivity {
 
     @Override
     public void onBackPressed() {
+        if (selecting) { exitSelectionMode(); return; }
         if ("chat".equals(page)) { detachChatListeners(); showHome(); return; }
         if ("profile_edit".equals(page)) {
             if (isNewProfile) auth.signOut(); else showHome();

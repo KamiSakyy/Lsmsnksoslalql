@@ -3,6 +3,7 @@ package com.tsuyu.messenger.ui;
 import android.graphics.Bitmap;
 import android.graphics.BitmapFactory;
 import android.graphics.Typeface;
+import android.view.MotionEvent;
 import android.util.Base64;
 import android.view.LayoutInflater;
 import android.view.View;
@@ -20,6 +21,7 @@ import androidx.recyclerview.widget.RecyclerView;
 import com.google.android.material.button.MaterialButton;
 import com.google.android.material.card.MaterialCardView;
 import com.google.android.material.imageview.ShapeableImageView;
+import com.google.android.material.shape.ShapeAppearanceModel;
 import com.tsuyu.messenger.R;
 import com.tsuyu.messenger.data.ChatMessage;
 
@@ -42,6 +44,10 @@ public final class MessageListAdapter extends RecyclerView.Adapter<RecyclerView.
         void onRetry(ChatMessage message);
         void onReact(ChatMessage message);
         void onGalleryImage(String encodedImage);
+        /** Swipe-to-reply gesture on a bubble. */
+        void onReply(ChatMessage message);
+        /** Tap on a bubble while the multi-select action bar is open. */
+        void onToggleSelect(ChatMessage message);
     }
 
     public static final class Row {
@@ -94,6 +100,8 @@ public final class MessageListAdapter extends RecyclerView.Adapter<RecyclerView.
     private final Listener listener;
     private final List<Row> rows = new ArrayList<>();
     private final Set<String> animatedIds = new HashSet<>();
+    private final Set<String> selectedKeys = new HashSet<>();
+    private boolean selectionMode;
     private int textSize;
     private boolean bold;
     private boolean italic;
@@ -104,6 +112,31 @@ public final class MessageListAdapter extends RecyclerView.Adapter<RecyclerView.
         this.bold = bold;
         this.italic = italic;
         this.listener = listener;
+    }
+
+    /** Turns tap-to-select on for every bubble (web .msg-select-mode). */
+    public void setSelectionMode(boolean enabled) {
+        if (selectionMode == enabled) return;
+        selectionMode = enabled;
+        if (!enabled) selectedKeys.clear();
+        notifyItemRangeChanged(0, rows.size());
+    }
+
+    /** Replaces the set of highlighted messages, keyed by id or clientId. */
+    public void setSelectedKeys(Set<String> keys) {
+        selectedKeys.clear();
+        if (keys != null) selectedKeys.addAll(keys);
+        notifyItemRangeChanged(0, rows.size());
+    }
+
+    /** Adapter position of a message id, or -1 when it is not rendered yet. */
+    public int positionOf(String messageId) {
+        if (messageId == null) return -1;
+        for (int index = 0; index < rows.size(); index++) {
+            ChatMessage message = rows.get(index).message;
+            if (message != null && messageId.equals(message.id)) return index;
+        }
+        return -1;
     }
 
     public void setTextStyle(int textSize, boolean bold, boolean italic) {
@@ -206,6 +239,13 @@ public final class MessageListAdapter extends RecyclerView.Adapter<RecyclerView.
         holder.retry.setVisibility(View.GONE);
         holder.edited.setVisibility(View.GONE);
         holder.status.setVisibility(View.GONE);
+        resetBubbleChrome(holder, outgoing);
+        if (message.id != null && selectedKeys.contains(message.id)
+                || message.clientId != null && selectedKeys.contains(message.clientId)) {
+            holder.bubble.setStrokeColor(holder.itemView.getContext().getColor(R.color.tsuyu_blue));
+            holder.bubble.setStrokeWidth(Math.max(1, Math.round(holder.itemView.getContext().getResources().getDisplayMetrics().density)));
+            holder.bubble.setCardBackgroundColor(holder.itemView.getContext().getColor(R.color.tsuyu_accent_tint_strong));
+        }
         holder.body.setTextSize(textSize);
         int style = bold ? Typeface.BOLD : Typeface.NORMAL;
         if (italic) style |= Typeface.ITALIC;
@@ -250,6 +290,36 @@ public final class MessageListAdapter extends RecyclerView.Adapter<RecyclerView.
             holder.body.setVisibility(View.GONE);
             holder.video.setVisibility(View.VISIBLE);
             holder.video.setOnClickListener(v -> listener.onOpenPayload(payload));
+        } else if ("circle".equals(kind)) {
+            // Telegram-style round video note: circular card with a play badge.
+            holder.body.setVisibility(View.GONE);
+            float d = holder.itemView.getContext().getResources().getDisplayMetrics().density;
+            int side = Math.round(200 * d);
+            ViewGroup.LayoutParams circleParams = holder.video.getLayoutParams();
+            circleParams.width = side;
+            circleParams.height = side;
+            holder.video.setLayoutParams(circleParams);
+            holder.video.setShapeAppearanceModel(ShapeAppearanceModel.builder()
+                    .setAllCornerSizes(ShapeAppearanceModel.PILL).build());
+            holder.video.setCardBackgroundColor(holder.itemView.getContext().getColor(R.color.tsuyu_input));
+            holder.videoLabel.setText("Кружочек");
+            holder.video.setVisibility(View.VISIBLE);
+            holder.video.setOnClickListener(v -> listener.onOpenPayload(payload));
+        } else if ("sticker".equals(kind)) {
+            // Sticker: no bubble chrome, 140dp image (web .msg-sticker).
+            holder.body.setVisibility(View.GONE);
+            float d = holder.itemView.getContext().getResources().getDisplayMetrics().density;
+            int side = Math.round(140 * d);
+            ViewGroup.LayoutParams stickerParams = holder.image.getLayoutParams();
+            stickerParams.width = side;
+            stickerParams.height = side;
+            holder.image.setLayoutParams(stickerParams);
+            holder.image.setShapeAppearanceModel(ShapeAppearanceModel.builder().setAllCornerSizes(0).build());
+            holder.bubble.setCardBackgroundColor(android.graphics.Color.TRANSPARENT);
+            holder.bubble.setStrokeWidth(0);
+            bindImage(holder.image, object.optString("data", ""));
+            holder.image.setVisibility(View.VISIBLE);
+            holder.image.setOnClickListener(v -> listener.onOpenPayload(payload));
         } else if ("voice".equals(kind) || "audio".equals(kind)) {
             holder.body.setVisibility(View.GONE);
             holder.audio.setVisibility(View.VISIBLE);
@@ -292,13 +362,95 @@ public final class MessageListAdapter extends RecyclerView.Adapter<RecyclerView.
                     R.plurals.message_reactions, row.reactionCount, row.reactionCount));
             holder.reaction.setOnClickListener(v -> listener.onReact(message));
         }
-        holder.bubble.setOnClickListener(v -> listener.onOpenPayload(payload));
+        holder.bubble.setOnClickListener(v -> {
+            if (selectionMode) listener.onToggleSelect(message);
+            else listener.onOpenPayload(payload);
+        });
         holder.bubble.setOnLongClickListener(v -> {
-            listener.onMessageMenu(v, message, payload);
+            if (selectionMode) listener.onToggleSelect(message);
+            else listener.onMessageMenu(v, message, payload);
             return true;
         });
+        attachSwipeToReply(holder, message);
         String key = message.id != null ? message.id : message.clientId;
         if (key != null && animatedIds.add(key)) holder.itemView.startAnimation(AnimationUtils.loadAnimation(holder.itemView.getContext(), R.anim.message_enter));
+    }
+
+    /** Restores the default bubble look so recycled holders never keep sticker/circle styling. */
+    private void resetBubbleChrome(Holder holder, boolean outgoing) {
+        android.content.Context context = holder.itemView.getContext();
+        holder.bubble.setCardBackgroundColor(context.getColor(
+                outgoing ? R.color.tsuyu_outgoing : R.color.tsuyu_incoming));
+        holder.bubble.setStrokeWidth(0);
+        holder.bubble.setStrokeColor(android.graphics.Color.TRANSPARENT);
+        float d = context.getResources().getDisplayMetrics().density;
+        ViewGroup.LayoutParams imageParams = holder.image.getLayoutParams();
+        imageParams.width = Math.round(224 * d);
+        imageParams.height = Math.round(168 * d);
+        holder.image.setLayoutParams(imageParams);
+        holder.image.setShapeAppearanceModel(ShapeAppearanceModel.builder().setAllCornerSizes(14 * d).build());
+        ViewGroup.LayoutParams videoParams = holder.video.getLayoutParams();
+        videoParams.width = Math.round(224 * d);
+        videoParams.height = Math.round(126 * d);
+        holder.video.setLayoutParams(videoParams);
+        holder.video.setShapeAppearanceModel(ShapeAppearanceModel.builder().setAllCornerSizes(16 * d).build());
+        holder.video.setCardBackgroundColor(context.getColor(R.color.tsuyu_surface));
+        holder.videoLabel.setText("Открыть видео");
+        holder.bubble.setTranslationX(0f);
+        if (holder.swipeIcon != null) holder.swipeIcon.setAlpha(0f);
+    }
+
+    /** Horizontal drag on a bubble reveals a reply arrow and starts a reply (web attachSwipeToReply). */
+    private void attachSwipeToReply(final Holder holder, final ChatMessage message) {
+        final float density = holder.itemView.getContext().getResources().getDisplayMetrics().density;
+        final float slop = 12f * density;
+        final float trigger = 48f * density;
+        final float limit = 72f * density;
+        holder.bubble.setOnTouchListener(new View.OnTouchListener() {
+            private float downX;
+            private float downY;
+            private boolean swiping;
+
+            @Override public boolean onTouch(View view, MotionEvent event) {
+                switch (event.getActionMasked()) {
+                    case MotionEvent.ACTION_DOWN:
+                        downX = event.getRawX();
+                        downY = event.getRawY();
+                        swiping = false;
+                        return false;
+                    case MotionEvent.ACTION_MOVE: {
+                        float dx = event.getRawX() - downX;
+                        float dy = event.getRawY() - downY;
+                        if (!swiping) {
+                            if (Math.abs(dx) > slop && Math.abs(dx) > Math.abs(dy) * 2f) {
+                                swiping = true;
+                                if (view.getParent() != null) view.getParent().requestDisallowInterceptTouchEvent(true);
+                            } else {
+                                return false;
+                            }
+                        }
+                        float shift = Math.max(-limit, Math.min(0f, dx));
+                        holder.bubble.setTranslationX(shift);
+                        if (holder.swipeIcon != null) holder.swipeIcon.setAlpha(Math.min(1f, -shift / (trigger + slop)));
+                        return true;
+                    }
+                    case MotionEvent.ACTION_UP:
+                    case MotionEvent.ACTION_CANCEL:
+                        if (!swiping) return false;
+                        boolean fire = holder.bubble.getTranslationX() < -trigger;
+                        holder.bubble.animate().translationX(0f).setDuration(140).start();
+                        if (holder.swipeIcon != null) holder.swipeIcon.animate().alpha(0f).setDuration(140).start();
+                        swiping = false;
+                        if (fire) {
+                            holder.itemView.performHapticFeedback(android.view.HapticFeedbackConstants.LONG_PRESS);
+                            listener.onReply(message);
+                        }
+                        return true;
+                    default:
+                        return false;
+                }
+            }
+        });
     }
 
     private boolean isFirstInGroup(int position) {
@@ -352,6 +504,8 @@ public final class MessageListAdapter extends RecyclerView.Adapter<RecyclerView.
         final TextView time;
         final ImageView status;
         final MaterialButton retry;
+        final TextView videoLabel;
+        final ImageView swipeIcon;
         Holder(View itemView) {
             super(itemView);
             bubble = itemView.findViewById(R.id.message_bubble);
@@ -368,6 +522,8 @@ public final class MessageListAdapter extends RecyclerView.Adapter<RecyclerView.
             time = itemView.findViewById(R.id.message_time);
             status = itemView.findViewById(R.id.message_status);
             retry = itemView.findViewById(R.id.message_retry);
+            videoLabel = itemView.findViewById(R.id.message_video_label);
+            swipeIcon = itemView.findViewById(R.id.message_swipe_icon);
         }
     }
 

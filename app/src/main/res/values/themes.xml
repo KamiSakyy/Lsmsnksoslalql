@@ -39,14 +39,14 @@
 
     <style name="TsuyuMessageIncomingShape">
         <item name="cornerFamily">rounded</item>
-        <item name="cornerSize">16dp</item>
-        <item name="cornerSizeBottomRight">4dp</item>
+        <item name="cornerSize">@dimen/bubble_radius_web</item>
+        <item name="cornerSizeBottomLeft">@dimen/bubble_tail_radius_web</item>
     </style>
 
     <style name="TsuyuMessageOutgoingShape">
         <item name="cornerFamily">rounded</item>
-        <item name="cornerSize">16dp</item>
-        <item name="cornerSizeBottomLeft">4dp</item>
+        <item name="cornerSize">@dimen/bubble_radius_web</item>
+        <item name="cornerSizeBottomRight">@dimen/bubble_tail_radius_web</item>
     </style>
 
     <style name="Widget.Tsuyu.Toolbar" parent="Widget.Material3.Toolbar">

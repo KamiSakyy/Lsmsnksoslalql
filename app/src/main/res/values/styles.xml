@@ -239,7 +239,7 @@
 
     <style name="Widget.Tsuyu.Bubble.Incoming" parent="Widget.Tsuyu.Card">
         <item name="cardBackgroundColor">@color/tsuyu_incoming</item>
-        <item name="cardCornerRadius">16dp</item>
+        <item name="cardCornerRadius">@dimen/bubble_radius_web</item>
         <item name="cardElevation">0dp</item>
         <item name="strokeWidth">0dp</item>
         <item name="strokeColor">@android:color/transparent</item>
@@ -248,7 +248,7 @@
 
     <style name="Widget.Tsuyu.Bubble.Outgoing" parent="Widget.Tsuyu.Card">
         <item name="cardBackgroundColor">@color/tsuyu_outgoing</item>
-        <item name="cardCornerRadius">16dp</item>
+        <item name="cardCornerRadius">@dimen/bubble_radius_web</item>
         <item name="cardElevation">0dp</item>
         <item name="strokeWidth">0dp</item>
         <item name="strokeColor">@android:color/transparent</item>
@@ -269,5 +269,57 @@
         <item name="android:textSize">18sp</item>
         <item name="android:textColor">@color/tsuyu_white</item>
         <item name="android:fontFamily">sans-serif-medium</item>
+    </style>
+
+    <style name="Widget.Tsuyu.MultiSelectButton" parent="Widget.Material3.Button">
+        <item name="cornerRadius">@dimen/sheet_item_radius</item>
+        <item name="android:textAllCaps">false</item>
+        <item name="android:textSize">13sp</item>
+        <item name="android:fontFamily">sans-serif-medium</item>
+        <item name="android:minWidth">0dp</item>
+        <item name="android:minHeight">0dp</item>
+        <item name="android:insetTop">0dp</item>
+        <item name="android:insetBottom">0dp</item>
+        <item name="android:paddingStart">@dimen/chip_padding_h_web</item>
+        <item name="android:paddingEnd">@dimen/chip_padding_h_web</item>
+        <item name="backgroundTint">@color/tsuyu_border</item>
+        <item name="android:textColor">@color/tsuyu_white</item>
+        <item name="iconTint">@color/tsuyu_white</item>
+        <item name="iconSize">14dp</item>
+        <item name="iconPadding">@dimen/space_xs</item>
+        <item name="iconGravity">textStart</item>
+        <item name="rippleColor">@color/tsuyu_ripple</item>
+    </style>
+
+    <!-- Action-sheet row: 2c2c2e card, 12dp radius, 16/13dp padding (web .action-sheet-item) -->
+    <style name="Widget.Tsuyu.SheetActionRow" parent="">
+        <item name="android:layout_width">match_parent</item>
+        <item name="android:layout_height">wrap_content</item>
+        <item name="android:background">@drawable/bg_sheet_item</item>
+        <item name="android:clickable">true</item>
+        <item name="android:focusable">true</item>
+        <item name="android:gravity">center_vertical</item>
+        <item name="android:orientation">horizontal</item>
+        <item name="android:paddingStart">@dimen/sheet_item_padding_h</item>
+        <item name="android:paddingEnd">@dimen/sheet_item_padding_h</item>
+        <item name="android:paddingTop">@dimen/sheet_item_padding_v</item>
+        <item name="android:paddingBottom">@dimen/sheet_item_padding_v</item>
+    </style>
+
+    <style name="Widget.Tsuyu.SheetActionIcon" parent="">
+        <item name="android:layout_width">20dp</item>
+        <item name="android:layout_height">20dp</item>
+        <item name="tint">@color/tsuyu_white</item>
+    </style>
+
+    <style name="Widget.Tsuyu.SheetActionLabel" parent="">
+        <item name="android:layout_width">0dp</item>
+        <item name="android:layout_height">wrap_content</item>
+        <item name="android:layout_weight">1</item>
+        <item name="android:layout_marginStart">@dimen/space_md</item>
+        <item name="android:ellipsize">end</item>
+        <item name="android:maxLines">1</item>
+        <item name="android:textColor">@color/tsuyu_white</item>
+        <item name="android:textSize">15sp</item>
     </style>
 </resources>

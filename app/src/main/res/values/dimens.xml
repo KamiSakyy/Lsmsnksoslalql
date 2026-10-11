@@ -56,8 +56,8 @@
     <!-- Conversation -->
     <dimen name="bubble_text_max_width">272dp</dimen>
     <dimen name="bubble_gutter">36dp</dimen>
-    <dimen name="bubble_padding_horizontal">14dp</dimen>
-    <dimen name="bubble_padding_top">10dp</dimen>
+    <dimen name="bubble_padding_horizontal">12dp</dimen>
+    <dimen name="bubble_padding_top">8dp</dimen>
     <dimen name="bubble_padding_bottom">8dp</dimen>
     <dimen name="message_gap_group">2dp</dimen>
     <dimen name="message_gap_block">6dp</dimen>
@@ -81,4 +81,29 @@
     <dimen name="corner_card">20dp</dimen>
     <dimen name="corner_input">16dp</dimen>
     <dimen name="avatar_chat">56dp</dimen>
+
+    <!-- Web-client parity metrics (values mirror the VK Tsuyu web client CSS) -->
+    <dimen name="avatar_dialog">50dp</dimen>
+    <dimen name="avatar_chat_header">38dp</dimen>
+    <dimen name="online_dot_web">14dp</dimen>
+    <dimen name="header_button">38dp</dimen>
+    <dimen name="header_menu_button">40dp</dimen>
+    <dimen name="chip_height_web">30dp</dimen>
+    <dimen name="chip_radius_web">16dp</dimen>
+    <dimen name="chip_padding_h_web">14dp</dimen>
+    <dimen name="sheet_item_radius">12dp</dimen>
+    <dimen name="sheet_padding">16dp</dimen>
+    <dimen name="sheet_gap">8dp</dimen>
+    <dimen name="sheet_item_padding_v">13dp</dimen>
+    <dimen name="sheet_item_padding_h">16dp</dimen>
+    <dimen name="bubble_radius_web">18dp</dimen>
+    <dimen name="bubble_tail_radius_web">4dp</dimen>
+    <dimen name="bubble_padding_h_web">12dp</dimen>
+    <dimen name="bubble_padding_v_web">8dp</dimen>
+    <dimen name="composer_button">38dp</dimen>
+    <dimen name="composer_radius">20dp</dimen>
+    <dimen name="sticker_size">140dp</dimen>
+    <dimen name="circle_message_size">200dp</dimen>
+    <dimen name="multi_select_button_height">34dp</dimen>
+    <dimen name="pinned_bar_height">48dp</dimen>
 </resources>

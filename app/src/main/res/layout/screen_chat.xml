@@ -7,6 +7,7 @@
     android:background="@color/tsuyu_black"
     android:orientation="vertical">
 
+    <!-- Chat header (web chat .header) -->
     <LinearLayout
         android:id="@+id/chat_toolbar"
         android:layout_width="match_parent"
@@ -17,22 +18,25 @@
         android:paddingStart="@dimen/space_2xs"
         android:paddingEnd="@dimen/space_2xs">
 
-        <com.google.android.material.button.MaterialButton
+        <ImageView
             android:id="@+id/chat_back"
-            style="@style/Widget.Tsuyu.IconButton"
-            android:layout_width="@dimen/icon_button"
-            android:layout_height="@dimen/icon_button"
+            android:layout_width="@dimen/header_menu_button"
+            android:layout_height="@dimen/header_menu_button"
+            android:layout_gravity="center_vertical"
+            android:layout_marginStart="@dimen/space_sm"
+            android:background="@drawable/bg_header_back"
+            android:clickable="true"
             android:contentDescription="Назад к чатам"
-            app:cornerRadius="24dp"
-            app:icon="@drawable/ic_arrow_back"
-            app:iconSize="22dp"
-            app:iconTint="@color/tsuyu_white" />
+            android:focusable="true"
+            android:padding="10dp"
+            android:src="@drawable/ic_arrow_back"
+            app:tint="@color/tsuyu_white" />
 
         <FrameLayout
             android:id="@+id/chat_peer_avatar_frame"
-            android:layout_width="@dimen/avatar_header"
-            android:layout_height="@dimen/avatar_header"
-            android:layout_marginStart="@dimen/space_2xs"
+            android:layout_width="@dimen/avatar_chat_header"
+            android:layout_height="@dimen/avatar_chat_header"
+            android:layout_marginStart="@dimen/space_xs"
             android:clickable="true"
             android:focusable="true">
 
@@ -44,7 +48,7 @@
                 android:fontFamily="sans-serif-medium"
                 android:gravity="center"
                 android:textColor="@color/tsuyu_white"
-                android:textSize="17sp" />
+                android:textSize="15sp" />
 
             <com.google.android.material.imageview.ShapeableImageView
                 android:id="@+id/chat_peer_avatar"
@@ -56,8 +60,8 @@
 
             <View
                 android:id="@+id/chat_peer_online_dot"
-                android:layout_width="@dimen/online_dot"
-                android:layout_height="@dimen/online_dot"
+                android:layout_width="12dp"
+                android:layout_height="12dp"
                 android:layout_gravity="bottom|end"
                 android:background="@drawable/bg_online_dot"
                 android:visibility="gone" />
@@ -67,7 +71,7 @@
             android:id="@+id/chat_peer_header_text"
             android:layout_width="0dp"
             android:layout_height="wrap_content"
-            android:layout_marginStart="@dimen/space_md"
+            android:layout_marginStart="@dimen/space_sm"
             android:layout_weight="1"
             android:clickable="true"
             android:focusable="true"
@@ -78,10 +82,12 @@
                 android:layout_width="match_parent"
                 android:layout_height="wrap_content"
                 android:ellipsize="end"
+                android:fontFamily="sans-serif-medium"
+                android:letterSpacing="0.01"
                 android:maxLines="1"
                 android:text="Собеседник"
-                android:textAppearance="@style/TextAppearance.Tsuyu.RowTitle"
-                android:textSize="17sp" />
+                android:textColor="@color/tsuyu_white"
+                android:textSize="16sp" />
 
             <TextView
                 android:id="@+id/chat_peer_status"
@@ -89,26 +95,86 @@
                 android:layout_height="wrap_content"
                 android:ellipsize="end"
                 android:maxLines="1"
-                android:textAppearance="@style/TextAppearance.Tsuyu.RowMeta"
-                android:textSize="13sp" />
+                android:textAppearance="@style/TextAppearance.Tsuyu.ToolbarSubtitle" />
         </LinearLayout>
 
-        <com.google.android.material.button.MaterialButton
+        <ImageView
             android:id="@+id/chat_more"
-            style="@style/Widget.Tsuyu.IconButton"
-            android:layout_width="@dimen/icon_button"
-            android:layout_height="@dimen/icon_button"
+            android:layout_width="@dimen/header_button"
+            android:layout_height="@dimen/header_button"
+            android:layout_gravity="center_vertical"
+            android:layout_marginEnd="@dimen/space_sm"
+            android:background="@drawable/bg_header_btn"
+            android:clickable="true"
             android:contentDescription="Действия в чате"
-            app:cornerRadius="24dp"
-            app:icon="@drawable/ic_more"
-            app:iconSize="22dp"
-            app:iconTint="@color/tsuyu_white" />
+            android:focusable="true"
+            android:padding="10dp"
+            android:src="@drawable/ic_more"
+            app:tint="@color/tsuyu_white" />
     </LinearLayout>
 
     <View
         android:layout_width="match_parent"
         android:layout_height="@dimen/hairline"
-        android:background="@color/tsuyu_border" />
+        android:background="@color/tsuyu_divider_soft" />
+
+    <!-- Pinned message bar (web .pinned-msg-bar) -->
+    <LinearLayout
+        android:id="@+id/chat_pinned_bar"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:background="@drawable/bg_pinned_bar"
+        android:gravity="center_vertical"
+        android:orientation="horizontal"
+        android:paddingStart="@dimen/space_md"
+        android:paddingTop="@dimen/space_sm"
+        android:paddingEnd="@dimen/space_sm"
+        android:paddingBottom="@dimen/space_sm"
+        android:visibility="gone">
+
+        <View
+            android:layout_width="3dp"
+            android:layout_height="30dp"
+            android:layout_marginEnd="@dimen/space_md"
+            android:background="@drawable/bg_sheet_handle"
+            android:backgroundTint="@color/tsuyu_blue" />
+
+        <LinearLayout
+            android:layout_width="0dp"
+            android:layout_height="wrap_content"
+            android:layout_weight="1"
+            android:orientation="vertical">
+
+            <TextView
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:ellipsize="end"
+                android:maxLines="1"
+                android:text="@string/pinned_message_title"
+                android:textColor="@color/tsuyu_blue"
+                android:textSize="12sp" />
+
+            <TextView
+                android:id="@+id/pinned_message_text"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:ellipsize="end"
+                android:maxLines="1"
+                android:textColor="@color/tsuyu_white"
+                android:textSize="13sp" />
+        </LinearLayout>
+
+        <com.google.android.material.button.MaterialButton
+            android:id="@+id/pinned_message_close"
+            style="@style/Widget.Tsuyu.IconButton"
+            android:layout_width="@dimen/icon_button_small"
+            android:layout_height="@dimen/icon_button_small"
+            android:contentDescription="@string/msg_unpin"
+            app:cornerRadius="@dimen/radius_pill"
+            app:icon="@drawable/ic_close"
+            app:iconSize="18dp"
+            app:iconTint="@color/tsuyu_secondary" />
+    </LinearLayout>
 
     <FrameLayout
         android:layout_width="match_parent"
@@ -121,7 +187,7 @@
             android:layout_height="match_parent"
             android:clipToPadding="false"
             android:paddingStart="@dimen/space_md"
-            android:paddingTop="@dimen/space_md"
+            android:paddingTop="@dimen/space_sm"
             android:paddingEnd="@dimen/space_md"
             android:paddingBottom="@dimen/space_sm"
             android:scrollbars="none" />
@@ -169,14 +235,15 @@
 
         <com.google.android.material.floatingactionbutton.FloatingActionButton
             android:id="@+id/chat_scroll_bottom"
-            android:layout_width="40dp"
-            android:layout_height="40dp"
+            android:layout_width="44dp"
+            android:layout_height="44dp"
             android:layout_gravity="bottom|end"
             android:layout_marginEnd="@dimen/space_lg"
             android:layout_marginBottom="@dimen/space_md"
             android:contentDescription="@string/chat_scroll_bottom"
+            android:rotation="90"
             android:visibility="gone"
-            app:backgroundTint="@color/tsuyu_input"
+            app:backgroundTint="@color/tsuyu_blue"
             app:elevation="0dp"
             app:fabSize="mini"
             app:shapeAppearanceOverlay="@style/TsuyuCircleShape"
@@ -220,8 +287,8 @@
                 android:layout_weight="1"
                 android:ellipsize="end"
                 android:gravity="center_vertical"
-                android:maxLines="2"
-                android:textColor="@color/tsuyu_blue"
+                android:maxLines="1"
+                android:textColor="@color/tsuyu_white"
                 android:textSize="13sp" />
 
             <com.google.android.material.button.MaterialButton
@@ -237,6 +304,7 @@
         </LinearLayout>
     </com.google.android.material.card.MaterialCardView>
 
+    <!-- Composer (web .input-area): clip · input · mic · circle · sticker · send -->
     <LinearLayout
         android:id="@+id/composer_panel"
         android:layout_width="match_parent"
@@ -249,16 +317,19 @@
         android:paddingEnd="@dimen/space_sm"
         android:paddingBottom="@dimen/space_sm">
 
-        <com.google.android.material.button.MaterialButton
+        <ImageView
             android:id="@+id/chat_attach"
-            style="@style/Widget.Tsuyu.IconButton"
-            android:layout_width="@dimen/icon_button_dense"
-            android:layout_height="@dimen/icon_button_dense"
-            android:contentDescription="Прикрепить"
-            app:cornerRadius="22dp"
-            app:icon="@drawable/ic_add"
-            app:iconSize="22dp"
-            app:iconTint="@color/tsuyu_secondary" />
+            android:layout_width="@dimen/composer_button"
+            android:layout_height="@dimen/composer_button"
+            android:layout_gravity="center_vertical"
+            android:background="@drawable/bg_header_btn"
+            android:clickable="true"
+            android:contentDescription="@string/app_name"
+            android:focusable="true"
+            android:padding="9dp"
+            android:src="@drawable/ic_clip"
+            android:layout_marginStart="@dimen/space_2xs"
+            app:tint="@color/tsuyu_white" />
 
         <com.google.android.material.textfield.TextInputLayout
             android:id="@+id/composer_layout"
@@ -266,7 +337,7 @@
             android:layout_width="0dp"
             android:layout_height="wrap_content"
             android:layout_marginStart="@dimen/space_xs"
-            android:layout_marginEnd="@dimen/space_sm"
+            android:layout_marginEnd="@dimen/space_xs"
             android:layout_weight="1">
 
             <com.google.android.material.textfield.TextInputEditText
@@ -278,22 +349,112 @@
                 android:imeOptions="actionSend"
                 android:inputType="textCapSentences|textMultiLine"
                 android:maxLines="4"
-                android:minHeight="@dimen/icon_button_dense"
+                android:minHeight="@dimen/composer_button"
                 android:textColor="@color/tsuyu_white"
-                android:textColorHint="@color/tsuyu_secondary"
-                android:textSize="15sp" />
+                android:textColorHint="@color/tsuyu_time"
+                android:textSize="14sp" />
         </com.google.android.material.textfield.TextInputLayout>
 
-        <com.google.android.material.button.MaterialButton
+        <ImageView
+            android:id="@+id/chat_voice"
+            android:layout_width="@dimen/composer_button"
+            android:layout_height="@dimen/composer_button"
+            android:layout_gravity="center_vertical"
+            android:background="@drawable/bg_header_btn"
+            android:clickable="true"
+            android:contentDescription="@string/app_name"
+            android:focusable="true"
+            android:padding="9dp"
+            android:src="@drawable/ic_mic"
+            app:tint="@color/tsuyu_white" />
+
+        <ImageView
+            android:id="@+id/chat_circle"
+            android:layout_width="@dimen/composer_button"
+            android:layout_height="@dimen/composer_button"
+            android:layout_gravity="center_vertical"
+            android:background="@drawable/bg_header_btn"
+            android:clickable="true"
+            android:contentDescription="@string/app_name"
+            android:focusable="true"
+            android:padding="9dp"
+            android:src="@drawable/ic_circle_msg"
+            app:tint="@color/tsuyu_white" />
+
+        <ImageView
+            android:id="@+id/chat_sticker"
+            android:layout_width="@dimen/composer_button"
+            android:layout_height="@dimen/composer_button"
+            android:layout_gravity="center_vertical"
+            android:background="@drawable/bg_header_btn"
+            android:clickable="true"
+            android:contentDescription="@string/app_name"
+            android:focusable="true"
+            android:padding="9dp"
+            android:src="@drawable/ic_edit"
+            app:tint="@color/tsuyu_white" />
+
+        <ImageView
             android:id="@+id/chat_send"
-            style="@style/Widget.Tsuyu.IconButton"
-            android:layout_width="@dimen/icon_button_dense"
-            android:layout_height="@dimen/icon_button_dense"
+            android:layout_width="@dimen/composer_button"
+            android:layout_height="@dimen/composer_button"
+            android:layout_gravity="center_vertical"
+            android:background="@drawable/bg_scroll_fab"
+            android:clickable="true"
             android:contentDescription="Отправить сообщение"
-            app:backgroundTint="@color/tsuyu_blue"
-            app:cornerRadius="22dp"
-            app:icon="@drawable/ic_send"
-            app:iconSize="20dp"
-            app:iconTint="@color/tsuyu_white" />
+            android:focusable="true"
+            android:padding="10dp"
+            android:src="@drawable/ic_send"
+            android:visibility="gone"
+            app:tint="@color/tsuyu_black" />
+    </LinearLayout>
+
+    <!-- Multi-select bar (web .multi-select-bar) -->
+    <LinearLayout
+        android:id="@+id/multi_select_bar"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:background="@color/tsuyu_header"
+        android:gravity="center_vertical"
+        android:orientation="horizontal"
+        android:paddingStart="@dimen/space_lg"
+        android:paddingTop="@dimen/space_sm"
+        android:paddingEnd="@dimen/space_lg"
+        android:paddingBottom="@dimen/space_sm"
+        android:visibility="gone">
+
+        <TextView
+            android:id="@+id/multi_select_count"
+            android:layout_width="0dp"
+            android:layout_height="wrap_content"
+            android:layout_weight="1"
+            android:fontFamily="sans-serif-medium"
+            android:textColor="@color/tsuyu_white"
+            android:textSize="14sp" />
+
+        <com.google.android.material.button.MaterialButton
+            android:id="@+id/multi_select_forward"
+            style="@style/Widget.Tsuyu.MultiSelectButton"
+            android:layout_width="wrap_content"
+            android:layout_height="@dimen/multi_select_button_height"
+            android:layout_marginEnd="@dimen/space_sm"
+            android:text="@string/multi_select_forward"
+            app:icon="@drawable/ic_export" />
+
+        <com.google.android.material.button.MaterialButton
+            android:id="@+id/multi_select_delete"
+            style="@style/Widget.Tsuyu.MultiSelectButton"
+            android:layout_width="wrap_content"
+            android:layout_height="@dimen/multi_select_button_height"
+            android:layout_marginEnd="@dimen/space_sm"
+            android:text="@string/multi_select_delete"
+            app:icon="@drawable/ic_delete" />
+
+        <com.google.android.material.button.MaterialButton
+            android:id="@+id/multi_select_cancel"
+            style="@style/Widget.Tsuyu.MultiSelectButton"
+            android:layout_width="wrap_content"
+            android:layout_height="@dimen/multi_select_button_height"
+            android:text="@string/multi_select_cancel" />
     </LinearLayout>
 </LinearLayout>

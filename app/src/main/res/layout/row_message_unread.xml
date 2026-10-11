@@ -5,27 +5,30 @@
     android:gravity="center_vertical"
     android:orientation="horizontal"
     android:paddingTop="@dimen/space_md"
-    android:paddingBottom="@dimen/space_2xs">
+    android:paddingBottom="@dimen/space_md">
 
     <View
         android:layout_width="0dp"
         android:layout_height="@dimen/hairline"
         android:layout_weight="1"
-        android:background="@color/tsuyu_blue" />
+        android:background="@color/tsuyu_unread_line" />
 
     <TextView
         android:id="@+id/message_unread_label"
         android:layout_width="wrap_content"
         android:layout_height="wrap_content"
-        android:layout_marginStart="@dimen/space_sm"
-        android:layout_marginEnd="@dimen/space_sm"
+        android:layout_marginStart="@dimen/space_md"
+        android:layout_marginEnd="@dimen/space_md"
+        android:fontFamily="sans-serif-medium"
+        android:letterSpacing="0.02"
         android:text="@string/chat_unread_divider"
-        android:textAppearance="@style/TextAppearance.Tsuyu.Caption"
-        android:textColor="@color/tsuyu_blue" />
+        android:textAllCaps="true"
+        android:textColor="@color/tsuyu_danger"
+        android:textSize="11sp" />
 
     <View
         android:layout_width="0dp"
         android:layout_height="@dimen/hairline"
         android:layout_weight="1"
-        android:background="@color/tsuyu_blue" />
+        android:background="@color/tsuyu_unread_line" />
 </LinearLayout>
