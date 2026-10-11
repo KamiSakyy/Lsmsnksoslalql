@@ -42,11 +42,13 @@ public final class TsuyuStore extends SQLiteOpenHelper {
 
     private final String account;
     private final LocalVault vault;
+    private final Context appContext;
 
     public TsuyuStore(Context context, String accountUid, LocalVault vault) {
         super(context.getApplicationContext(), DB_NAME, null, DB_VERSION);
         this.account = accountUid == null ? "" : accountUid;
         this.vault = vault;
+        this.appContext = context.getApplicationContext();
     }
 
     @Override public void onConfigure(SQLiteDatabase db) {
@@ -116,7 +118,8 @@ public final class TsuyuStore extends SQLiteOpenHelper {
         values.put("peer_uid", summary.peerUid);
         values.put("peer_name", peer.displayName);
         values.put("peer_username", peer.username);
-        values.put("peer_avatar", peer.avatarBase64);
+        // Аватар лежит файлом в кеше вложений, в базе — короткая ссылка.
+        values.put("peer_avatar", TsuyuMedia.spillValue(appContext, peer.avatarBase64));
         values.put("peer_about", peer.about);
         if (summary.lastAt > 0) values.put("last_at", summary.lastAt);
         if (summary.lastPreview != null) {
@@ -315,7 +318,9 @@ public final class TsuyuStore extends SQLiteOpenHelper {
         values.put("sent_at", message.sentAt);
         values.put("edited", message.edited ? 1 : 0);
         values.put("client_id", message.clientId);
-        if (payload != null) values.put("payload", seal(payload));
+        // Вложения (фото, кружочки, видео) лежат файлами в кеше, в базе — только ссылка:
+        // поэтому строки остаются маленькими, а чтение — мгновенным.
+        if (payload != null) values.put("payload", seal(TsuyuMedia.spill(appContext, payload)));
         values.put("state", state);
         SQLiteDatabase db = getWritableDatabase();
         db.insertWithOnConflict("messages", null, values, SQLiteDatabase.CONFLICT_IGNORE);
@@ -330,7 +335,7 @@ public final class TsuyuStore extends SQLiteOpenHelper {
     public synchronized void updatePayload(String messageId, String payload) {
         if (payload == null || messageId == null) return;
         ContentValues values = new ContentValues();
-        values.put("payload", seal(payload));
+        values.put("payload", seal(TsuyuMedia.spill(appContext, payload)));
         getWritableDatabase().update("messages", values, "account = ? AND message_id = ?", new String[]{account, messageId});
     }
 
@@ -374,6 +379,32 @@ public final class TsuyuStore extends SQLiteOpenHelper {
     }
 
     /** Last {@code limit} messages of a chat in chronological order, payloads included. */
+    /**
+     * Разовая уборка: раньше вложения хранились прямо в строках базы, из-за чего чтение
+     * спотыкалось («строка больше окна»). Теперь вложения лежат файлами, а старые тяжёлые
+     * значения убираем — сообщение подтянется из сети и снова ляжет уже файлом.
+     */
+    public synchronized int purgeHeavyRows() {
+        int removed = 0;
+        try {
+            SQLiteDatabase db = getWritableDatabase();
+            removed += db.compileStatement(
+                    "UPDATE messages SET payload = NULL, cipher = NULL"
+                            + " WHERE length(COALESCE(payload,'')) > 100000"
+                            + " OR length(COALESCE(cipher,'')) > 100000").executeUpdateDelete();
+            removed += db.compileStatement(
+                    "UPDATE profiles SET avatar = NULL WHERE length(COALESCE(avatar,'')) > 100000")
+                    .executeUpdateDelete();
+            removed += db.compileStatement(
+                    "UPDATE chats SET peer_avatar = NULL"
+                            + " WHERE length(COALESCE(peer_avatar,'')) > 100000").executeUpdateDelete();
+            removed += db.compileStatement(
+                    "UPDATE outbox SET payload = NULL WHERE length(COALESCE(payload,'')) > 100000")
+                    .executeUpdateDelete();
+        } catch (Throwable ignored) { }
+        return removed;
+    }
+
     public synchronized List<ChatMessage> messages(String chatId, int limit) {
         List<ChatMessage> page = new ArrayList<>();
         try (Cursor cursor = getReadableDatabase().rawQuery(
@@ -589,7 +620,7 @@ public final class TsuyuStore extends SQLiteOpenHelper {
         values.put("uid", profile.uid);
         values.put("display_name", profile.displayName);
         values.put("username", profile.username);
-        values.put("avatar", profile.avatarBase64);
+        values.put("avatar", TsuyuMedia.spillValue(appContext, profile.avatarBase64));
         values.put("about", profile.about);
         values.put("updated_at", System.currentTimeMillis());
         SQLiteDatabase db = getWritableDatabase();

@@ -167,14 +167,14 @@ public final class ChatListAdapter extends RecyclerView.Adapter<ChatListAdapter.
             return;
         }
         try {
-            byte[] bytes = Base64.decode(encoded, Base64.NO_WRAP);
-            Bitmap bitmap = BitmapFactory.decodeByteArray(bytes, 0, bytes.length);
+            // Аватар уменьшается один раз и запоминается: прокрутка списка не тормозит.
+            Bitmap bitmap = com.tsuyu.messenger.TsuyuPhotoCache.avatar(image.getContext(), encoded);
             if (bitmap == null) throw new IllegalArgumentException("Invalid avatar bitmap");
             image.setImageBitmap(bitmap);
             image.setVisibility(View.VISIBLE);
             initial.setVisibility(View.GONE);
             image.setContentDescription("Аватар " + displayName);
-        } catch (Exception ignored) {
+        } catch (Throwable ignored) {
             image.setImageDrawable(null);
             image.setVisibility(View.GONE);
             initial.setVisibility(View.VISIBLE);

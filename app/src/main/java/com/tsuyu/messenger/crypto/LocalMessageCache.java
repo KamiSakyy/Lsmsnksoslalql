@@ -4,12 +4,16 @@ import android.content.Context;
 
 public final class LocalMessageCache {
     private final SecurePrefs prefs;
+    private final Context context;
 
     public LocalMessageCache(Context context, String accountUid) {
         prefs = new SecurePrefs(context, accountUid);
+        this.context = context.getApplicationContext();
     }
 
     public synchronized void put(String chatId, String messageId, String payload) {
+        // Вложения уходят файлами в кеш, здесь остаётся короткая ссылка.
+        payload = com.tsuyu.messenger.data.TsuyuMedia.spill(context, payload);
         String key = key(chatId, messageId);
         if (payload != null && payload.length() > 200_000) {
             prefs.remove(key);

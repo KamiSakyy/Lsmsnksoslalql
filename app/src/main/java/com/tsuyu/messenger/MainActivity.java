@@ -44,7 +44,6 @@ import androidx.core.view.WindowInsetsCompat;
 import androidx.recyclerview.widget.ItemTouchHelper;
 import androidx.recyclerview.widget.LinearLayoutManager;
 import androidx.recyclerview.widget.RecyclerView;
-import androidx.transition.TransitionManager;
 
 import com.tsuyu.messenger.data.ScheduledMessages;
 
@@ -147,7 +146,6 @@ public final class MainActivity extends AppCompatActivity {
     private Drawable swipePinIcon;
     private Drawable swipeReadIcon;
     private final Paint swipePaint = new Paint();
-    private android.animation.ObjectAnimator skeletonPulse;
     private View homeOfflineBanner;
     private TextView homeEmptyTitle;
     private TextView homeEmptyDescription;
@@ -435,6 +433,16 @@ public final class MainActivity extends AppCompatActivity {
                 }).addOnFailureListener(error -> { if (presenceUid.equals(uid)) presenceManager.start(presenceUid); });
         startBackgroundSync();
         dataQueue.execute(this::replayOutbox);
+        // Один раз на версию: убираем из базы старые «тяжёлые» строки, чтобы кеш читался мгновенно.
+        dataQueue.execute(() -> {
+            try {
+                android.content.SharedPreferences prefs = getSharedPreferences("tsuyu_settings", MODE_PRIVATE);
+                if (prefs.getBoolean("heavy_rows_purged_125", false)) return;
+                int removed = store.purgeHeavyRows();
+                prefs.edit().putBoolean("heavy_rows_purged_125", true).apply();
+                com.tsuyu.messenger.TsuyuLogs.log(this, "КЕШ", "убрано тяжёлых строк: " + removed);
+            } catch (Throwable ignored) { }
+        });
         FirebaseMessaging.getInstance().getToken().addOnSuccessListener(token -> FirebaseMessagingSetup.saveToken(FirebaseApp.getInstance(), token));
         cryptoQueue.execute(() -> {
             try {
@@ -444,25 +452,29 @@ public final class MainActivity extends AppCompatActivity {
                 ui.post(() -> toast("Не удалось подключиться. Проверьте интернет и попробуйте снова."));
             }
         });
-        final boolean fromCache = seedFromLocalCache();
-        profileRepository.getProfile(uid, profile -> {
-            if (!uid.equals(accountUid)) return;
-            if (profile == null || profile.username == null || profile.username.isEmpty()) {
-                if (fromCache || myProfile != null) {
-                    if (!"home".equals(page)) { attachUserChatsListener(); showHome(); }
-                } else {
-                    showProfileEditor(true);
+        // Локальная копия читается в фоне: список чатов показывается мгновенно,
+        // диск не тормозит экран.
+        dataQueue.execute(() -> {
+            final boolean fromCache = seedFromLocalCache();
+            ui.post(() -> profileRepository.getProfile(uid, profile -> {
+                if (!uid.equals(accountUid)) return;
+                if (profile == null || profile.username == null || profile.username.isEmpty()) {
+                    if (fromCache || myProfile != null) {
+                        if (!"home".equals(page)) { attachUserChatsListener(); showHome(); }
+                    } else {
+                        showProfileEditor(true);
+                    }
+                    return;
                 }
-                return;
-            }
-            myProfile = profile;
-            if (store != null) store.putProfile(profile);
-            if (!"home".equals(page)) {
-                attachUserChatsListener();
-                showHome();
-            } else {
-                renderChatList();
-            }
+                myProfile = profile;
+                if (store != null) store.putProfile(profile);
+                if (!"home".equals(page)) {
+                    attachUserChatsListener();
+                    showHome();
+                } else {
+                    renderChatList();
+                }
+            }));
         });
     }
 
@@ -1451,6 +1463,14 @@ public final class MainActivity extends AppCompatActivity {
             visibleIndex++;
             String payload = message.localPayload;
             if (payload == null && activeCache != null && message.id != null) payload = activeCache.get(renderChatId, message.id);
+            if (payload != null) {
+                // Фото и кружочки сразу уходят файлами в кеш на диске: в памяти остаётся ссылка,
+                // поэтому переписка не растёт и не тормозит.
+                payload = com.tsuyu.messenger.data.TsuyuMedia.spill(this, payload);
+                message.localPayload = payload;
+                // Расшифрованный текст уже на диске — тяжёлую копию в памяти не держим.
+                if (message.cipher != null) message.cipher = null;
+            }
             String key = renderChatId + ":" + message.id;
             try {
                 if (burnSeconds(payload) > 0) hasBurnTimer = true;
@@ -1472,7 +1492,9 @@ public final class MainActivity extends AppCompatActivity {
                 cryptoQueue.execute(() -> {
                     try {
                         byte[] plain = activeCrypto.decrypt(peerUid, message.signalType, message.cipher);
-                        if (activeCache != null) activeCache.put(renderChatId, messageId, new String(plain, StandardCharsets.UTF_8));
+                        String text = com.tsuyu.messenger.data.TsuyuMedia.spill(this,
+                                new String(plain, StandardCharsets.UTF_8));
+                        if (activeCache != null) activeCache.put(renderChatId, messageId, text);
                         runOnUiThread(() -> {
                             if (renderChatId.equals(activeChatId) && lastRemoteChatId.equals(renderChatId)) {
                                 renderMessages(lastRemoteMessages, peerUid);
@@ -1566,9 +1588,16 @@ public final class MainActivity extends AppCompatActivity {
     private void showVideoDialog(String encoded, String mime, boolean circle) {
         dataQueue.execute(() -> {
             try {
-                byte[] bytes = Base64.decode(encoded, Base64.NO_WRAP);
-                java.io.File file = new java.io.File(getCacheDir(), "tsuyu-video-" + System.currentTimeMillis() + (mime.contains("webm") ? ".webm" : ".mp4"));
-                try (java.io.FileOutputStream output = new java.io.FileOutputStream(file)) { output.write(bytes); }
+                java.io.File file = com.tsuyu.messenger.data.TsuyuMedia.file(this, encoded);
+                boolean temporary = false;
+                if (file == null) {
+                    byte[] bytes = Base64.decode(encoded, Base64.NO_WRAP);
+                    file = new java.io.File(getCacheDir(), "tsuyu-video-" + System.currentTimeMillis() + (mime.contains("webm") ? ".webm" : ".mp4"));
+                    try (java.io.FileOutputStream output = new java.io.FileOutputStream(file)) { output.write(bytes); }
+                    temporary = true;
+                }
+                final boolean removeAfter = temporary;
+                final java.io.File videoFile = file;
                 runOnUiThread(() -> {
                     View content = getLayoutInflater().inflate(R.layout.dialog_video_viewer, null, false);
                     android.widget.VideoView video = content.findViewById(R.id.viewer_video);
@@ -1588,10 +1617,10 @@ public final class MainActivity extends AppCompatActivity {
                     MaterialButton toggle = content.findViewById(R.id.viewer_video_toggle);
                     android.app.Dialog dialog = new android.app.Dialog(this, android.R.style.Theme_Black_NoTitleBar_Fullscreen);
                     dialog.setContentView(content);
-                    dialog.setOnDismissListener(ignored -> { video.stopPlayback(); file.delete(); });
+                    dialog.setOnDismissListener(ignored -> { video.stopPlayback(); if (removeAfter) videoFile.delete(); });
                     dialog.show();
                     if (dialog.getWindow() != null) dialog.getWindow().setLayout(-1, -1);
-                    video.setVideoURI(Uri.fromFile(file));
+                    video.setVideoURI(Uri.fromFile(videoFile));
                     video.setOnPreparedListener(player -> {
                         video.start();
                         toggle.setIconResource(R.drawable.ic_pause);
@@ -1620,15 +1649,19 @@ public final class MainActivity extends AppCompatActivity {
     private void playAudio(String encoded, String mime) {
         dataQueue.execute(() -> {
             try {
-                byte[] bytes = Base64.decode(encoded, Base64.NO_WRAP);
-                String ext = mime.contains("mpeg") ? ".mp3" : mime.contains("ogg") ? ".ogg" : ".m4a";
-                java.io.File file = new java.io.File(getCacheDir(), "tsuyu-audio-" + System.currentTimeMillis() + ext);
-                try (java.io.FileOutputStream output = new java.io.FileOutputStream(file)) { output.write(bytes); }
+                java.io.File file = com.tsuyu.messenger.data.TsuyuMedia.file(this, encoded);
+                if (file == null) {
+                    byte[] bytes = Base64.decode(encoded, Base64.NO_WRAP);
+                    String ext = mime.contains("mpeg") ? ".mp3" : mime.contains("ogg") ? ".ogg" : ".m4a";
+                    file = new java.io.File(getCacheDir(), "tsuyu-audio-" + System.currentTimeMillis() + ext);
+                    try (java.io.FileOutputStream output = new java.io.FileOutputStream(file)) { output.write(bytes); }
+                }
+                final java.io.File audioFile = file;
                 runOnUiThread(() -> {
                     try {
                         if (audioPlayer != null) { audioPlayer.release(); audioPlayer = null; }
                         audioPlayer = new android.media.MediaPlayer();
-                        audioPlayer.setDataSource(file.getAbsolutePath());
+                        audioPlayer.setDataSource(audioFile.getAbsolutePath());
                         audioPlayer.setOnPreparedListener(android.media.MediaPlayer::start);
                         audioPlayer.setOnCompletionListener(mp -> { mp.release(); audioPlayer = null; });
                         audioPlayer.prepareAsync();
@@ -2334,8 +2367,8 @@ public final class MainActivity extends AppCompatActivity {
 
     private void showImageDialog(String imageBase64) {
         try {
-            byte[] bytes = Base64.decode(imageBase64, Base64.NO_WRAP);
-            Bitmap bitmap = com.tsuyu.messenger.TsuyuPhoto.decodeScaled(bytes, 2048);
+            Bitmap bitmap = com.tsuyu.messenger.TsuyuPhoto.decodeScaled(
+                    com.tsuyu.messenger.data.TsuyuMedia.bytes(this, imageBase64), 2048);
             if (bitmap == null) return;
             View content = getLayoutInflater().inflate(R.layout.dialog_image_viewer, null, false);
             ZoomImageView image = content.findViewById(R.id.viewer_image);
@@ -2850,6 +2883,12 @@ public final class MainActivity extends AppCompatActivity {
         boolean hadData = false;
         Profile cachedProfile = store.getProfile(uid);
         if (cachedProfile != null && cachedProfile.username != null && !cachedProfile.username.trim().isEmpty()) {
+            // Аватар в кеше лежит файлом: для отправки в сеть разворачиваем его обратно один раз.
+            if (cachedProfile.avatarBase64 != null && cachedProfile.avatarBase64.startsWith("file:")) {
+                byte[] raw = com.tsuyu.messenger.data.TsuyuMedia.bytes(this, cachedProfile.avatarBase64);
+                cachedProfile.avatarBase64 = raw == null ? null
+                        : android.util.Base64.encodeToString(raw, android.util.Base64.NO_WRAP);
+            }
             myProfile = cachedProfile;
             hadData = true;
         }
@@ -3294,20 +3333,10 @@ public final class MainActivity extends AppCompatActivity {
         helper.attachToRecyclerView(chatList);
     }
 
-    /** Gentle breathing of the placeholder rows while the very first page loads. */
+    /** Анимаций нет: заглушки просто показываются, пока грузится первая страница. */
     private void setSkeletonShimmer(boolean running) {
-        if (running) {
-            if (skeletonPulse != null || homeLoadingState == null) return;
-            skeletonPulse = android.animation.ObjectAnimator.ofFloat(homeLoadingState, View.ALPHA, 0.4f, 1f);
-            skeletonPulse.setDuration(620);
-            skeletonPulse.setRepeatMode(android.animation.ValueAnimator.REVERSE);
-            skeletonPulse.setRepeatCount(android.animation.ValueAnimator.INFINITE);
-            skeletonPulse.start();
-        } else if (skeletonPulse != null) {
-            skeletonPulse.cancel();
-            skeletonPulse = null;
-            if (homeLoadingState != null) homeLoadingState.setAlpha(1f);
-        }
+        if (homeLoadingState == null) return;
+        homeLoadingState.setAlpha(1f);
     }
 
     private void styleFilterChip(TextView chip, boolean selected) {
@@ -3389,7 +3418,7 @@ public final class MainActivity extends AppCompatActivity {
         if (chatPinnedBar != null) {
             chatPinnedBar.setVisibility(View.VISIBLE);
             chatPinnedBar.setAlpha(0f);
-            chatPinnedBar.animate().alpha(1f).setDuration(180).start();
+            chatPinnedBar.setAlpha(1f);
         }
     }
 
@@ -3460,7 +3489,7 @@ public final class MainActivity extends AppCompatActivity {
         if (multiSelectBar != null) {
             multiSelectBar.setVisibility(View.VISIBLE);
             multiSelectBar.setAlpha(0f);
-            multiSelectBar.animate().alpha(1f).setDuration(180).start();
+            multiSelectBar.setAlpha(1f);
         }
         refreshSelectionUi();
     }

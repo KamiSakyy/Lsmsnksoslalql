@@ -557,11 +557,9 @@ public final class MessageListAdapter extends RecyclerView.Adapter<RecyclerView.
         }
         circleExecutor.execute(() -> {
             try {
-                java.io.File file = new java.io.File(context.getCacheDir(), "tsuyu-circle-" + key.hashCode() + ".mp4");
-                if (!file.exists() || file.length() == 0) {
-                    byte[] bytes = android.util.Base64.decode(data, android.util.Base64.NO_WRAP);
-                    try (java.io.FileOutputStream out = new java.io.FileOutputStream(file)) { out.write(bytes); }
-                }
+                // Кружочек лежит файлом в кеше приложения — здесь только ссылка на него.
+                java.io.File file = com.tsuyu.messenger.data.TsuyuMedia.file(context, data);
+                if (file == null) throw new IllegalStateException("нет файла");
                 circleFiles.put(key, file);
                 holder.itemView.post(() -> {
                     if (key.equals(holder.circle.getTag(R.id.message_circle))) attachCircleFile(holder, file, key);
@@ -710,8 +708,8 @@ public final class MessageListAdapter extends RecyclerView.Adapter<RecyclerView.
                     case MotionEvent.ACTION_CANCEL:
                         if (!swiping) return false;
                         boolean fire = holder.bubble.getTranslationX() < -trigger;
-                        holder.bubble.animate().translationX(0f).setDuration(140).start();
-                        if (holder.swipeIcon != null) holder.swipeIcon.animate().alpha(0f).setDuration(140).start();
+                        holder.bubble.setTranslationX(0f);
+                        if (holder.swipeIcon != null) holder.swipeIcon.setAlpha(0f);
                         swiping = false;
                         if (fire) {
                             holder.itemView.performHapticFeedback(android.view.HapticFeedbackConstants.LONG_PRESS);
@@ -743,10 +741,11 @@ public final class MessageListAdapter extends RecyclerView.Adapter<RecyclerView.
      * Фото в переписке показываем уменьшенным: большая картинка иначе съедает всю память
      * телефона. Здесь же ловим и переполнение памяти — такое сообщение не роняет приложение.
      */
-    private static void bindImage(ShapeableImageView image, String encoded) {
+    private void bindImage(ShapeableImageView image, String encoded) {
         try {
-            byte[] bytes = Base64.decode(encoded, Base64.NO_WRAP);
-            Bitmap bitmap = com.tsuyu.messenger.TsuyuPhoto.decodeScaled(bytes, 1280);
+            // Вложение лежит файлом в кеше, а готовый уменьшенный кадр берём из общей памяти
+            // ограниченного размера: повторная отрисовка ничего не пересчитывает.
+            Bitmap bitmap = com.tsuyu.messenger.TsuyuPhotoCache.media(image.getContext(), encoded, 1280);
             if (bitmap == null) {
                 image.setImageDrawable(null);
                 return;
