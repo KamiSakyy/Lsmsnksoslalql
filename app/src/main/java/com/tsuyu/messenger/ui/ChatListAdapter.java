@@ -134,7 +134,7 @@ public final class ChatListAdapter extends RecyclerView.Adapter<ChatListAdapter.
             return true;
         });
         String key = summary.chatId == null ? title : summary.chatId;
-        if (animated.add(key)) holder.itemView.startAnimation(AnimationUtils.loadAnimation(holder.itemView.getContext(), R.anim.message_enter));
+        // Мгновенная отрисовка: строки не «влетают» с анимацией.
     }
 
     /** Today shows the clock, yesterday a word, older messages a short date — like Telegram. */

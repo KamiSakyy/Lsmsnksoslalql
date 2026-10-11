@@ -31,6 +31,7 @@
     <string name="circle_record">Записать</string>
     <string name="circle_send">Отправить</string>
     <string name="circle_cancel">Отмена</string>
+    <string name="circle_play">Воспроизвести кружочек</string>
     <string name="circle_switch_camera">Сменить камеру</string>
     <string name="circle_torch">Фонарик</string>
     <string name="circle_permission">Для кружочков нужен доступ к камере.</string>

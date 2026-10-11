@@ -325,6 +325,7 @@ public final class MainActivity extends AppCompatActivity {
         if (Build.VERSION.SDK_INT >= 33 && ContextCompat.checkSelfPermission(this, Manifest.permission.POST_NOTIFICATIONS) != PackageManager.PERMISSION_GRANTED) {
             requestPermissions(new String[]{Manifest.permission.POST_NOTIFICATIONS}, 203);
         }
+        applyScreenGuard();
         FirebaseUser current = auth.getCurrentUser();
         if (current == null) showAuth(); else handleSignedIn(current.getUid());
         handleNotificationIntent(getIntent());
@@ -536,7 +537,7 @@ public final class MainActivity extends AppCompatActivity {
         }
         chatList = root.findViewById(R.id.chats_list);
         chatList.setLayoutManager(new LinearLayoutManager(this));
-        chatList.setItemAnimator(new androidx.recyclerview.widget.DefaultItemAnimator());
+        chatList.setItemAnimator(null); // список чатов появляется мгновенно, без анимаций
         chatListAdapter = new ChatListAdapter(new ChatListAdapter.Listener() {
             @Override public void onChatSelected(ChatSummary summary) { openChat(summary); }
             @Override public void onChatLongPress(ChatSummary summary) { showChatMenu(summary); }
@@ -1048,7 +1049,7 @@ public final class MainActivity extends AppCompatActivity {
         LinearLayoutManager messageLayout = new LinearLayoutManager(this);
         messageLayout.setStackFromEnd(true);
         messageList.setLayoutManager(messageLayout);
-        messageList.setItemAnimator(new androidx.recyclerview.widget.DefaultItemAnimator());
+        messageList.setItemAnimator(null); // сообщения появляются мгновенно
         messageListAdapter = new MessageListAdapter(uid, textSize(), isTextBold(),
                 getSharedPreferences("tsuyu_settings", MODE_PRIVATE).getBoolean("italic", false),
                 new MessageListAdapter.Listener() {
@@ -2211,6 +2212,7 @@ public final class MainActivity extends AppCompatActivity {
         markNoActiveChat();
         page = "settings";
         View root = showScreen(R.layout.screen_settings);
+        bindScreenGuardSwitch(root);
         MaterialToolbar toolbar = root.findViewById(R.id.settings_toolbar);
         toolbar.setNavigationOnClickListener(v -> showHome());
         View profileCard = root.findViewById(R.id.settings_profile_card);
@@ -2390,14 +2392,9 @@ public final class MainActivity extends AppCompatActivity {
             screenHost = findViewById(R.id.screen_host);
         }
         View next = getLayoutInflater().inflate(layoutResource, screenHost, false);
-        if (screenHost.getChildCount() > 0) {
-            MaterialFadeThrough transition = new MaterialFadeThrough();
-            transition.setDuration(220L);
-            TransitionManager.beginDelayedTransition(screenHost, transition);
-            screenHost.removeAllViews();
-        }
+        // Экраны переключаются мгновенно: никаких переходов и затуханий.
+        screenHost.removeAllViews();
         screenHost.addView(next);
-        next.startAnimation(AnimationUtils.loadAnimation(this, R.anim.screen_enter));
         currentScreen = next;
         return next;
     }
@@ -2531,6 +2528,28 @@ public final class MainActivity extends AppCompatActivity {
 
     private int textSize() { return getSharedPreferences("tsuyu_settings", MODE_PRIVATE).getInt("text_size", 14); }
     private boolean isTextBold() { return getSharedPreferences("tsuyu_settings", MODE_PRIVATE).getBoolean("bold", false); }
+    /** v3-дизайн: «Защита от скриншотов» — системный флаг, снимки и превью в задачах блокируются. */
+    private void applyScreenGuard() {
+        boolean guarded = getSharedPreferences("tsuyu_settings", MODE_PRIVATE)
+                .getBoolean("screen_guard", false);
+        if (guarded) getWindow().addFlags(android.view.WindowManager.LayoutParams.FLAG_SECURE);
+        else getWindow().clearFlags(android.view.WindowManager.LayoutParams.FLAG_SECURE);
+    }
+
+    private void bindScreenGuardSwitch(View root) {
+        com.google.android.material.materialswitch.MaterialSwitch guard = root.findViewById(R.id.screen_guard_switch);
+        if (guard == null) return;
+        guard.setChecked(getSharedPreferences("tsuyu_settings", MODE_PRIVATE)
+                .getBoolean("screen_guard", false));
+        guard.setOnCheckedChangeListener((button, checked) -> {
+            getSharedPreferences("tsuyu_settings", MODE_PRIVATE).edit()
+                    .putBoolean("screen_guard", checked).apply();
+            applyScreenGuard();
+        });
+        View row = (View) guard.getParent();
+        if (row != null) row.setOnClickListener(v -> guard.setChecked(!guard.isChecked()));
+    }
+
     private void markNoActiveChat() { getSharedPreferences("tsuyu_settings", MODE_PRIVATE).edit().remove("active_chat").apply(); }
     private void startBackgroundSync() {
         android.content.SharedPreferences prefs = getSharedPreferences("tsuyu_settings", MODE_PRIVATE);

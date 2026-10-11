@@ -297,20 +297,10 @@ public final class MessageListAdapter extends RecyclerView.Adapter<RecyclerView.
             holder.video.setVisibility(View.VISIBLE);
             holder.video.setOnClickListener(v -> listener.onOpenPayload(payload));
         } else if ("circle".equals(kind)) {
-            // Telegram-style round video note: circular card with a play badge.
+            // Кружок живёт прямо в переписке, как в Telegram: круглый плеер, первый кадр,
+            // тап — play/pause, длительность в углу. Никаких серых заглушек и диалогов.
             holder.body.setVisibility(View.GONE);
-            float d = holder.itemView.getContext().getResources().getDisplayMetrics().density;
-            int side = Math.round(200 * d);
-            ViewGroup.LayoutParams circleParams = holder.video.getLayoutParams();
-            circleParams.width = side;
-            circleParams.height = side;
-            holder.video.setLayoutParams(circleParams);
-            holder.video.setShapeAppearanceModel(ShapeAppearanceModel.builder()
-                    .setAllCornerSizes(ShapeAppearanceModel.PILL).build());
-            holder.video.setCardBackgroundColor(holder.itemView.getContext().getColor(R.color.tsuyu_input));
-            holder.videoLabel.setText("Кружочек");
-            holder.video.setVisibility(View.VISIBLE);
-            holder.video.setOnClickListener(v -> listener.onOpenPayload(payload));
+            bindCircleNote(holder, object, payload, message);
         } else if ("sticker".equals(kind)) {
             // Sticker: no bubble chrome, 140dp image (web .msg-sticker).
             holder.body.setVisibility(View.GONE);
@@ -345,12 +335,16 @@ public final class MessageListAdapter extends RecyclerView.Adapter<RecyclerView.
             holder.status.setVisibility(View.VISIBLE);
             holder.status.setContentDescription(holder.itemView.getResources().getString(R.string.sending_message));
             if (holder.status.getAnimation() == null) {
-                holder.status.startAnimation(AnimationUtils.loadAnimation(holder.itemView.getContext(), R.anim.sending_pulse));
+                holder.status.clearAnimation();
             }
         } else if (outgoing && !message.failed) {
             holder.status.clearAnimation();
             holder.status.setImageResource(row.read ? R.drawable.ic_checks : R.drawable.ic_check);
-            holder.status.setColorFilter(holder.itemView.getContext().getColor(row.read ? R.color.tsuyu_blue : R.color.tsuyu_secondary));
+            // На синем исходящем пузыре галочки светлые: синий на синем не читается.
+            int tickColor = outgoing
+                    ? (row.read ? 0xFFF2F2F7 : 0x99F2F2F7)
+                    : holder.itemView.getContext().getColor(row.read ? R.color.tsuyu_blue : R.color.tsuyu_secondary);
+            holder.status.setColorFilter(tickColor);
             holder.status.setVisibility(View.VISIBLE);
             holder.status.setContentDescription(holder.itemView.getResources().getString(row.read ? R.string.message_read : R.string.message_sent));
         } else {
@@ -379,11 +373,99 @@ public final class MessageListAdapter extends RecyclerView.Adapter<RecyclerView.
         });
         attachSwipeToReply(holder, message);
         String key = message.id != null ? message.id : message.clientId;
-        if (key != null && animatedIds.add(key)) holder.itemView.startAnimation(AnimationUtils.loadAnimation(holder.itemView.getContext(), R.anim.message_enter));
+        // Мгновенная отрисовка: строки не «влетают» с анимацией.
     }
 
     /** Restores the default bubble look so recycled holders never keep sticker/circle styling. */
-    /** Медиа внутри пузыря масштабируется пропорционально выбранной ширине полосы. */
+    /** Кружок: круглый плеер в пузыре, первый кадр вместо серой карточки. */
+    private void bindCircleNote(Holder holder, org.json.JSONObject object, String payload, ChatMessage message) {
+        android.content.Context context = holder.itemView.getContext();
+        android.util.DisplayMetrics metrics = context.getResources().getDisplayMetrics();
+        int cap = Math.max(Math.round(200 * metrics.density), Math.round(metrics.widthPixels * 0.72f));
+        int side = Math.min(Math.round(200 * metrics.density), cap);
+        ViewGroup.LayoutParams params = holder.circle.getLayoutParams();
+        params.width = side;
+        params.height = side;
+        holder.circle.setLayoutParams(params);
+        holder.circleCard.setShapeAppearanceModel(ShapeAppearanceModel.builder()
+                .setAllCornerSizes(ShapeAppearanceModel.PILL).build());
+        holder.circle.setVisibility(View.VISIBLE);
+        // Кружок сам себе пузырь: фон и рамку убираем, как .has-media в веб-дизайне.
+        holder.bubble.setCardBackgroundColor(android.graphics.Color.TRANSPARENT);
+        holder.bubble.setStrokeWidth(0);
+        holder.circlePlay.setVisibility(View.VISIBLE);
+        holder.circleProgress.setVisibility(View.VISIBLE);
+        String duration = object.optString("duration", "");
+        holder.circleTime.setText(duration.isEmpty() ? "0:00" : duration);
+        final String key = message.id != null ? message.id
+                : message.clientId != null ? message.clientId : String.valueOf(payload.hashCode());
+        holder.circle.setTag(R.id.message_circle, key);
+        holder.circleVideo.stopPlayback();
+        holder.circle.setOnClickListener(v -> toggleCirclePlayback(holder));
+
+        java.io.File cached = circleFiles.get(key);
+        if (cached != null && cached.exists()) {
+            attachCircleFile(holder, cached, key);
+            return;
+        }
+        final String data = object.optString("data", "");
+        if (data.isEmpty()) {
+            holder.circleProgress.setVisibility(View.GONE);
+            return;
+        }
+        circleExecutor.execute(() -> {
+            try {
+                java.io.File file = new java.io.File(context.getCacheDir(), "tsuyu-circle-" + key.hashCode() + ".mp4");
+                if (!file.exists() || file.length() == 0) {
+                    byte[] bytes = android.util.Base64.decode(data, android.util.Base64.NO_WRAP);
+                    try (java.io.FileOutputStream out = new java.io.FileOutputStream(file)) { out.write(bytes); }
+                }
+                circleFiles.put(key, file);
+                holder.itemView.post(() -> {
+                    if (key.equals(holder.circle.getTag(R.id.message_circle))) attachCircleFile(holder, file, key);
+                });
+            } catch (Exception failed) {
+                holder.itemView.post(() -> holder.circleProgress.setVisibility(View.GONE));
+            }
+        });
+    }
+
+    private void attachCircleFile(Holder holder, java.io.File file, String key) {
+        if (!key.equals(holder.circle.getTag(R.id.message_circle))) return;
+        holder.circleVideo.setVideoURI(android.net.Uri.fromFile(file));
+        holder.circleVideo.setOnPreparedListener(player -> {
+            player.setLooping(true);
+            holder.circleProgress.setVisibility(View.GONE);
+            int total = player.getDuration();
+            if (total > 0) {
+                holder.circleTime.setText(String.format(java.util.Locale.getDefault(),
+                        "%d:%02d", total / 60000, (total / 1000) % 60));
+            }
+            // Первый кадр: короткий seek и play — кружок сразу видно, а не серый круг.
+            try {
+                player.seekTo(1);
+                holder.circleVideo.start();
+                holder.circlePlay.setVisibility(View.GONE);
+            } catch (Exception ignored) { }
+        });
+        holder.circleVideo.setOnCompletionListener(player -> holder.circlePlay.setVisibility(View.VISIBLE));
+        holder.circleVideo.setOnErrorListener((player, what, extra) -> {
+            holder.circleProgress.setVisibility(View.GONE);
+            holder.circlePlay.setVisibility(View.VISIBLE);
+            return true;
+        });
+    }
+
+    private void toggleCirclePlayback(Holder holder) {
+        if (holder.circleVideo.isPlaying()) {
+            holder.circleVideo.pause();
+            holder.circlePlay.setVisibility(View.VISIBLE);
+        } else {
+            holder.circleVideo.start();
+            holder.circlePlay.setVisibility(View.GONE);
+        }
+    }
+
     /** Медиа внутри пузыря масштабируется пропорционально выбранной ширине полосы. */
     private void scaleMedia(Holder holder, android.util.DisplayMetrics metrics, int adaptiveCap) {
         android.content.Context context = holder.itemView.getContext();
@@ -423,6 +505,24 @@ public final class MessageListAdapter extends RecyclerView.Adapter<RecyclerView.
         holder.video.setShapeAppearanceModel(ShapeAppearanceModel.builder().setAllCornerSizes(16 * d).build());
         holder.video.setCardBackgroundColor(context.getColor(R.color.tsuyu_surface));
         holder.videoLabel.setText("Открыть видео");
+        // Пузырь как в новом веб-дизайне: радиус 16dp и «хвост» 4dp у угла отправителя.
+        float radius = context.getResources().getDimension(R.dimen.bubble_radius_web);
+        float tail = context.getResources().getDimension(R.dimen.bubble_tail_radius_web);
+        holder.bubble.setShapeAppearanceModel(ShapeAppearanceModel.builder()
+                .setAllCornerSizes(radius)
+                .setBottomRightCornerSize(outgoing ? tail : radius)
+                .setBottomLeftCornerSize(outgoing ? radius : tail)
+                .build());
+        int metaColor = outgoing ? 0xCCF2F2F7 : context.getColor(R.color.tsuyu_time);
+        holder.time.setTextColor(metaColor);
+        holder.edited.setTextColor(metaColor);
+        if (holder.circle != null) {
+            holder.circle.setVisibility(View.GONE);
+            holder.circle.setTag(R.id.message_circle, null);
+            holder.circleVideo.stopPlayback();
+            holder.circlePlay.setVisibility(View.VISIBLE);
+            holder.circleProgress.setVisibility(View.VISIBLE);
+        }
         holder.bubble.setTranslationX(0f);
         if (holder.swipeIcon != null) holder.swipeIcon.setAlpha(0f);
     }
@@ -516,6 +616,11 @@ public final class MessageListAdapter extends RecyclerView.Adapter<RecyclerView.
         }
     }
 
+    /** Расшифрованные кружки: файлы в кэше, разбор в одном рабочем потоке. */
+    private final java.util.Map<String, java.io.File> circleFiles = new java.util.concurrent.ConcurrentHashMap<>();
+    private static final java.util.concurrent.ExecutorService circleExecutor =
+            java.util.concurrent.Executors.newSingleThreadExecutor();
+
     static final class Holder extends RecyclerView.ViewHolder {
         final MaterialCardView bubble;
         final TextView body;
@@ -533,6 +638,12 @@ public final class MessageListAdapter extends RecyclerView.Adapter<RecyclerView.
         final MaterialButton retry;
         final TextView videoLabel;
         final ImageView swipeIcon;
+        final View circle;
+        final MaterialCardView circleCard;
+        final android.widget.VideoView circleVideo;
+        final ImageView circlePlay;
+        final TextView circleTime;
+        final ProgressBar circleProgress;
         Holder(View itemView) {
             super(itemView);
             bubble = itemView.findViewById(R.id.message_bubble);
@@ -551,6 +662,12 @@ public final class MessageListAdapter extends RecyclerView.Adapter<RecyclerView.
             retry = itemView.findViewById(R.id.message_retry);
             videoLabel = itemView.findViewById(R.id.message_video_label);
             swipeIcon = itemView.findViewById(R.id.message_swipe_icon);
+            circle = itemView.findViewById(R.id.message_circle);
+            circleCard = itemView.findViewById(R.id.message_circle_card);
+            circleVideo = itemView.findViewById(R.id.message_circle_video);
+            circlePlay = itemView.findViewById(R.id.message_circle_play);
+            circleTime = itemView.findViewById(R.id.message_circle_time);
+            circleProgress = itemView.findViewById(R.id.message_circle_progress);
         }
     }
 

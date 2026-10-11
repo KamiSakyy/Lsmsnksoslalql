@@ -46,7 +46,7 @@ public final class ProfileSearchAdapter extends RecyclerView.Adapter<ProfileSear
         holder.itemView.setOnClickListener(v -> listener.onSelect(profile));
         holder.message.setOnClickListener(v -> listener.onSelect(profile));
         String key = profile.uid == null ? name : profile.uid;
-        if (animated.add(key)) holder.itemView.startAnimation(AnimationUtils.loadAnimation(holder.itemView.getContext(), R.anim.message_enter));
+        // Мгновенная отрисовка: строки не «влетают» с анимацией.
     }
 
     @Override public int getItemCount() { return items.size(); }

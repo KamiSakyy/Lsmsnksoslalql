@@ -172,6 +172,50 @@
                         android:layout_height="wrap_content"
                         android:layout_marginStart="@dimen/space_md" />
                 </LinearLayout>
+
+                <View
+                    android:layout_width="match_parent"
+                    android:layout_height="@dimen/hairline"
+                    android:layout_marginStart="@dimen/space_lg"
+                    android:background="@color/tsuyu_divider_soft" />
+
+                <!-- v3-дизайн: защита от скриншотов (затемнение системного превью) -->
+                <LinearLayout
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:gravity="center_vertical"
+                    android:orientation="horizontal"
+                    android:paddingStart="@dimen/space_lg"
+                    android:paddingTop="@dimen/space_md"
+                    android:paddingEnd="@dimen/space_lg"
+                    android:paddingBottom="@dimen/space_md">
+
+                    <LinearLayout
+                        android:layout_width="0dp"
+                        android:layout_height="wrap_content"
+                        android:layout_weight="1"
+                        android:orientation="vertical">
+
+                        <TextView
+                            android:layout_width="wrap_content"
+                            android:layout_height="wrap_content"
+                            android:text="Защита от скриншотов"
+                            android:textAppearance="@style/TextAppearance.Tsuyu.RowItemTitle" />
+
+                        <TextView
+                            android:layout_width="wrap_content"
+                            android:layout_height="wrap_content"
+                            android:layout_marginTop="2dp"
+                            android:text="Запрещать снимки экрана и прятать переписку в списке задач"
+                            android:textAppearance="@style/TextAppearance.Tsuyu.RowMeta" />
+                    </LinearLayout>
+
+                    <com.google.android.material.materialswitch.MaterialSwitch
+                        android:id="@+id/screen_guard_switch"
+                        android:layout_width="wrap_content"
+                        android:layout_height="wrap_content"
+                        android:layout_marginStart="@dimen/space_md" />
+                </LinearLayout>
             </com.google.android.material.card.MaterialCardView>
 
             <TextView
