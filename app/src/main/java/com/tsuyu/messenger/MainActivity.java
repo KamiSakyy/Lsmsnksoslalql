@@ -1437,9 +1437,9 @@ public final class MainActivity extends AppCompatActivity {
             JSONObject object = new JSONObject(payload);
             String kind = object.optString("kind", "text");
             if ("image".equals(kind)) showImageDialog(object.optString("data", ""));
-            else if ("circle".equals(kind)) showVideoDialog(object.optString("data", ""), object.optString("mime", "video/mp4"));
+            else if ("circle".equals(kind)) showVideoDialog(object.optString("data", ""), object.optString("mime", "video/mp4"), true);
             else if ("sticker".equals(kind)) showImageDialog(object.optString("data", ""));
-            else if ("video".equals(kind)) showVideoDialog(object.optString("data", ""), object.optString("mime", "video/mp4"));
+            else if ("video".equals(kind)) showVideoDialog(object.optString("data", ""), object.optString("mime", "video/mp4"), false);
             else if ("audio".equals(kind) || "voice".equals(kind)) playAudio(object.optString("data", ""), object.optString("mime", "audio/mp4"));
             else if ("collage".equals(kind)) {
                 JSONArray items = object.optJSONArray("items");
@@ -1451,7 +1451,7 @@ public final class MainActivity extends AppCompatActivity {
         } catch (Exception ignored) { }
     }
 
-    private void showVideoDialog(String encoded, String mime) {
+    private void showVideoDialog(String encoded, String mime, boolean circle) {
         dataQueue.execute(() -> {
             try {
                 byte[] bytes = Base64.decode(encoded, Base64.NO_WRAP);
@@ -1460,6 +1460,19 @@ public final class MainActivity extends AppCompatActivity {
                 runOnUiThread(() -> {
                     View content = getLayoutInflater().inflate(R.layout.dialog_video_viewer, null, false);
                     android.widget.VideoView video = content.findViewById(R.id.viewer_video);
+                    if (circle) {
+                        // A video note stays round, like on the web client.
+                        int side = Math.round(Math.min(getResources().getDisplayMetrics().widthPixels,
+                                getResources().getDisplayMetrics().heightPixels) * 0.78f);
+                        android.widget.FrameLayout.LayoutParams params =
+                                (android.widget.FrameLayout.LayoutParams) video.getLayoutParams();
+                        params.width = side;
+                        params.height = side;
+                        params.gravity = android.view.Gravity.CENTER;
+                        video.setLayoutParams(params);
+                        video.setBackgroundResource(R.drawable.bg_circle_video);
+                        video.setClipToOutline(true);
+                    }
                     MaterialButton toggle = content.findViewById(R.id.viewer_video_toggle);
                     android.app.Dialog dialog = new android.app.Dialog(this, android.R.style.Theme_Black_NoTitleBar_Fullscreen);
                     dialog.setContentView(content);
