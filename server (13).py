@@ -8,7 +8,11 @@ from io import BytesIO
 from datetime import datetime
 from flask import Flask, render_template_string, request, jsonify, Response
 
-from cloud import cloud_bp
+try:
+    from cloud import cloud_bp
+except ImportError:
+    # The optional cloud module is not part of every deployment bundle.
+    cloud_bp = None
 
 app = Flask(__name__)
 app.secret_key = os.environ.get('FLASK_SECRET', os.urandom(32).hex())
@@ -19,7 +23,9 @@ API_VERSION = "5.199"
 FIREBASE_DB_URL = os.environ.get('FIREBASE_DB_URL', 'https://meow-874ce-default-rtdb.europe-west1.firebasedatabase.app')
 FIREBASE_API_KEY = os.environ.get('FIREBASE_API_KEY', '')
 
-KEYS_FILE = os.path.join(os.path.dirname(os.path.abspath(__file__)), 'keys_storage.json')
+DATA_DIR = os.environ.get('DATA_DIR', os.path.join(os.path.dirname(os.path.abspath(__file__)), 'data'))
+os.makedirs(DATA_DIR, exist_ok=True)
+KEYS_FILE = os.environ.get('KEYS_FILE', os.path.join(DATA_DIR, 'keys_storage.json'))
 
 _session_local = threading.local()
 
@@ -168,7 +174,7 @@ def extract_doc_attachment(save_result):
     return None
 
 SW_JS = """
-const CACHE_NAME = 'vk-tsuyu-v1-cache';
+const CACHE_NAME = 'vk-tsuyu-anime-v2-cache';
 const STATIC_ASSETS = ['/', '/sw.js', '/api/ping'];
 
 // IndexedDB for offline messages
@@ -830,6 +836,32 @@ input:checked + .slider:before{transform:translateX(20px)}
 .sticker-picker-item{width:100%;aspect-ratio:1;object-fit:contain;cursor:pointer;border-radius:8px;padding:4px;transition:transform 0.1s}
 .sticker-picker-item:active{transform:scale(0.9);background:rgba(255,255,255,0.05)}
 
+
+
+/* Tsuyu anime identity */
+:root{--sakura:#ff70b7;--sakura-soft:#ffd2e8;--violet:#8b5cf6;--night:#090716}
+.login-screen{background:radial-gradient(circle at 76% 18%,rgba(139,92,246,.34),transparent 28%),radial-gradient(circle at 15% 82%,rgba(255,112,183,.2),transparent 30%),linear-gradient(145deg,#080611 0%,#17102f 52%,#0b0917 100%);isolation:isolate;overflow:hidden}
+.login-screen:before,.login-screen:after{content:"";position:absolute;z-index:-1;border-radius:50%;filter:blur(2px);opacity:.72;animation:animeFloat 7s ease-in-out infinite}
+.login-screen:before{width:390px;height:390px;right:-170px;top:-140px;background:repeating-conic-gradient(from 25deg,rgba(255,175,214,.28) 0 8deg,transparent 8deg 25deg)}
+.login-screen:after{width:260px;height:260px;left:-110px;bottom:-95px;background:repeating-conic-gradient(from 10deg,rgba(164,126,255,.24) 0 10deg,transparent 10deg 28deg);animation-delay:-3s}
+.anime-mark{width:94px;height:94px;border-radius:28px;display:grid;place-items:center;margin-bottom:16px;background:linear-gradient(145deg,rgba(255,255,255,.22),rgba(255,255,255,.06));border:1px solid rgba(255,255,255,.25);box-shadow:0 20px 70px rgba(255,91,180,.22),inset 0 1px 0 rgba(255,255,255,.24);font-size:46px;font-weight:900;color:#fff;transform:rotate(-4deg);text-shadow:3px 4px 0 rgba(255,77,166,.55);backdrop-filter:blur(16px)}
+.anime-kicker{color:var(--sakura-soft);font-size:11px;font-weight:800;letter-spacing:3px;text-transform:uppercase;margin-bottom:8px}
+.login-screen h1{font-size:38px;background:linear-gradient(90deg,#fff 15%,#ffc4e1 55%,#cdbaff);-webkit-background-clip:text;background-clip:text;color:transparent;text-shadow:0 8px 40px rgba(255,112,183,.2)}
+.login-screen p{color:#c5bdd9;line-height:1.55}
+.login-screen .badge-e2e{background:rgba(255,255,255,.07);border-color:rgba(255,194,225,.22);color:#f5dceb;backdrop-filter:blur(12px)}
+.login-screen .token-input,.login-screen .pass-input{background:rgba(12,9,28,.7);border-color:rgba(255,255,255,.14);backdrop-filter:blur(12px)}
+.login-screen .token-input:focus,.login-screen .pass-input:focus{border-color:var(--sakura);box-shadow:0 0 0 3px rgba(255,112,183,.12)}
+.login-screen .btn:not(.btn-secondary){background:linear-gradient(100deg,var(--sakura),var(--violet));color:#fff;box-shadow:0 12px 30px rgba(184,72,194,.3)}
+.login-screen .btn-secondary{background:rgba(255,255,255,.07);border-color:rgba(255,255,255,.18);backdrop-filter:blur(12px)}
+.anime-petals{position:absolute;inset:0;pointer-events:none;overflow:hidden;z-index:-1}
+.anime-petals i{position:absolute;top:-8%;width:9px;height:15px;background:linear-gradient(#ffd7e9,#ff77b9);border-radius:90% 10% 90% 10%;opacity:.65;animation:petalFall linear infinite}
+.anime-petals i:nth-child(1){left:10%;animation-duration:8s}.anime-petals i:nth-child(2){left:32%;animation-duration:11s;animation-delay:-5s}.anime-petals i:nth-child(3){left:58%;animation-duration:9s;animation-delay:-2s}.anime-petals i:nth-child(4){left:82%;animation-duration:12s;animation-delay:-7s}.anime-petals i:nth-child(5){left:94%;animation-duration:10s;animation-delay:-4s}
+.header,.search-bar-container,.folder-tabs,.bottom-nav{background:rgba(13,10,27,.94)}
+.header-title-main{background:linear-gradient(90deg,#fff,#ffadd5);-webkit-background-clip:text;background-clip:text;color:transparent}
+@keyframes petalFall{0%{transform:translate3d(0,-10vh,0) rotate(0)}50%{transform:translate3d(45px,50vh,0) rotate(280deg)}100%{transform:translate3d(-25px,110vh,0) rotate(620deg)}}
+@keyframes animeFloat{50%{transform:translateY(18px) rotate(8deg)}}
+@media (prefers-reduced-motion:reduce){.anime-petals i,.login-screen:before,.login-screen:after{animation:none}}
+
 </style>
 </head>
 <body>
@@ -1103,6 +1135,9 @@ input:checked + .slider:before{transform:translateX(20px)}
 
 <!-- Login Screen -->
 <div class="login-screen" id="loginScreen">
+<div class="anime-petals" aria-hidden="true"><i></i><i></i><i></i><i></i><i></i></div>
+<div class="anime-mark" aria-hidden="true">露</div>
+<div class="anime-kicker">Anime messenger</div>
 <h1>VK Tsuyu</h1>
 <div class="badge-e2e">
 <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><rect x="3" y="11" width="18" height="11" rx="2"/><path d="M7 11V7a5 5 0 0 1 10 0v4"/></svg>
@@ -5747,8 +5782,9 @@ def get_backup(vk_id, data_type):
 def ping():
     return jsonify({'ok': True, 'time': datetime.now().isoformat()})
 
-# Register cloud storage blueprint
-app.register_blueprint(cloud_bp, url_prefix='/cloud')
+# Register cloud storage when that optional extension is installed.
+if cloud_bp is not None:
+    app.register_blueprint(cloud_bp, url_prefix='/cloud')
 
 if __name__ == '__main__':
     app.run(host='0.0.0.0', port=int(os.environ.get('PORT', 8080)))

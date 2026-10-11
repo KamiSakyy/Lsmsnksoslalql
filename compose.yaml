@@ -1,0 +1,27 @@
+services:
+  web:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    image: tsuyu-anime-web:latest
+    restart: unless-stopped
+    ports:
+      - "${APP_PORT:-8080}:8080"
+    environment:
+      PORT: "8080"
+      FLASK_SECRET: "${FLASK_SECRET:-change-me-in-production}"
+      FIREBASE_DB_URL: "${FIREBASE_DB_URL:-}"
+      FIREBASE_API_KEY: "${FIREBASE_API_KEY:-}"
+      WEB_CONCURRENCY: "${WEB_CONCURRENCY:-2}"
+      GUNICORN_THREADS: "${GUNICORN_THREADS:-4}"
+    volumes:
+      - tsuyu-data:/app/data
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8080/api/ping', timeout=4)"]
+      interval: 30s
+      timeout: 5s
+      start_period: 10s
+      retries: 3
+
+volumes:
+  tsuyu-data:
