@@ -3,6 +3,7 @@ package com.tsuyu.messenger.ui;
 import android.graphics.Bitmap;
 import android.graphics.BitmapFactory;
 import android.util.Base64;
+import android.view.HapticFeedbackConstants;
 import android.view.LayoutInflater;
 import android.view.View;
 import android.view.ViewGroup;
@@ -11,6 +12,7 @@ import android.widget.ImageView;
 import android.widget.TextView;
 
 import androidx.annotation.NonNull;
+import androidx.recyclerview.widget.DiffUtil;
 import androidx.recyclerview.widget.RecyclerView;
 
 import com.google.android.material.imageview.ShapeableImageView;
@@ -45,9 +47,45 @@ public final class ChatListAdapter extends RecyclerView.Adapter<ChatListAdapter.
     public ChatListAdapter(Listener listener) { this.listener = listener; }
 
     public void submit(List<ChatSummary> summaries) {
+        final List<ChatSummary> next = new ArrayList<>(summaries);
+        DiffUtil.DiffResult result = DiffUtil.calculateDiff(new DiffUtil.Callback() {
+            @Override public int getOldListSize() { return items.size(); }
+            @Override public int getNewListSize() { return next.size(); }
+            @Override public boolean areItemsTheSame(int oldPos, int newPos) {
+                String first = items.get(oldPos).chatId;
+                String second = next.get(newPos).chatId;
+                return first != null && first.equals(second);
+            }
+            @Override public boolean areContentsTheSame(int oldPos, int newPos) {
+                return sameContents(items.get(oldPos), next.get(newPos));
+            }
+        });
         items.clear();
-        items.addAll(summaries);
-        notifyDataSetChanged();
+        items.addAll(next);
+        result.dispatchUpdatesTo(this);
+    }
+
+    /** Chat id at a list position, used by swipe gestures. */
+    public ChatSummary summaryAt(int position) {
+        return position >= 0 && position < items.size() ? items.get(position) : null;
+    }
+
+    private boolean sameContents(ChatSummary first, ChatSummary second) {
+        if (first.lastAt != second.lastAt || first.unread != second.unread
+                || first.pinned != second.pinned || first.online != second.online
+                || first.typing != second.typing || first.lastState != second.lastState) return false;
+        return String.valueOf(previewOf(first)).equals(String.valueOf(previewOf(second)))
+                && String.valueOf(titleOf(first)).equals(String.valueOf(titleOf(second)));
+    }
+
+    private static String titleOf(ChatSummary summary) {
+        Profile peer = summary.peer == null ? new Profile() : summary.peer;
+        return peer.displayNameOrUsername();
+    }
+
+    private CharSequence previewOf(ChatSummary summary) {
+        if (summary.typing) return "печатает…";
+        return listener.previewFor(summary);
     }
 
     @NonNull @Override public Holder onCreateViewHolder(@NonNull ViewGroup parent, int viewType) {
@@ -92,6 +130,7 @@ public final class ChatListAdapter extends RecyclerView.Adapter<ChatListAdapter.
         holder.itemView.setContentDescription(description);
         holder.itemView.setOnClickListener(v -> listener.onChatSelected(summary));
         holder.itemView.setOnLongClickListener(v -> {
+            v.performHapticFeedback(HapticFeedbackConstants.LONG_PRESS);
             listener.onChatLongPress(summary);
             return true;
         });

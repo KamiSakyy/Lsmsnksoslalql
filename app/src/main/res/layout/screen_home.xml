@@ -16,47 +16,22 @@
         app:subtitle="@string/home_subtitle"
         app:title="@string/nav_chats" />
 
-    <LinearLayout
-        android:id="@+id/home_filters"
+    <HorizontalScrollView
         android:layout_width="match_parent"
         android:layout_height="wrap_content"
-        android:orientation="horizontal"
+        android:clipToPadding="false"
         android:paddingStart="@dimen/screen_gutter"
-        android:paddingTop="@dimen/space_sm"
         android:paddingEnd="@dimen/screen_gutter"
-        android:paddingBottom="@dimen/space_xs">
+        android:paddingTop="@dimen/space_sm"
+        android:paddingBottom="@dimen/space_xs"
+        android:scrollbars="none">
 
-        <TextView
-            android:id="@+id/home_filter_all"
+        <LinearLayout
+            android:id="@+id/home_filters"
             android:layout_width="wrap_content"
-            android:layout_height="@dimen/icon_button_small"
-            android:background="@drawable/bg_filter_selected"
-            android:clickable="true"
-            android:focusable="true"
-            android:gravity="center"
-            android:fontFamily="sans-serif-medium"
-            android:paddingStart="@dimen/space_lg"
-            android:paddingEnd="@dimen/space_lg"
-            android:text="@string/home_filter_all"
-            android:textColor="@color/tsuyu_blue"
-            android:textSize="13sp" />
-
-        <TextView
-            android:id="@+id/home_filter_unread"
-            android:layout_width="wrap_content"
-            android:layout_height="@dimen/icon_button_small"
-            android:layout_marginStart="@dimen/space_sm"
-            android:background="@drawable/bg_filter_idle"
-            android:clickable="true"
-            android:focusable="true"
-            android:gravity="center"
-            android:fontFamily="sans-serif-medium"
-            android:paddingStart="@dimen/space_lg"
-            android:paddingEnd="@dimen/space_lg"
-            android:text="@string/home_filter_unread"
-            android:textColor="@color/tsuyu_secondary"
-            android:textSize="13sp" />
-    </LinearLayout>
+            android:layout_height="wrap_content"
+            android:orientation="horizontal" />
+    </HorizontalScrollView>
 
     <TextView
         android:id="@+id/home_offline_banner"

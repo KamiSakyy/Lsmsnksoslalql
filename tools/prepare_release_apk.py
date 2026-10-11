@@ -129,8 +129,9 @@ def main() -> None:
                     data = native_path.read_bytes()
                     after_native += len(data)
                     stripped_count += 1
-                    # Android can load page-aligned, uncompressed libraries directly.
-                    compression = zipfile.ZIP_STORED
+                    # Keep the native library deflated: with extractNativeLibs=true
+                    # the installer unpacks it, so the download stays ~2x smaller.
+                    compression = zipfile.ZIP_DEFLATED
 
                 optimized.writestr(
                     clone_zip_info(entry, compression),

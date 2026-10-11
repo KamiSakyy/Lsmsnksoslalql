@@ -28,7 +28,7 @@ public final class TsuyuStore extends SQLiteOpenHelper {
     public static final int STATE_READ = 3;
 
     private static final String DB_NAME = "tsuyu-offline.db";
-    private static final int DB_VERSION = 1;
+    private static final int DB_VERSION = 2;
 
     /** One queued outgoing message that still has to reach the network. */
     public static final class OutboxItem {
@@ -79,6 +79,13 @@ public final class TsuyuStore extends SQLiteOpenHelper {
                 + " peer_uid TEXT, payload TEXT, created_at INTEGER NOT NULL DEFAULT 0,"
                 + " attempts INTEGER NOT NULL DEFAULT 0,"
                 + " PRIMARY KEY (account, client_id))");
+        db.execSQL("CREATE TABLE IF NOT EXISTS folders ("
+                + "account TEXT NOT NULL, folder_id TEXT NOT NULL, name TEXT NOT NULL,"
+                + " position INTEGER NOT NULL DEFAULT 0,"
+                + " PRIMARY KEY (account, folder_id))");
+        db.execSQL("CREATE TABLE IF NOT EXISTS folder_chats ("
+                + "account TEXT NOT NULL, folder_id TEXT NOT NULL, chat_id TEXT NOT NULL,"
+                + " PRIMARY KEY (account, folder_id, chat_id))");
         db.execSQL("CREATE TABLE profiles ("
                 + "account TEXT NOT NULL, uid TEXT NOT NULL, display_name TEXT, username TEXT,"
                 + " avatar TEXT, about TEXT, updated_at INTEGER NOT NULL DEFAULT 0,"
@@ -86,11 +93,16 @@ public final class TsuyuStore extends SQLiteOpenHelper {
     }
 
     @Override public void onUpgrade(SQLiteDatabase db, int oldVersion, int newVersion) {
-        db.execSQL("DROP TABLE IF EXISTS chats");
-        db.execSQL("DROP TABLE IF EXISTS messages");
-        db.execSQL("DROP TABLE IF EXISTS outbox");
-        db.execSQL("DROP TABLE IF EXISTS profiles");
-        onCreate(db);
+        // Local-first data must survive app updates, so schema changes only add.
+        if (oldVersion < 2) {
+            db.execSQL("CREATE TABLE IF NOT EXISTS folders ("
+                    + "account TEXT NOT NULL, folder_id TEXT NOT NULL, name TEXT NOT NULL,"
+                    + " position INTEGER NOT NULL DEFAULT 0,"
+                    + " PRIMARY KEY (account, folder_id))");
+            db.execSQL("CREATE TABLE IF NOT EXISTS folder_chats ("
+                    + "account TEXT NOT NULL, folder_id TEXT NOT NULL, chat_id TEXT NOT NULL,"
+                    + " PRIMARY KEY (account, folder_id, chat_id))");
+        }
     }
 
     // ---------------------------------------------------------------- chats
@@ -409,6 +421,98 @@ public final class TsuyuStore extends SQLiteOpenHelper {
         ContentValues values = new ContentValues();
         values.put("reactions", count);
         getWritableDatabase().update("messages", values, "account = ? AND message_id = ?", new String[]{account, messageId});
+    }
+
+    /** Sent-time of the message the user had read last; 0 when unknown. */
+    public synchronized long chatLastReadAt(String chatId) {
+        try (Cursor cursor = getReadableDatabase().rawQuery(
+                "SELECT last_read FROM chats WHERE account = ? AND chat_id = ?", new String[]{account, chatId})) {
+            return cursor.moveToFirst() ? cursor.getLong(0) : 0L;
+        }
+    }
+
+    // -------------------------------------------------------------- folders
+
+    public synchronized void createFolder(String folderId, String name) {
+        if (folderId == null || name == null) return;
+        int position = 0;
+        try (Cursor cursor = getReadableDatabase().rawQuery(
+                "SELECT COUNT(*) FROM folders WHERE account = ?", new String[]{account})) {
+            if (cursor.moveToFirst()) position = cursor.getInt(0);
+        }
+        ContentValues values = new ContentValues();
+        values.put("account", account);
+        values.put("folder_id", folderId);
+        values.put("name", name);
+        values.put("position", position);
+        getWritableDatabase().insertWithOnConflict("folders", null, values, SQLiteDatabase.CONFLICT_REPLACE);
+    }
+
+    public synchronized void renameFolder(String folderId, String name) {
+        ContentValues values = new ContentValues();
+        values.put("name", name);
+        getWritableDatabase().update("folders", values, "account = ? AND folder_id = ?", new String[]{account, folderId});
+    }
+
+    public synchronized void deleteFolder(String folderId) {
+        SQLiteDatabase db = getWritableDatabase();
+        db.delete("folders", "account = ? AND folder_id = ?", new String[]{account, folderId});
+        db.delete("folder_chats", "account = ? AND folder_id = ?", new String[]{account, folderId});
+    }
+
+    /** Ordered [folderId, name] pairs. */
+    public synchronized List<String[]> listFolders() {
+        List<String[]> result = new ArrayList<>();
+        try (Cursor cursor = getReadableDatabase().rawQuery(
+                "SELECT folder_id, name FROM folders WHERE account = ? ORDER BY position ASC, name ASC",
+                new String[]{account})) {
+            while (cursor.moveToNext()) result.add(new String[]{cursor.getString(0), cursor.getString(1)});
+        }
+        return result;
+    }
+
+    public synchronized void setChatFolders(String chatId, List<String> folderIds) {
+        SQLiteDatabase db = getWritableDatabase();
+        db.delete("folder_chats", "account = ? AND chat_id = ?", new String[]{account, chatId});
+        if (folderIds == null) return;
+        for (String folderId : folderIds) {
+            if (folderId == null) continue;
+            ContentValues values = new ContentValues();
+            values.put("account", account);
+            values.put("folder_id", folderId);
+            values.put("chat_id", chatId);
+            db.insertWithOnConflict("folder_chats", null, values, SQLiteDatabase.CONFLICT_IGNORE);
+        }
+    }
+
+    /** All chat ids that belong to at least one folder. */
+    public synchronized List<String> folderChats(List<String> folderIds) {
+        List<String> result = new ArrayList<>();
+        if (folderIds == null || folderIds.isEmpty()) return result;
+        StringBuilder placeholders = new StringBuilder();
+        for (int i = 0; i < folderIds.size(); i++) {
+            if (i > 0) placeholders.append(',');
+            placeholders.append('?');
+        }
+        String[] args = new String[folderIds.size() + 1];
+        args[0] = account;
+        for (int i = 0; i < folderIds.size(); i++) args[i + 1] = folderIds.get(i);
+        try (Cursor cursor = getReadableDatabase().rawQuery(
+                "SELECT DISTINCT chat_id FROM folder_chats WHERE account = ? AND folder_id IN ("
+                        + placeholders + ")", args)) {
+            while (cursor.moveToNext()) result.add(cursor.getString(0));
+        }
+        return result;
+    }
+
+    public synchronized List<String> chatFolderIds(String chatId) {
+        List<String> result = new ArrayList<>();
+        try (Cursor cursor = getReadableDatabase().rawQuery(
+                "SELECT folder_id FROM folder_chats WHERE account = ? AND chat_id = ?",
+                new String[]{account, chatId})) {
+            while (cursor.moveToNext()) result.add(cursor.getString(0));
+        }
+        return result;
     }
 
     // --------------------------------------------------------------- outbox

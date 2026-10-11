@@ -55,4 +55,23 @@
     <string name="chat_scroll_bottom">Вниз к новым сообщениям</string>
     <string name="chat_menu_title">Действия в чате</string>
     <string name="chat_menu_subtitle">Переписка, профиль и безопасность</string>
+    <string name="chat_unread_divider">Непрочитанные сообщения</string>
+    <string name="chat_menu_folders">Папки</string>
+    <string name="chat_menu_folders_subtitle">Разложить чат по папкам</string>
+    <string name="folder_name">Название папки</string>
+    <string name="folder_name_hint">Например: Работа, Друзья, Учёба</string>
+    <string name="folder_create">Создать</string>
+    <string name="folder_new">Новая папка</string>
+    <string name="folder_pick_title">Папки чата</string>
+    <string name="folder_delete_title">Удалить папку?</string>
+    <string name="folder_delete_message">Чаты останутся на месте — исчезнет только сама папка.</string>
+    <string name="folder_delete_confirm">Удалить</string>
+    <string name="folder_created">Папка создана</string>
+    <string name="folder_deleted">Папка удалена</string>
+    <string name="chat_pinned_swipe">Закреплено</string>
+    <string name="chat_unpinned_swipe">Откреплено</string>
+    <string name="chat_marked_unread">Отмечено как непрочитанное</string>
+    <string name="chat_marked_read">Отмечено как прочитанное</string>
+    <string name="folder_rename">Переименовать</string>
+    <string name="folder_rename_confirm">Сохранить</string>
 </resources>

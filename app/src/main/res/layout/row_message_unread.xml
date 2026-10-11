@@ -1,0 +1,31 @@
+<?xml version="1.0" encoding="utf-8"?>
+<LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
+    android:layout_width="match_parent"
+    android:layout_height="wrap_content"
+    android:gravity="center_vertical"
+    android:orientation="horizontal"
+    android:paddingTop="@dimen/space_md"
+    android:paddingBottom="@dimen/space_2xs">
+
+    <View
+        android:layout_width="0dp"
+        android:layout_height="@dimen/hairline"
+        android:layout_weight="1"
+        android:background="@color/tsuyu_blue" />
+
+    <TextView
+        android:id="@+id/message_unread_label"
+        android:layout_width="wrap_content"
+        android:layout_height="wrap_content"
+        android:layout_marginStart="@dimen/space_sm"
+        android:layout_marginEnd="@dimen/space_sm"
+        android:text="@string/chat_unread_divider"
+        android:textAppearance="@style/TextAppearance.Tsuyu.Caption"
+        android:textColor="@color/tsuyu_blue" />
+
+    <View
+        android:layout_width="0dp"
+        android:layout_height="@dimen/hairline"
+        android:layout_weight="1"
+        android:background="@color/tsuyu_blue" />
+</LinearLayout>

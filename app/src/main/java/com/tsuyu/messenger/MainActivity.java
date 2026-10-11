@@ -7,6 +7,10 @@ import android.content.ClipboardManager;
 import android.content.Intent;
 import android.content.pm.PackageManager;
 import android.graphics.Bitmap;
+import android.graphics.Canvas;
+import android.graphics.Paint;
+import android.graphics.Typeface;
+import android.graphics.drawable.Drawable;
 import android.graphics.BitmapFactory;
 import android.net.Uri;
 import android.os.Build;
@@ -15,7 +19,9 @@ import android.os.Handler;
 import android.os.Looper;
 import android.text.Editable;
 import android.text.TextWatcher;
+import android.view.HapticFeedbackConstants;
 import android.view.View;
+import android.widget.LinearLayout;
 import android.view.animation.AnimationUtils;
 import android.view.inputmethod.InputMethodManager;
 import android.util.Base64;
@@ -31,6 +37,7 @@ import androidx.core.graphics.Insets;
 import androidx.core.view.ViewCompat;
 import androidx.core.view.WindowCompat;
 import androidx.core.view.WindowInsetsCompat;
+import androidx.recyclerview.widget.ItemTouchHelper;
 import androidx.recyclerview.widget.LinearLayoutManager;
 import androidx.recyclerview.widget.RecyclerView;
 import androidx.transition.TransitionManager;
@@ -106,8 +113,14 @@ public final class MainActivity extends AppCompatActivity {
     private LocalVault vault;
     private TsuyuStore store;
     private String homeFilter = "all";
-    private TextView homeFilterAll;
-    private TextView homeFilterUnread;
+    private LinearLayout homeFilters;
+    private final Map<String, String> folderNames = new java.util.LinkedHashMap<>();
+    private final Map<String, Set<String>> folderMembers = new java.util.LinkedHashMap<>();
+    private long unreadDividerAt;
+    private Drawable swipePinIcon;
+    private Drawable swipeReadIcon;
+    private final Paint swipePaint = new Paint();
+    private android.animation.ObjectAnimator skeletonPulse;
     private View homeOfflineBanner;
     private TextView homeEmptyTitle;
     private TextView homeEmptyDescription;
@@ -473,6 +486,8 @@ public final class MainActivity extends AppCompatActivity {
             @Override public int ownMessageState(ChatSummary summary) { return MainActivity.this.ownMessageState(summary); }
         });
         chatList.setAdapter(chatListAdapter);
+        chatList.setHasFixedSize(true);
+        attachSwipeActions();
         homeEmptyState = root.findViewById(R.id.home_empty_state);
         homeLoadingState = root.findViewById(R.id.home_loading_state);
         homeNewChat = root.findViewById(R.id.home_new_chat);
@@ -481,13 +496,11 @@ public final class MainActivity extends AppCompatActivity {
         homeFindPeople = root.findViewById(R.id.home_find_people);
         homeNewChat.setOnClickListener(v -> showSearchScreen());
         homeFindPeople.setOnClickListener(v -> showSearchScreen());
-        homeFilterAll = root.findViewById(R.id.home_filter_all);
-        homeFilterUnread = root.findViewById(R.id.home_filter_unread);
-        homeFilterAll.setOnClickListener(v -> { homeFilter = "all"; renderChatList(); });
-        homeFilterUnread.setOnClickListener(v -> { homeFilter = "unread"; renderChatList(); });
+        homeFilters = root.findViewById(R.id.home_filters);
+        loadFolders();
+        rebuildFilterChips();
         homeOfflineBanner = root.findViewById(R.id.home_offline_banner);
         if (homeOfflineBanner != null) homeOfflineBanner.setVisibility(onlineNow ? View.GONE : View.VISIBLE);
-        updateFilterChips();
         watchConnection();
         setupBottomNavigation(root, R.id.nav_chats);
         attachUserChatsListener();
@@ -777,9 +790,18 @@ public final class MainActivity extends AppCompatActivity {
 
     private void renderChatList() {
         if (!"home".equals(page) || chatList == null || chatListAdapter == null) return;
+        Set<String> folderFilter = null;
+        if (homeFilter != null && homeFilter.startsWith("folder:")) {
+            folderFilter = folderMembers.get(homeFilter.substring("folder:".length()));
+            if (folderFilter == null) {
+                homeFilter = "all";
+                folderFilter = null;
+            }
+        }
         List<ChatSummary> items = new ArrayList<>();
         for (ChatSummary summary : summaries.values()) {
             if ("unread".equals(homeFilter) && summary.unread <= 0) continue;
+            if (folderFilter != null && (summary.chatId == null || !folderFilter.contains(summary.chatId))) continue;
             items.add(summary);
         }
         items.sort((a, b) -> {
@@ -787,20 +809,20 @@ public final class MainActivity extends AppCompatActivity {
             return Long.compare(b.lastAt, a.lastAt);
         });
         chatListAdapter.submit(items);
-        updateFilterChips();
+        updateFilterChipSelection();
         if (items.isEmpty()) {
             chatList.setVisibility(View.GONE);
             homeLoadingState.setVisibility(chatIndexLoaded ? View.GONE : View.VISIBLE);
             homeEmptyState.setVisibility(chatIndexLoaded ? View.VISIBLE : View.GONE);
             if (homeNewChat != null) homeNewChat.setVisibility(View.GONE);
-            applyEmptyStateCopy("unread".equals(homeFilter));
+            applyEmptyStateCopy(folderFilter != null ? "folder" : "unread".equals(homeFilter) ? "unread" : "all");
         } else {
             chatList.setVisibility(View.VISIBLE);
             homeLoadingState.setVisibility(View.GONE);
             homeEmptyState.setVisibility(View.GONE);
             if (homeNewChat != null) homeNewChat.setVisibility(View.VISIBLE);
-            applyEmptyStateCopy(false);
         }
+        setSkeletonShimmer(homeLoadingState != null && homeLoadingState.getVisibility() == View.VISIBLE);
     }
 
     private String previewFor(ChatSummary summary) {
@@ -941,9 +963,14 @@ public final class MainActivity extends AppCompatActivity {
                 bindAvatar(avatar, avatarInitial, cachedPeer, cachedPeer.displayNameOrUsername(), cachedPeer.avatarBase64);
             }
         }
+        unreadDividerAt = 0;
         if (store != null) {
-            store.markChatOpened(chatId, null, 0L);
             ChatSummary opened = summaries.get(chatId);
+            if (opened != null && opened.unread > 0) {
+                long readWatermark = store.chatLastReadAt(chatId);
+                if (readWatermark > 0) unreadDividerAt = readWatermark;
+            }
+            store.markChatOpened(chatId, null, 0L);
             if (opened != null) opened.unread = 0;
         }
         loadCachedMessages(chatId, peerUid);
@@ -1222,6 +1249,7 @@ public final class MainActivity extends AppCompatActivity {
         final List<ChatMessage> persistBatch = new ArrayList<>();
         final List<String> persistPayloadBatch = new ArrayList<>();
         String lastDayKey = null;
+        boolean unreadDividerPlaced = false;
         int visibleIndex = 0;
         for (ChatMessage message : visible) {
             visibleIndex++;
@@ -1257,6 +1285,11 @@ public final class MainActivity extends AppCompatActivity {
                     rows.add(new MessageListAdapter.Row(dateLabelFor(message.sentAt)));
                     lastDayKey = dayKey;
                 }
+            }
+            if (unreadDividerAt > 0 && !unreadDividerPlaced && message.senderUid != null
+                    && !message.senderUid.equals(uid) && message.sentAt > unreadDividerAt) {
+                rows.add(MessageListAdapter.Row.unreadDivider());
+                unreadDividerPlaced = true;
             }
             if (payload != null && message.id != null && !message.id.startsWith("local_")
                     && visible.size() - visibleIndex < 90) {
@@ -1488,6 +1521,7 @@ public final class MainActivity extends AppCompatActivity {
             replyToText = null;
             if (replyBanner != null) replyBanner.setVisibility(View.GONE);
             chatRepository.setTyping(chatId, senderUid, false);
+            unreadDividerAt = 0;
             enqueueOptimisticMessage(chatId, peerUid, senderUid, payloadJson);
         } catch (Exception error) {
             toast("Не удалось подготовить сообщение.");
@@ -1691,6 +1725,10 @@ public final class MainActivity extends AppCompatActivity {
         content.findViewById(R.id.chat_menu_keys).setOnClickListener(v -> {
             sheet.dismiss();
             showKeySettings();
+        });
+        content.findViewById(R.id.chat_menu_folders).setOnClickListener(v -> {
+            sheet.dismiss();
+            showFolderPicker(chatId);
         });
         content.findViewById(R.id.chat_menu_clear).setOnClickListener(v -> {
             sheet.dismiss();
@@ -2358,6 +2396,7 @@ public final class MainActivity extends AppCompatActivity {
         peerTyping = false; peerOnline = false; peerLastSeenVisible = false; peerLastSeen = 0;
         messageList = null; messageListAdapter = null; chatEmptyState = null; chatScrollBottom = null;
         cachedMessages = new ArrayList<>();
+        unreadDividerAt = 0;
         composer = null; replyBanner = null; replyBannerText = null; chatStatus = null; chatAvatarDot = null;
         ui.removeCallbacks(clearTyping);
         messageReactions.clear();
@@ -2388,9 +2427,10 @@ public final class MainActivity extends AppCompatActivity {
             database.getReference(".info/connected").removeEventListener(connectionListener);
             connectionListener = null;
         }
-        homeFilterAll = null;
-        homeFilterUnread = null;
+        homeFilters = null;
         homeOfflineBanner = null;
+        homeLoadingState = null;
+        setSkeletonShimmer(false);
         homeEmptyTitle = null;
         homeEmptyDescription = null;
         homeFindPeople = null;
@@ -2596,11 +2636,268 @@ public final class MainActivity extends AppCompatActivity {
         });
     }
 
-    private void updateFilterChips() {
-        if (homeFilterAll == null || homeFilterUnread == null) return;
-        boolean showAll = !"unread".equals(homeFilter);
-        styleFilterChip(homeFilterAll, showAll);
-        styleFilterChip(homeFilterUnread, !showAll);
+    private void loadFolders() {
+        folderNames.clear();
+        folderMembers.clear();
+        if (store == null) return;
+        for (String[] row : store.listFolders()) {
+            if (row[0] == null) continue;
+            folderNames.put(row[0], row[1] == null ? "Папка" : row[1]);
+        }
+        for (String folderId : folderNames.keySet()) {
+            folderMembers.put(folderId, new HashSet<>(store.folderChats(java.util.Collections.singletonList(folderId))));
+        }
+    }
+
+    /** Rebuilds the chip strip above the chat list: Все, Непрочитанные, user folders, «+». */
+    private void rebuildFilterChips() {
+        if (homeFilters == null) return;
+        homeFilters.removeAllViews();
+        addFilterChip(getString(R.string.home_filter_all), "all", false);
+        addFilterChip(getString(R.string.home_filter_unread), "unread", false);
+        for (Map.Entry<String, String> folder : folderNames.entrySet()) {
+            addFilterChip(folder.getValue(), "folder:" + folder.getKey(), true);
+        }
+        addFilterChip("+", "new", false);
+        updateFilterChipSelection();
+    }
+
+    private void addFilterChip(String label, String key, boolean folderChip) {
+        TextView chip = new TextView(this);
+        chip.setText(label);
+        chip.setTextSize(13f);
+        chip.setTypeface(Typeface.create("sans-serif-medium", Typeface.NORMAL));
+        chip.setGravity(android.view.Gravity.CENTER);
+        chip.setTag(key);
+        LinearLayout.LayoutParams params = new LinearLayout.LayoutParams(
+                LinearLayout.LayoutParams.WRAP_CONTENT, dp(36));
+        params.setMarginEnd(dp(8));
+        chip.setLayoutParams(params);
+        chip.setPadding(dp(16), 0, dp(16), 0);
+        chip.setBackgroundResource(R.drawable.bg_filter_idle);
+        chip.setTextColor(getColor(R.color.tsuyu_secondary));
+        if ("new".equals(key)) {
+            chip.setTextColor(getColor(R.color.tsuyu_blue));
+            chip.setContentDescription(getString(R.string.folder_new));
+            chip.setOnClickListener(v -> createFolderDialog());
+        } else {
+            chip.setOnClickListener(v -> {
+                homeFilter = key;
+                renderChatList();
+            });
+            if (folderChip) {
+                chip.setOnLongClickListener(v -> {
+                    v.performHapticFeedback(HapticFeedbackConstants.LONG_PRESS);
+                    openFolderActions(key.substring("folder:".length()));
+                    return true;
+                });
+            }
+        }
+        homeFilters.addView(chip);
+    }
+
+    private void updateFilterChipSelection() {
+        if (homeFilters == null) return;
+        for (int index = 0; index < homeFilters.getChildCount(); index++) {
+            View child = homeFilters.getChildAt(index);
+            if (child == null || child.getTag() == null) continue;
+            boolean selected = child.getTag().toString().equals(homeFilter);
+            styleFilterChip((TextView) child, selected);
+        }
+    }
+
+    private int dp(float value) {
+        return (int) (getResources().getDisplayMetrics().density * value);
+    }
+
+    private void createFolderDialog() { openFolderNameDialog(null, null); }
+
+    private void openFolderNameDialog(final String folderId, String currentName) {
+        View content = getLayoutInflater().inflate(R.layout.dialog_folder_name, null, false);
+        final TextInputEditText input = content.findViewById(R.id.folder_name_input);
+        if (currentName != null) input.setText(currentName);
+        new AlertDialog.Builder(this)
+                .setTitle(folderId == null ? R.string.folder_new : R.string.folder_rename)
+                .setView(content)
+                .setNegativeButton("Отмена", null)
+                .setPositiveButton(folderId == null ? R.string.folder_create : R.string.folder_rename_confirm,
+                        (dialog, which) -> {
+                            String name = input.getText() == null ? "" : input.getText().toString().trim();
+                            if (name.isEmpty() || store == null) return;
+                            if (folderId == null) {
+                                store.createFolder(UUID.randomUUID().toString(), name);
+                                toast(getString(R.string.folder_created));
+                            } else {
+                                store.renameFolder(folderId, name);
+                            }
+                            loadFolders();
+                            rebuildFilterChips();
+                            renderChatList();
+                        }).show();
+    }
+
+    private void openFolderActions(final String folderId) {
+        final String name = folderNames.get(folderId);
+        if (name == null) return;
+        new AlertDialog.Builder(this)
+                .setTitle(name)
+                .setItems(new String[]{"Переименовать", "Удалить"}, (dialog, which) -> {
+                    if (which == 0) {
+                        openFolderNameDialog(folderId, name);
+                    } else {
+                        new AlertDialog.Builder(this)
+                                .setTitle(R.string.folder_delete_title)
+                                .setMessage(R.string.folder_delete_message)
+                                .setNegativeButton("Отмена", null)
+                                .setPositiveButton(R.string.folder_delete_confirm, (confirm, w) -> {
+                                    if (store != null) store.deleteFolder(folderId);
+                                    if (("folder:" + folderId).equals(homeFilter)) homeFilter = "all";
+                                    loadFolders();
+                                    rebuildFilterChips();
+                                    renderChatList();
+                                    toast(getString(R.string.folder_deleted));
+                                }).show();
+                    }
+                }).show();
+    }
+
+    /** Picker shown from the chat menu: put the conversation into any number of folders. */
+    private void showFolderPicker(final String chatId) {
+        View content = getLayoutInflater().inflate(R.layout.dialog_folder_pick, null, false);
+        LinearLayout list = content.findViewById(R.id.folder_pick_list);
+        List<String> current = store == null ? new ArrayList<>() : store.chatFolderIds(chatId);
+        final Map<String, MaterialCheckBox> boxes = new java.util.LinkedHashMap<>();
+        for (Map.Entry<String, String> folder : folderNames.entrySet()) {
+            MaterialCheckBox box = new MaterialCheckBox(this);
+            box.setText(folder.getValue());
+            box.setTextColor(getColor(R.color.tsuyu_white));
+            box.setChecked(current.contains(folder.getKey()));
+            box.setPadding(0, dp(6), 0, dp(6));
+            boxes.put(folder.getKey(), box);
+            list.addView(box);
+        }
+        if (folderNames.isEmpty()) {
+            TextView empty = new TextView(this);
+            empty.setText("Папок пока нет — создайте первую.");
+            empty.setTextColor(getColor(R.color.tsuyu_secondary));
+            empty.setPadding(0, dp(4), 0, dp(8));
+            list.addView(empty);
+        }
+        TextView create = new TextView(this);
+        create.setText("+ " + getString(R.string.folder_new));
+        create.setTextColor(getColor(R.color.tsuyu_blue));
+        create.setPadding(0, dp(10), 0, dp(4));
+        create.setOnClickListener(v -> createFolderDialog());
+        list.addView(create);
+        new AlertDialog.Builder(this)
+                .setTitle(R.string.folder_pick_title)
+                .setView(content)
+                .setNegativeButton("Отмена", null)
+                .setPositiveButton("Готово", (dialog, which) -> {
+                    List<String> selected = new ArrayList<>();
+                    for (Map.Entry<String, MaterialCheckBox> entry : boxes.entrySet()) {
+                        if (entry.getValue().isChecked()) selected.add(entry.getKey());
+                    }
+                    if (store != null) store.setChatFolders(chatId, selected);
+                    loadFolders();
+                    rebuildFilterChips();
+                    renderChatList();
+                }).show();
+    }
+
+    // ------------------------------------------------------------------
+    // Gestures and motion
+    // ------------------------------------------------------------------
+
+    /** Swipe right pins the conversation, swipe left toggles its unread mark. */
+    private void attachSwipeActions() {
+        if (chatList == null) return;
+        if (swipePinIcon == null) {
+            swipePinIcon = ContextCompat.getDrawable(this, R.drawable.ic_pin);
+            swipeReadIcon = ContextCompat.getDrawable(this, R.drawable.ic_checks);
+            if (swipePinIcon != null) swipePinIcon.mutate().setTint(getColor(R.color.tsuyu_blue));
+            if (swipeReadIcon != null) swipeReadIcon.mutate().setTint(getColor(R.color.tsuyu_blue));
+            swipePaint.setColor(getColor(R.color.tsuyu_input));
+        }
+        ItemTouchHelper helper = new ItemTouchHelper(new ItemTouchHelper.SimpleCallback(0,
+                ItemTouchHelper.LEFT | ItemTouchHelper.RIGHT) {
+            @Override public boolean onMove(androidx.recyclerview.widget.RecyclerView recyclerView,
+                                            androidx.recyclerview.widget.RecyclerView.ViewHolder viewHolder,
+                                            androidx.recyclerview.widget.RecyclerView.ViewHolder target) {
+                return false;
+            }
+            // Short, snappy gesture instead of the default half-screen drag.
+            @Override public float getSwipeThreshold(androidx.recyclerview.widget.RecyclerView.ViewHolder viewHolder) {
+                return 0.26f;
+            }
+            @Override public float getSwipeEscapeVelocity(float defaultValue) {
+                return defaultValue * 0.6f;
+            }
+            @Override public long getAnimationDuration(androidx.recyclerview.widget.RecyclerView recyclerView,
+                                                       int animationType, float animateDx, float animateDy) {
+                return animationType == ItemTouchHelper.ANIMATION_TYPE_SWIPE_CANCEL
+                        ? 140L
+                        : super.getAnimationDuration(recyclerView, animationType, animateDx, animateDy);
+            }
+            @Override public void onSwiped(androidx.recyclerview.widget.RecyclerView.ViewHolder viewHolder, int direction) {
+                int position = viewHolder.getBindingAdapterPosition();
+                ChatSummary summary = chatListAdapter == null ? null : chatListAdapter.summaryAt(position);
+                if (summary == null || summary.chatId == null) {
+                    renderChatList();
+                    return;
+                }
+                viewHolder.itemView.performHapticFeedback(HapticFeedbackConstants.LONG_PRESS);
+                if (direction == ItemTouchHelper.RIGHT) {
+                    togglePinned(summary.chatId, !summary.pinned);
+                } else if (summary.unread > 0) {
+                    markChatRead(summary.chatId);
+                } else {
+                    markChatUnread(summary.chatId);
+                }
+                renderChatList();
+                if (chatListAdapter != null && position >= 0 && position < chatListAdapter.getItemCount()) {
+                    chatListAdapter.notifyItemChanged(position);
+                }
+            }
+            @Override public void onChildDraw(Canvas canvas, androidx.recyclerview.widget.RecyclerView recyclerView,
+                                              androidx.recyclerview.widget.RecyclerView.ViewHolder viewHolder,
+                                              float dX, float dY, int actionState, boolean isCurrentlyActive) {
+                View item = viewHolder.itemView;
+                if (actionState == ItemTouchHelper.ACTION_STATE_SWIPE && dX != 0f && item.getHeight() > 0) {
+                    if (dX > 0) {
+                        canvas.drawRect(item.getLeft(), item.getTop(), item.getLeft() + dX, item.getBottom(), swipePaint);
+                    } else {
+                        canvas.drawRect(item.getRight() + dX, item.getTop(), item.getRight(), item.getBottom(), swipePaint);
+                    }
+                    Drawable icon = dX > 0 ? swipePinIcon : swipeReadIcon;
+                    if (icon != null) {
+                        int size = dp(20);
+                        int top = item.getTop() + (item.getHeight() - size) / 2;
+                        int left = dX > 0 ? item.getLeft() + dp(18) : item.getRight() - dp(18) - size;
+                        icon.setBounds(left, top, left + size, top + size);
+                        icon.draw(canvas);
+                    }
+                }
+                super.onChildDraw(canvas, recyclerView, viewHolder, dX, dY, actionState, isCurrentlyActive);
+            }
+        });
+        helper.attachToRecyclerView(chatList);
+    }
+
+    /** Gentle breathing of the placeholder rows while the very first page loads. */
+    private void setSkeletonShimmer(boolean running) {
+        if (running) {
+            if (skeletonPulse != null || homeLoadingState == null) return;
+            skeletonPulse = android.animation.ObjectAnimator.ofFloat(homeLoadingState, View.ALPHA, 0.4f, 1f);
+            skeletonPulse.setDuration(620);
+            skeletonPulse.setRepeatMode(android.animation.ValueAnimator.REVERSE);
+            skeletonPulse.setRepeatCount(android.animation.ValueAnimator.INFINITE);
+            skeletonPulse.start();
+        } else if (skeletonPulse != null) {
+            skeletonPulse.cancel();
+            skeletonPulse = null;
+            if (homeLoadingState != null) homeLoadingState.setAlpha(1f);
+        }
     }
 
     private void styleFilterChip(TextView chip, boolean selected) {
@@ -2609,16 +2906,19 @@ public final class MainActivity extends AppCompatActivity {
         chip.setTextColor(getColor(selected ? R.color.tsuyu_blue : R.color.tsuyu_secondary));
     }
 
-    private void applyEmptyStateCopy(boolean unreadOnly) {
+    private void applyEmptyStateCopy(String mode) {
+        boolean filtered = !"all".equals(mode);
         if (homeEmptyTitle != null) {
-            homeEmptyTitle.setText(unreadOnly ? "Непрочитанных нет" : getString(R.string.no_chats_title));
+            if ("folder".equals(mode)) homeEmptyTitle.setText("В этой папке пусто");
+            else if ("unread".equals(mode)) homeEmptyTitle.setText("Непрочитанных нет");
+            else homeEmptyTitle.setText(getString(R.string.no_chats_title));
         }
         if (homeEmptyDescription != null) {
-            homeEmptyDescription.setText(unreadOnly
-                    ? "Новые сообщения появятся здесь, и чат поднимется наверх списка."
-                    : getString(R.string.no_chats_description));
+            if ("folder".equals(mode)) homeEmptyDescription.setText("Добавьте чаты в папку через меню чата.");
+            else if ("unread".equals(mode)) homeEmptyDescription.setText("Новые сообщения появятся здесь, и чат поднимется наверх списка.");
+            else homeEmptyDescription.setText(getString(R.string.no_chats_description));
         }
-        if (homeFindPeople != null) homeFindPeople.setVisibility(unreadOnly ? View.GONE : View.VISIBLE);
+        if (homeFindPeople != null) homeFindPeople.setVisibility(filtered ? View.GONE : View.VISIBLE);
     }
 
     private void toast(String text) { if (Looper.myLooper() == Looper.getMainLooper()) Toast.makeText(this, text, Toast.LENGTH_SHORT).show(); else runOnUiThread(() -> Toast.makeText(this, text, Toast.LENGTH_SHORT).show()); }

@@ -21,6 +21,9 @@ android {
         targetSdk 36
         versionCode buildVersionCode
         versionName buildVersionName
+        // Ship only the resources the app can actually show: one language and
+        // no library translations. Cuts a large slice of the resource table.
+        resourceConfigurations += ['ru']
         testInstrumentationRunner 'androidx.test.runner.AndroidJUnitRunner'
         // Package only the native ABI used by modern Android phones; a universal APK
         // bundles every Signal native library and is unnecessarily hundreds of MB.
@@ -56,8 +59,10 @@ android {
         }
         release {
             signingConfig signingConfigs.release
-            minifyEnabled false
-            shrinkResources false
+            // R8 removes unused code and reflection-safe renaming; resource
+            // shrinking then drops every unreachable layout/drawable/string.
+            minifyEnabled true
+            shrinkResources true
             proguardFiles getDefaultProguardFile('proguard-android-optimize.txt'), 'proguard-rules.pro'
         }
     }
@@ -65,6 +70,9 @@ android {
     packaging {
         jniLibs {
             excludes += ['**/libsignal_jni_testing.so']
+            // Deflate the Signal native library inside the APK: extraction at
+            // install time is a fair trade for ~8 MB less to download.
+            useLegacyPackaging = true
         }
         resources {
             excludes += [

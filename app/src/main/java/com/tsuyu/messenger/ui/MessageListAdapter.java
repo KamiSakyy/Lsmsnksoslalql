@@ -13,6 +13,7 @@ import android.widget.ProgressBar;
 import android.widget.TextView;
 
 import androidx.annotation.NonNull;
+import androidx.recyclerview.widget.DiffUtil;
 import androidx.recyclerview.widget.GridLayoutManager;
 import androidx.recyclerview.widget.RecyclerView;
 
@@ -50,6 +51,8 @@ public final class MessageListAdapter extends RecyclerView.Adapter<RecyclerView.
         public final boolean read;
         /** Non-null only for date separators such as «Сегодня». */
         public final String dateLabel;
+        /** True for the single unread-messages divider row. */
+        public final boolean unreadDivider;
 
         public Row(ChatMessage message, String payload, int reactionCount, boolean read) {
             this.message = message;
@@ -57,6 +60,7 @@ public final class MessageListAdapter extends RecyclerView.Adapter<RecyclerView.
             this.reactionCount = reactionCount;
             this.read = read;
             this.dateLabel = null;
+            this.unreadDivider = false;
         }
 
         public Row(String dateLabel) {
@@ -65,7 +69,20 @@ public final class MessageListAdapter extends RecyclerView.Adapter<RecyclerView.
             this.reactionCount = 0;
             this.read = false;
             this.dateLabel = dateLabel;
+            this.unreadDivider = false;
         }
+
+        private Row(boolean unreadDivider) {
+            this.message = null;
+            this.payload = null;
+            this.reactionCount = 0;
+            this.read = false;
+            this.dateLabel = null;
+            this.unreadDivider = unreadDivider;
+        }
+
+        /** The blue «Непрочитанные сообщения» line shown once inside a conversation. */
+        public static Row unreadDivider() { return new Row(true); }
 
         public boolean isDate() { return dateLabel != null; }
     }
@@ -90,24 +107,63 @@ public final class MessageListAdapter extends RecyclerView.Adapter<RecyclerView.
     }
 
     public void setTextStyle(int textSize, boolean bold, boolean italic) {
+        boolean changed = this.textSize != textSize || this.bold != bold || this.italic != italic;
         this.textSize = textSize;
         this.bold = bold;
         this.italic = italic;
+        if (changed && !rows.isEmpty()) {
+            notifyItemRangeChanged(0, rows.size());
+        }
     }
 
     public void submit(List<Row> next) {
+        final List<Row> incoming = new ArrayList<>(next);
+        DiffUtil.DiffResult result = DiffUtil.calculateDiff(new DiffUtil.Callback() {
+            @Override public int getOldListSize() { return rows.size(); }
+            @Override public int getNewListSize() { return incoming.size(); }
+            @Override public boolean areItemsTheSame(int oldPos, int newPos) {
+                return rowKey(rows.get(oldPos)).equals(rowKey(incoming.get(newPos)));
+            }
+            @Override public boolean areContentsTheSame(int oldPos, int newPos) {
+                return sameContents(rows.get(oldPos), incoming.get(newPos));
+            }
+        });
         rows.clear();
-        rows.addAll(next);
-        notifyDataSetChanged();
+        rows.addAll(incoming);
+        result.dispatchUpdatesTo(this);
+    }
+
+    private static String rowKey(Row row) {
+        if (row.unreadDivider) return "unread-divider";
+        if (row.isDate()) return "date:" + row.dateLabel;
+        ChatMessage message = row.message;
+        if (message.id != null) return "id:" + message.id;
+        return "client:" + message.clientId;
+    }
+
+    private static boolean sameContents(Row first, Row second) {
+        if (first.read != second.read || first.reactionCount != second.reactionCount) return false;
+        if (first.isDate() || second.isDate() || first.unreadDivider || second.unreadDivider) {
+            return first.isDate() == second.isDate() && first.unreadDivider == second.unreadDivider;
+        }
+        ChatMessage one = first.message;
+        ChatMessage two = second.message;
+        if (one.pending != two.pending || one.failed != two.failed || one.edited != two.edited) return false;
+        if (!String.valueOf(first.payload).equals(String.valueOf(second.payload))) return false;
+        return one.sentAt == two.sentAt;
     }
 
     @Override public int getItemViewType(int position) {
         Row row = rows.get(position);
+        if (row.unreadDivider) return 3;
         if (row.isDate()) return 2;
         return ownUid != null && ownUid.equals(row.message.senderUid) ? 1 : 0;
     }
 
     @NonNull @Override public RecyclerView.ViewHolder onCreateViewHolder(@NonNull ViewGroup parent, int viewType) {
+        if (viewType == 3) {
+            return new LabelHolder(LayoutInflater.from(parent.getContext()).inflate(R.layout.row_message_unread, parent, false));
+        }
         if (viewType == 2) {
             return new DateHolder(LayoutInflater.from(parent.getContext()).inflate(R.layout.row_message_date, parent, false));
         }
@@ -117,6 +173,9 @@ public final class MessageListAdapter extends RecyclerView.Adapter<RecyclerView.
 
     @Override public void onBindViewHolder(@NonNull RecyclerView.ViewHolder holder, int position) {
         Row row = rows.get(position);
+        if (holder instanceof LabelHolder) {
+            return;
+        }
         if (holder instanceof DateHolder) {
             ((DateHolder) holder).label.setText(row.dateLabel);
             return;
@@ -265,6 +324,10 @@ public final class MessageListAdapter extends RecyclerView.Adapter<RecyclerView.
     }
 
     @Override public int getItemCount() { return rows.size(); }
+
+    static final class LabelHolder extends RecyclerView.ViewHolder {
+        LabelHolder(View itemView) { super(itemView); }
+    }
 
     static final class DateHolder extends RecyclerView.ViewHolder {
         final TextView label;

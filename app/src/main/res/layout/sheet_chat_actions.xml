@@ -271,6 +271,53 @@
     </LinearLayout>
 
     <LinearLayout
+        android:id="@+id/chat_menu_folders"
+        android:layout_width="match_parent"
+        android:layout_height="@dimen/row_sheet_action_height"
+        android:background="?attr/selectableItemBackground"
+        android:clickable="true"
+        android:focusable="true"
+        android:gravity="center_vertical"
+        android:orientation="horizontal">
+
+        <FrameLayout
+            android:layout_width="@dimen/row_icon_tile"
+            android:layout_height="@dimen/row_icon_tile"
+            android:background="@drawable/bg_menu_icon">
+
+            <ImageView
+                android:layout_width="@dimen/row_icon_size"
+                android:layout_height="@dimen/row_icon_size"
+                android:layout_gravity="center"
+                android:contentDescription=""
+                android:src="@drawable/ic_folder"
+                app:tint="@color/tsuyu_blue" />
+        </FrameLayout>
+
+        <LinearLayout
+            android:layout_width="0dp"
+            android:layout_height="wrap_content"
+            android:layout_marginStart="@dimen/space_md"
+            android:layout_weight="1"
+            android:orientation="vertical">
+
+            <TextView
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:text="@string/chat_menu_folders"
+                android:textAppearance="@style/TextAppearance.Tsuyu.RowItemTitle" />
+
+            <TextView
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:layout_marginTop="2dp"
+                android:text="@string/chat_menu_folders_subtitle"
+                android:textAppearance="@style/TextAppearance.Tsuyu.RowMeta"
+                android:textSize="12sp" />
+        </LinearLayout>
+    </LinearLayout>
+
+    <LinearLayout
         android:id="@+id/chat_menu_clear"
         android:layout_width="match_parent"
         android:layout_height="@dimen/row_sheet_action_height"
