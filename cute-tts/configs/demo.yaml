@@ -1,0 +1,33 @@
+# Крошечная модель для проверки пайплайна / CI (CPU, пару минут).
+model:
+  hidden: 128
+  text_layers: 2
+  flow_layers: 2
+  flow_n_flows: 2
+  posterior_layers: 4
+  upsample_initial: 192
+  segment_size: 32
+
+audio:
+  sample_rate: 22050
+
+text:
+  language: ru
+  phoneme_type: espeak
+
+data:
+  dir: data/demo
+
+train:
+  batch_size: 2
+  lr: 0.001
+  steps: 300
+  save_every: 100
+  log_every: 10
+  grad_clip: 1.0
+  mel_weight: 45.0
+  adv_weight: 1.0
+  fm_weight: 2.0
+  dur_weight: 1.0
+  kl_weight: 1.0
+  seed: 42

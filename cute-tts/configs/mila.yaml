@@ -1,0 +1,36 @@
+# «Мила» — нормальный конфиг для обучения на своём голосе.
+# Рекомендуется: GPU, 10-50 минут чистой речи, 1500-4000 шагов.
+# Итоговая модель (fp32) ~55-75 МБ, при необходимости экспорт сам сделает int8 (~15 МБ).
+model:
+  hidden: 192
+  text_layers: 4
+  flow_layers: 4
+  flow_n_flows: 4
+  posterior_layers: 8
+  upsample_initial: 384
+  segment_size: 32
+
+audio:
+  sample_rate: 22050
+
+text:
+  language: ru
+  phoneme_type: espeak
+
+data:
+  dir: data/processed
+
+train:
+  batch_size: 8
+  lr: 0.0002
+  betas: [0.8, 0.99]
+  steps: 3000
+  save_every: 250
+  log_every: 25
+  grad_clip: 1.0
+  mel_weight: 45.0
+  adv_weight: 1.0
+  fm_weight: 2.0
+  dur_weight: 1.0
+  kl_weight: 1.0
+  seed: 42

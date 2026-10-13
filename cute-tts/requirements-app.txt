@@ -1,0 +1,8 @@
+# Зависимости приложения (инференс, CLI, веб-интерфейс) — всё оффлайн
+numpy>=1.24
+soundfile>=0.12
+onnxruntime>=1.16
+piper-phonemize>=1.1.0; platform_system != "Windows"
+espeakng-loader>=0.2.3; platform_system != "Windows"
+# на Windows фонемизация использует запасной посимвольный режим,
+# либо установите piper-phonemize вручную (см. README)

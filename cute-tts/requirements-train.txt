@@ -1,0 +1,7 @@
+# Зависимости для обучения и экспорта модели
+-r requirements-app.txt
+torch>=2.1
+pyyaml>=6.0
+onnx>=1.15
+# необязательно: авто-расшифровка mp3 (faster-whisper)
+# faster-whisper>=1.0

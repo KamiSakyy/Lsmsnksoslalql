@@ -1,0 +1,107 @@
+# MilaTTS — сборка оффлайн-приложения «Мила» (TTS с обучением на своём голосе)
+name: MilaTTS Build
+
+on:
+  push:
+    branches: ["**"]
+    paths:
+      - "cute-tts/**"
+      - ".github/workflows/tts-build.yml"
+  pull_request:
+    paths:
+      - "cute-tts/**"
+      - ".github/workflows/tts-build.yml"
+  workflow_dispatch:
+
+defaults:
+  run:
+    working-directory: cute-tts
+
+jobs:
+  test:
+    name: Тесты (Linux)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+          cache: pip
+          cache-dependency-path: cute-tts/requirements-*.txt
+      - name: Зависимости
+        run: |
+          python -m pip install --upgrade pip
+          pip install -r requirements-app.txt -r requirements-train.txt pytest
+      - name: Юнит-тесты
+        run: pytest tests/ -q
+      - name: Смоук: демо-датасет → обучение → экспорт → wav
+        run: |
+          python -m training.make_demo_dataset --out data/demo
+          python -m training.train --config configs/demo.yaml --out models/run_ci --smoke
+          python -m training.export --checkpoint models/run_ci/latest.pt --out models/ci_smoke.onnx
+          python -m cute_tts "Привет, это тест." -m models/ci_smoke.onnx -o /tmp/ci.wav
+
+  build:
+    name: Сборка (${{ matrix.os }})
+    needs: test
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, windows-latest, macos-latest]
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+          cache: pip
+          cache-dependency-path: cute-tts/requirements-*.txt
+      - name: Зависимости
+        run: |
+          python -m pip install --upgrade pip
+          pip install -r requirements-app.txt pyinstaller
+      - name: PyInstaller (портативная сборка)
+        run: |
+          pyinstaller --onefile --name mila-tts \
+            --paths . \
+            --collect-all piper_phonemize \
+            --collect-all espeakng_loader \
+            --collect-all onnxruntime \
+            --collect-binaries soundfile \
+            --hidden-import soundfile \
+            scripts/mila_entry.py
+        shell: bash
+      - name: Пакет (бинарник + модели + инструкция)
+        shell: bash
+        run: |
+          STAGE="dist/mila-tts-$(echo '${{ matrix.os }}' | sed 's/-latest//')"
+          mkdir -p "$STAGE/models"
+          cp -r dist/mila-tts* "$STAGE/" 2>/dev/null || true
+          [ -f dist/mila-tts.exe ] && cp dist/mila-tts.exe "$STAGE/" || true
+          cp models/*.onnx "$STAGE/models/" 2>/dev/null || true
+          cp models/*.json "$STAGE/models/" 2>/dev/null || true
+          cp README.md "$STAGE/"
+          cd "$STAGE/.." && zip -r "mila-tts-${{ matrix.os }}.zip" "$(basename "$STAGE")" || tar czf "mila-tts-${{ matrix.os }}.tar.gz" "$(basename "$STAGE")"
+      - name: Артефакты
+        uses: actions/upload-artifact@v4
+        with:
+          name: mila-tts-${{ matrix.os }}
+          path: cute-tts/dist/mila-tts-${{ matrix.os }}.*
+          if-no-files-found: warn
+
+  release:
+    name: Релиз (по тегу mila-v*)
+    needs: build
+    if: startsWith(github.ref, 'refs/tags/mila-v')
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          path: release-assets
+      - name: Публикация релиза
+        uses: softprops/action-gh-release@v2
+        with:
+          files: release-assets/**/*
+          generate_release_notes: true

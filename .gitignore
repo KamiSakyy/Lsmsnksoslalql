@@ -21,3 +21,18 @@ service-account*.json
 # IDE / OS
 .DS_Store
 Thumbs.db
+
+# MilaTTS (cute-tts/)
+cute-tts/models/run*/
+cute-tts/models/*.pt
+cute-tts/models/ci_smoke.onnx*
+cute-tts/data/demo/
+cute-tts/data/processed/
+cute-tts/dist/
+cute-tts/build/
+cute-tts/*.wav
+__pycache__/
+*.pyc
+*.spec
+cute-tts/dist/
+cute-tts/build/
