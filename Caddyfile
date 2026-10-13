@@ -1,0 +1,3 @@
+# Только для VPS со своим доменом. Railway/Render — не нужно.
+{$DOMAIN}
+reverse_proxy vpn:8080

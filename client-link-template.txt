@@ -1,0 +1,9 @@
+Если ссылка из логов потерялась — собери вручную:
+замени __UUID__ и __DOMAIN__ на свои (их видно в логах деплоя).
+
+vless://__UUID__@__DOMAIN__:443?encryption=none&security=tls&sni=__DOMAIN__&fp=firefox&alpn=h2&type=xhttp&mode=packet-up&path=%2Fapi%2FuploadFile%2F&host=__DOMAIN__#VPN-1клик
+
+Менял XHTTP_PATH? Закодируй: каждый / замени на %2F
+Пример: /my/path/ -> %2Fmy%2Fpath%2F
+
+Не коннектится? Попробуй убрать из ссылки кусок: &alpn=h2

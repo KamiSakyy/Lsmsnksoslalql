@@ -1,0 +1,77 @@
+{
+  "dns": {
+    "hosts": { "dns.google": "8.8.8.8", "cloudflare-dns.com": "1.1.1.1" },
+    "servers": ["https://cloudflare-dns.com/dns-query", "https://dns.google/dns-query"],
+    "queryStrategy": "UseIPv4"
+  },
+  "log": { "loglevel": "warning" },
+  "remarks": "VPN-1клик (VLESS+XHTTP)",
+  "inbounds": [
+    {
+      "tag": "socks", "port": 10808, "listen": "127.0.0.1", "protocol": "socks",
+      "settings": { "udp": true, "auth": "noauth" },
+      "sniffing": { "enabled": true, "destOverride": ["http", "tls", "quic"] }
+    },
+    {
+      "tag": "http", "port": 10809, "listen": "127.0.0.1", "protocol": "http",
+      "settings": {},
+      "sniffing": { "enabled": true, "destOverride": ["http", "tls", "quic"] }
+    }
+  ],
+  "outbounds": [
+    {
+      "tag": "primary",
+      "protocol": "vless",
+      "settings": {
+        "vnext": [
+          {
+            "address": "__DOMAIN__",
+            "port": 443,
+            "users": [{ "id": "__UUID__", "encryption": "none", "flow": "" }]
+          }
+        ]
+      },
+      "streamSettings": {
+        "network": "xhttp",
+        "security": "tls",
+        "tlsSettings": {
+          "serverName": "__DOMAIN__",
+          "fingerprint": "firefox",
+          "alpn": ["h2", "http/1.1"]
+        },
+        "xhttpSettings": {
+          "mode": "packet-up",
+          "host": "__DOMAIN__",
+          "path": "/api/uploadFile/",
+          "extra": {
+            "mode": "packet-up",
+            "path": "/api/uploadFile/",
+            "xPaddingKey": "_dc",
+            "xPaddingHeader": "X-Cache",
+            "xPaddingMethod": "tokenish",
+            "uplinkHTTPMethod": "GET",
+            "xPaddingObfsMode": true,
+            "xPaddingPlacement": "queryInHeader",
+            "scMaxEachPostBytes": 262144,
+            "scMaxConcurrentPosts": 2,
+            "scMinPostsIntervalMs": 80
+          }
+        }
+      }
+    },
+    { "tag": "direct", "protocol": "freedom", "settings": { "domainStrategy": "UseIP" } },
+    { "tag": "block", "protocol": "blackhole", "settings": { "response": { "type": "http" } } }
+  ],
+  "routing": {
+    "domainStrategy": "IPIfNonMatch",
+    "rules": [
+      {
+        "type": "field",
+        "ip": ["10.0.0.0/8", "172.16.0.0/12", "192.168.0.0/16", "169.254.0.0/16", "224.0.0.0/4", "255.255.255.255/32"],
+        "outboundTag": "direct"
+      },
+      { "type": "field", "domain": ["geosite:category-ru"], "outboundTag": "direct" },
+      { "type": "field", "network": "tcp,udp", "outboundTag": "primary" }
+    ]
+  }
+}

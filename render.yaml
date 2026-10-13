@@ -1,0 +1,8 @@
+# Render: New → Blueprint → выбрать репозиторий → Apply. Всё, настроек нет.
+services:
+  - type: web
+    name: vpn-xray
+    runtime: docker
+    dockerfilePath: ./Dockerfile
+    plan: free
+    healthCheckPath: /health
