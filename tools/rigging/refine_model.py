@@ -18,7 +18,7 @@ from pathlib import Path
 import numpy as np
 from scipy.spatial.transform import Rotation
 
-from core import (Bone, extract_glb, node_matrix, pack_skin_weights, read_accessor,
+from core import (Bone, extract_glb, node_matrix, pack_skin_weights, read_accessor, segment_distances,
                   read_glb, sha256, smoothstep, validate_skin, world_matrices, write_glb)
 from binding import solve_bbw
 from detail import (DIGITS, facial_bones, fit_face, fit_fingers, gaussian, in_bounds,
@@ -146,15 +146,19 @@ def edit_finger_weights(vertices, faces, colors, profile, side, bones, old_joint
     field = np.asarray(field, dtype=float)**1.5
     field /= np.maximum(field.sum(1, keepdims=True), 1e-20)
     field = field[remap]
+    # One broad digit envelope removes fields on the nearby collar/strand,
+    # without separate per-bone cutoffs that introduce steep weight gradients.
+    nearest = segment_distances(vertices[ids], fitted).min(axis=1)
+    gate = 1-smoothstep(.008, .018, nearest)
+    hair_indices = [i for i, name in enumerate(names) if name.startswith('Hair.')]
+    hair_mass = np.sum(old_weights[ids]*np.isin(old_joints[ids], hair_indices), axis=1)
+    gate *= 1-smoothstep(.20, .55, hair_mass)
+    lost = np.sum(field[:, 2:]*(1-gate[:, None]), axis=1)
+    field[:, 2:] *= gate[:, None]
+    field[:, 1] += lost
     combined = np.zeros((len(ids), total_joints), dtype=np.float64)
     np.put_along_axis(combined, old_joints[ids], old_weights[ids], axis=1)
     amount = combined[:, hand_index].copy()
-    # Distal actual skin must not retain a distant coat/forearm field. Preserve
-    # the original transition at the wrist and on the held hair strand.
-    skin = colors[ids, 0].astype(int) > colors[ids, 2].astype(int)+3
-    takeover = smoothstep(.30, .75, 1-field[:, 1])*skin
-    combined *= (1-takeover[:, None])
-    amount = amount*(1-takeover)+takeover
     combined[:, hand_index] = amount*field[:, 1]
     for column, spec in enumerate(fitted, 2):
         combined[:, new_indices[spec.name]] = amount*field[:, column]
@@ -243,7 +247,10 @@ def add_detail_animations(assembler, fingers, by_name, morph_names):
             digit = next(d for d in DIGITS if d in bone.name)
             phalanx = int(bone.name[-1])-1
             amounts = np.sin(np.pi*times/duration)**2
-            axis = np.array([1., 0, 0]); maximum = [18., 25., 18.][phalanx]
+            axis = np.array([1., 0, 0]); maximum = ([10., 15., 10.] if side == 'Left' else [18., 25., 18.])[phalanx]
+            # The left bind pose is already a curled hair grip. Its additional
+            # flexion is contact-limited; forcing a full fist tears this fused
+            # source. Independent joints remain editable beyond the demo limit.
             if name == 'Finger_Spread':
                 axis = np.array([0., 0, 1.]); maximum = ([-12., -7., 0., 7., 12.][DIGITS.index(digit)] if phalanx == 0 else 0.)
             elif name == 'Finger_Isolation':
