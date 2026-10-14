@@ -149,8 +149,8 @@ echo "✅ Шлюз на порту $PORT. Слежу за доменом сам 
 
 shutdown() {
   echo "🛑 Остановка..."
-  kill "$ENGINE_PID" "$GW_PID" 2>/dev/null
-  wait 2>/dev/null
+  kill "$ENGINE_PID" "$GW_PID" 2>/dev/null || true
+  wait 2>/dev/null || true
   exit 0
 }
 trap shutdown TERM INT
@@ -171,8 +171,8 @@ while true; do
           export UUID
           echo "🔑 Ключ обновлён под домен (стабильный)."
           build_config
-          kill "$ENGINE_PID" 2>/dev/null
-          wait "$ENGINE_PID" 2>/dev/null
+          kill "$ENGINE_PID" 2>/dev/null || true
+          wait "$ENGINE_PID" 2>/dev/null || true
           start_engine || { echo "❌ Не перезапустился, жду 10с..."; sleep 10; start_engine || exit 1; }
           echo "✅ Движок перезапущен с новым ключом."
         fi
