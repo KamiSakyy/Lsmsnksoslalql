@@ -27,7 +27,8 @@ fetch_engine() {
   _repo="Xr""ay-core"
   _file="Xr""ay-linux-64.zip"
   _bin="x""ray"
-  _url="https://$_gh/$_org/$_repo/releases/latest/download/$_file"
+  _ver="v26.3.27"
+  _url="https://$_gh/$_org/$_repo/releases/download/$_ver/$_file"
   echo "⏬ Загружаю движок..."
   curl -fsSL --retry 3 --retry-delay 3 -o /tmp/eng.zip "$_url" || return 1
   rm -rf /tmp/eng && mkdir -p /tmp/eng
