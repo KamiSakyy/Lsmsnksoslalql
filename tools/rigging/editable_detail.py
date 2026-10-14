@@ -5,6 +5,7 @@ Run headlessly on Actions. No web server, browser, stand-in mesh or emulator.
 from __future__ import annotations
 
 import argparse
+import copy
 import json
 import os
 import sys
@@ -17,10 +18,11 @@ from mathutils import Matrix, Vector
 from PIL import Image
 from scipy.spatial import cKDTree
 
-from core import read_accessor, read_sparse_accessor
+from core import read_accessor, read_sparse_accessor, world_matrices, write_glb
 from motion import BLENDER_TO_GLTF
 from quality import SkinEvaluator
-from rig_model import add_studio
+from rig_model import add_studio, bind_mesh
+from core import Bone
 
 
 def reset(scene, mesh, rig):
@@ -84,14 +86,106 @@ def main():
     args = parser.parse_args()
     evaluator = SkinEvaluator(args.model)
     bpy.ops.wm.read_factory_settings(use_empty=True)
-    bpy.ops.import_scene.gltf(filepath=str(args.model.resolve()), merge_vertices=False)
-    meshes = [o for o in bpy.context.scene.objects if o.type == 'MESH']
-    rigs = [o for o in bpy.context.scene.objects if o.type == 'ARMATURE']
-    if len(meshes) != 1 or len(rigs) != 1:
-        raise ValueError('Expected the real high-poly mesh and its one armature')
-    mesh, rig = meshes[0], rigs[0]
+    # Do not entrust fine phalanges to the importer's 4 mm bone heuristics.
+    # Import only exact geometry/shape keys, then reconstruct exact stored
+    # joint matrices, weights and samplers ourselves (no placeholder rig).
+    geometry = copy.deepcopy(evaluator.document)
+    geometry['nodes'] = [copy.deepcopy(geometry['nodes'][evaluator.node_index])]
+    geometry['nodes'][0].pop('skin', None)
+    geometry['nodes'][0].pop('children', None)
+    geometry['skins'] = []
+    geometry['animations'] = []
+    geometry['scenes'] = [{'nodes': [0]}];geometry['scene'] = 0
+    primitive = geometry['meshes'][0]['primitives'][0]
+    primitive['attributes'].pop('JOINTS_0', None);primitive['attributes'].pop('WEIGHTS_0', None)
+    carrier = args.output/'geometry-carrier.glb'
+    write_glb(carrier, geometry, evaluator.binary)
+    bpy.ops.import_scene.gltf(filepath=str(carrier.resolve()), merge_vertices=False)
+    print('Imported original geometry objects:', [(o.name, o.type) for o in bpy.data.objects], flush=True)
+    meshes = [o for o in bpy.data.objects if o.type == 'MESH']
+    if len(meshes) != 1:
+        raise ValueError(f'Original source geometry import must yield one mesh, got {len(meshes)}')
+    mesh = meshes[0]
+    bpy.context.view_layer.objects.active = mesh;mesh.select_set(True)
+    bpy.ops.object.transform_apply(location=True, rotation=True, scale=True)
+    world = world_matrices(evaluator.document)
+    skin = evaluator.skin
+    by_node = {node: i for i, node in enumerate(skin['joints'])}
+    parents = {child: i for i, n in enumerate(evaluator.document['nodes']) for child in n.get('children', [])}
+    data = bpy.data.armatures.new('Precision_100_Stored_Joints')
+    rig = bpy.data.objects.new('AnimeGirl_Precision_Rig_100', data)
+    bpy.context.collection.objects.link(rig)
+    bpy.ops.object.select_all(action='DESELECT');rig.select_set(True)
+    bpy.context.view_layer.objects.active = rig
+    bpy.ops.object.mode_set(mode='EDIT')
+    bases = []
+    for node_index in skin['joints']:
+        node = evaluator.document['nodes'][node_index]
+        gltf = world[node_index]
+        basis = np.eye(4);basis[:3, :3] = BLENDER_TO_GLTF.T@gltf[:3, :3]
+        basis[:3, 3] = BLENDER_TO_GLTF.T@gltf[:3, 3]
+        bases.append(basis)
+        bone = data.edit_bones.new(node['name'])
+        bone.head = basis[:3, 3];bone.tail = basis[:3, 3]+basis[:3, 1]*.008
+        bone.matrix = Matrix(basis.tolist())
+        extras = node.get('extras', {})
+        length = np.linalg.norm(np.array(extras['fitted_source_tail'])-extras['fitted_source_head'])*evaluator.height if 'fitted_source_tail' in extras else .008
+        bone.length = max(float(length), .001)
+        bone.use_deform = node['name'] != 'Root';bone.use_connect = False
+    for node_index in skin['joints']:
+        parent = parents.get(node_index)
+        if parent in by_node:
+            data.edit_bones[evaluator.document['nodes'][node_index]['name']].parent = data.edit_bones[evaluator.document['nodes'][parent]['name']]
+    bpy.ops.object.mode_set(mode='OBJECT')
     mesh.name = 'AnimeGirl_Original_HighDetail'
-    rig.name = 'AnimeGirl_Precision_Rig_100'
+    source_positions = evaluator.deform(evaluator.matrices())
+    native = np.empty(len(mesh.data.vertices)*3, dtype=np.float32);mesh.data.vertices.foreach_get('co', native)
+    distance, vertex_map = cKDTree(source_positions).query(native.reshape(-1, 3)@BLENDER_TO_GLTF.T, workers=2)
+    if distance.max() > evaluator.height*.0001:
+        raise ValueError(f'Geometry carrier differs from actual original vertices: {distance.max()}')
+    specs = [Bone(name, None, np.zeros(3), np.array([0., .01, 0]), .003, 'root' if name == 'Root' else 'body') for name in evaluator.joint_names]
+    bind_mesh(mesh, rig, specs, evaluator.joints[vertex_map], np.rint(evaluator.weights[vertex_map]*65535).astype(np.uint16))
+    scene = bpy.context.scene;scene.render.fps = 30
+    rig.animation_data_create();mesh.data.shape_keys.animation_data_create()
+    rest_local_inverse = {}
+    for name in evaluator.joint_names:
+        bone = rig.data.bones[name]
+        local = np.linalg.inv(np.asarray(bone.parent.matrix_local))@np.asarray(bone.matrix_local) if bone.parent else np.asarray(bone.matrix_local)
+        rest_local_inverse[name] = np.linalg.inv(local)
+        rig.pose.bones[name].rotation_mode = 'QUATERNION'
+    inverse_ibm = np.linalg.inv(evaluator.inverse_bind)
+    for clip, duration in evaluator.durations.items():
+        print('Baking stored actual joint/morph samplers into editable actions:', clip, flush=True)
+        action = bpy.data.actions.new(clip);action.use_fake_user = True;rig.animation_data.action = action
+        shape_action = bpy.data.actions.new(clip+'.Face');shape_action.use_fake_user = True;mesh.data.shape_keys.animation_data.action = shape_action
+        last = int(round(duration*30))+1
+        for frame in range(1, last+1):
+            time = (frame-1)/30
+            desired = evaluator.matrices(clip, time)@inverse_ibm
+            desired_blender = []
+            for mat in desired:
+                bl = np.eye(4);bl[:3, :3] = BLENDER_TO_GLTF.T@mat[:3, :3];bl[:3, 3] = BLENDER_TO_GLTF.T@mat[:3, 3]
+                desired_blender.append(bl)
+            for j, name in enumerate(evaluator.joint_names):
+                bone = rig.data.bones[name];parent = parents.get(skin['joints'][j])
+                relative = np.linalg.inv(desired_blender[by_node[parent]])@desired_blender[j] if parent in by_node else desired_blender[j]
+                pose = rig.pose.bones[name];pose.matrix_basis = Matrix((rest_local_inverse[name]@relative).tolist())
+                for channel in ('rotation_quaternion', 'location', 'scale'):
+                    pose.keyframe_insert(data_path=channel, frame=frame, group=name)
+            amounts = np.zeros(len(evaluator.morphs))
+            for _, kind, times, values, interpolation in evaluator.channels[clip]:
+                if kind != 'weights':continue
+                left = int(np.clip(np.searchsorted(times, time, side='right')-1, 0, len(times)-1));right = min(left+1, len(times)-1)
+                f = 0 if left == right else float(np.clip((time-times[left])/(times[right]-times[left]), 0, 1))
+                amounts = values[left]*(1-f)+values[right]*f
+            for label, value in zip(evaluator.document['meshes'][0]['extras']['targetNames'], amounts):
+                shape = mesh.data.shape_keys.key_blocks[label];shape.value = float(value)
+                shape.keyframe_insert(data_path='value', frame=frame, group=label)
+        for item in (action, shape_action):
+            for curve in item.fcurves:
+                for key in curve.keyframe_points:key.interpolation = 'LINEAR'
+    rig.animation_data.action = None;mesh.data.shape_keys.animation_data.action = None
+    carrier.unlink()
     # All 100 skin joints, including all 30 phalanges, must survive import.
     missing = set(evaluator.joint_names)-set(rig.data.bones.keys())
     if missing:
