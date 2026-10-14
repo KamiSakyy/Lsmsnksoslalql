@@ -1,7 +1,7 @@
-# Render: New → Blueprint → выбрать репозиторий → Apply. Всё, настроек нет.
+# Render: New → Blueprint → выбрать репозиторий → Apply. Настроек нет.
 services:
   - type: web
-    name: vpn-xray
+    name: relay-web
     runtime: docker
     dockerfilePath: ./Dockerfile
     plan: free

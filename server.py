@@ -1,11 +1,10 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
 """
-Прокси для PaaS-хостингов (Railway / Render / Koyeb / Fly).
+Шлюз для PaaS-хостингов (Railway / Render / Koyeb / Fly).
 - Отвечает 200 OK на /, /health, /status (health-check хостинга).
-- Все остальное — сырой TCP-пайп на локальный Xray.
-- ЛОВИТ ДОМЕН САМ: читает Host из входящих запросов и сохраняет
-  в DETECT_FILE, entrypoint подхватывает и печатает готовую ссылку.
+- Всё остальное — сырой TCP-пайп на локальный движок.
+- Ловит домен сам: читает Host из входящих запросов.
 Только стандартная библиотека Python, зависимостей нет.
 """
 import os
@@ -17,20 +16,20 @@ import threading
 LISTEN_PORT = int(os.environ.get("PORT", "8080"))
 UPSTREAM_HOST = "127.0.0.1"
 UPSTREAM_PORT = int(os.environ.get("INTERNAL_PORT", "8081"))
-XHTTP_PATH = os.environ.get("XHTTP_PATH", "/api/uploadFile/")
+RELAY_PATH = os.environ.get("RELAY_PATH", "/api/uploadFile/")
 DETECT_FILE = os.environ.get("DETECT_FILE", "/tmp/detected_domain")
 
 HEALTH_PATHS = {"/", "/health", "/status", "/ping"}
 
 HTML_TOP = """<!doctype html><html lang="ru"><head><meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1">
-<title>VPN работает</title></head>
+<title>Сервис запущен</title></head>
 <body style="font-family:sans-serif;text-align:center;margin-top:12vh">
-<h1>VPN сервер запущен</h1>
-<p>Это техническая страница для проверки хостинга.</p>
+<h1>Сервис запущен</h1>
+<p>Техническая страница для проверки хостинга.</p>
 """
 
-HTML_BOTTOM = """<p>Подключайся через <b>v2rayNG</b> по VLESS-ссылке из логов деплоя.</p>
+HTML_BOTTOM = """<p>Ссылку для клиентского приложения забери из логов деплоя.</p>
 </body></html>"""
 
 
@@ -99,9 +98,9 @@ def is_public_host(host):
 def send_ok(conn):
     d = get_detected_domain()
     if d:
-        extra = "<p>Домен определён сам: <b>%s</b><br>Забери VLESS-ссылку из Deploy Logs.</p>" % d
+        extra = "<p>Домен определён сам: <b>%s</b><br>Забери ссылку из логов деплоя.</p>" % d
     else:
-        extra = "<p>Домен определяю... Обнови страницу через 10 секунд,<br>а ссылку забери из Deploy Logs.</p>"
+        extra = "<p>Домен определяю... Обнови страницу через 10 секунд,<br>а ссылку забери из логов деплоя.</p>"
     body = (HTML_TOP + extra + HTML_BOTTOM).encode("utf-8")
     head = (
         "HTTP/1.1 200 OK\r\n"
@@ -194,12 +193,12 @@ def handle(conn):
             send_text(conn, "204 No Content", "")
             conn.close()
             return
-        # Все остальное — к Xray сырым TCP
+        # Всё остальное — к движку сырым TCP
         try:
             up = socket.create_connection((UPSTREAM_HOST, UPSTREAM_PORT), timeout=5)
         except OSError:
             send_text(conn, "503 Service Unavailable",
-                      "Xray ещё стартует, повтори через пару секунд.")
+                      "Движок ещё стартует, повтори через пару секунд.")
             conn.close()
             return
         try:
@@ -212,7 +211,7 @@ def handle(conn):
         pipe(conn, up)  # закрывает оба сокета сам
     except Exception as e:
         try:
-            log("proxy error:", e)
+            log("gateway error:", e)
         except Exception:
             pass
         try:
@@ -226,8 +225,8 @@ def main():
     srv.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
     srv.bind(("0.0.0.0", LISTEN_PORT))
     srv.listen(128)
-    log("Прокси слушает 0.0.0.0:%d -> %s:%d" % (LISTEN_PORT, UPSTREAM_HOST, UPSTREAM_PORT))
-    log("XHTTP путь: %s" % XHTTP_PATH)
+    log("Шлюз слушает 0.0.0.0:%d -> %s:%d" % (LISTEN_PORT, UPSTREAM_HOST, UPSTREAM_PORT))
+    log("Путь: %s" % RELAY_PATH)
     log("Ловля домена ВКЛ: читаю Host из входящих запросов")
     while True:
         conn, _addr = srv.accept()

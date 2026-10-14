@@ -2,18 +2,18 @@
   "log": { "loglevel": "warning" },
   "inbounds": [
     {
-      "tag": "vless-xhttp",
+      "tag": "main-in",
       "port": "__INTERNAL_PORT__",
       "listen": "127.0.0.1",
-      "protocol": "vless",
+      "protocol": "__PROTO__",
       "settings": {
         "clients": [{ "id": "__UUID__", "flow": "" }],
         "decryption": "none"
       },
       "streamSettings": {
-        "network": "xhttp",
+        "network": "__NET__",
         "security": "none",
-        "xhttpSettings": { "mode": "__XHTTP_MODE__", "path": "__XHTTP_PATH__" }
+        "__NET__Settings": { "mode": "__MODE__", "path": "__RELAY_PATH__" }
       },
       "sniffing": {
         "enabled": true,
@@ -28,7 +28,11 @@
   "routing": {
     "domainStrategy": "IPIfNonMatch",
     "rules": [
-      { "type": "field", "ip": ["geoip:private"], "outboundTag": "block" },
+      {
+        "type": "field",
+        "ip": ["127.0.0.0/8", "10.0.0.0/8", "172.16.0.0/12", "192.168.0.0/16", "169.254.0.0/16"],
+        "outboundTag": "block"
+      },
       { "type": "field", "protocol": ["bittorrent"], "outboundTag": "block" }
     ]
   }

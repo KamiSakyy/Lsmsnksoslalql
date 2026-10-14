@@ -1,8 +1,4 @@
 .git
-VPN-README.md
-client-*
-Caddyfile
-docker-compose.yml
+START.md
 railway.toml
 render.yaml
-.env.example
