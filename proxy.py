@@ -4,11 +4,12 @@
 Прокси для PaaS-хостингов (Railway / Render / Koyeb / Fly).
 - Отвечает 200 OK на /, /health, /status (health-check хостинга).
 - Все остальное — сырой TCP-пайп на локальный Xray.
-  XHTTP работает поверх обычного HTTP, поэтому стрим не ломается,
-  а TLS терминирует сам хостинг.
+- ЛОВИТ ДОМЕН САМ: читает Host из входящих запросов и сохраняет
+  в DETECT_FILE, entrypoint подхватывает и печатает готовую ссылку.
 Только стандартная библиотека Python, зависимостей нет.
 """
 import os
+import re
 import socket
 import select
 import threading
@@ -17,25 +18,91 @@ LISTEN_PORT = int(os.environ.get("PORT", "8080"))
 UPSTREAM_HOST = "127.0.0.1"
 UPSTREAM_PORT = int(os.environ.get("INTERNAL_PORT", "8081"))
 XHTTP_PATH = os.environ.get("XHTTP_PATH", "/api/uploadFile/")
+DETECT_FILE = os.environ.get("DETECT_FILE", "/tmp/detected_domain")
 
 HEALTH_PATHS = {"/", "/health", "/status", "/ping"}
 
-HTML_OK = """<!doctype html><html lang="ru"><head><meta charset="utf-8">
+HTML_TOP = """<!doctype html><html lang="ru"><head><meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1">
 <title>VPN работает</title></head>
-<body style="font-family:sans-serif;text-align:center;margin-top:15vh">
+<body style="font-family:sans-serif;text-align:center;margin-top:12vh">
 <h1>VPN сервер запущен</h1>
 <p>Это техническая страница для проверки хостинга.</p>
-<p>Подключайся через <b>v2rayNG</b> по VLESS-ссылке из логов деплоя.</p>
-</body></html>""".encode("utf-8")
+"""
+
+HTML_BOTTOM = """<p>Подключайся через <b>v2rayNG</b> по VLESS-ссылке из логов деплоя.</p>
+</body></html>"""
 
 
 def log(*a):
     print(*a, flush=True)
 
 
+def save_detected_domain(host):
+    """Первый настоящий домен побеждает — дальше не перезаписываем."""
+    try:
+        if os.path.exists(DETECT_FILE):
+            with open(DETECT_FILE, "r") as f:
+                if f.read().strip():
+                    return
+        clean = host.split(":")[0].strip().lower()
+        with open(DETECT_FILE, "w") as f:
+            f.write(clean + "\n")
+        log("ОБНАРУЖЕН ДОМЕН САМ: %s" % clean)
+    except Exception as e:
+        log("detect save error:", e)
+
+
+def get_detected_domain():
+    try:
+        with open(DETECT_FILE, "r") as f:
+            return f.read().strip()
+    except Exception:
+        return ""
+
+
+def get_host_header(data: bytes):
+    try:
+        head = data.split(b"\r\n\r\n", 1)[0].decode("latin-1")
+        for line in head.split("\r\n")[1:]:
+            if ":" in line:
+                k, v = line.split(":", 1)
+                if k.strip().lower() == "host":
+                    return v.strip()
+    except Exception:
+        pass
+    return ""
+
+
+def is_public_host(host):
+    """Настоящий публичный домен? Отсекаем IP, localhost, внутренние зоны."""
+    if not host:
+        return False
+    h = host.split(":")[0].strip().lower().rstrip(".")
+    if not h or " " in h or len(h) < 4 or "." not in h:
+        return False
+    if h == "localhost" or h.endswith(".local") or h.endswith(".internal") or h.endswith(".invalid"):
+        return False
+    try:
+        import ipaddress
+        ipaddress.ip_address(h)
+        return False
+    except Exception:
+        pass
+    if h.startswith("10.") or h.startswith("192.168.") or h.startswith("127."):
+        return False
+    if re.match(r"^172\.(1[6-9]|2\d|3[01])\.", h):
+        return False
+    return True
+
+
 def send_ok(conn):
-    body = HTML_OK
+    d = get_detected_domain()
+    if d:
+        extra = "<p>Домен определён сам: <b>%s</b><br>Забери VLESS-ссылку из Deploy Logs.</p>" % d
+    else:
+        extra = "<p>Домен определяю... Обнови страницу через 10 секунд,<br>а ссылку забери из Deploy Logs.</p>"
+    body = (HTML_TOP + extra + HTML_BOTTOM).encode("utf-8")
     head = (
         "HTTP/1.1 200 OK\r\n"
         "Content-Type: text/html; charset=utf-8\r\n"
@@ -114,6 +181,10 @@ def handle(conn):
         if not first:
             conn.close()
             return
+        # Узнаём домен сами из Host — на ЛЮБОМ запросе
+        host = get_host_header(first)
+        if is_public_host(host):
+            save_detected_domain(host)
         method, path = first_line_info(first)
         if method in ("GET", "HEAD") and path in HEALTH_PATHS:
             send_ok(conn)
@@ -157,6 +228,7 @@ def main():
     srv.listen(128)
     log("Прокси слушает 0.0.0.0:%d -> %s:%d" % (LISTEN_PORT, UPSTREAM_HOST, UPSTREAM_PORT))
     log("XHTTP путь: %s" % XHTTP_PATH)
+    log("Ловля домена ВКЛ: читаю Host из входящих запросов")
     while True:
         conn, _addr = srv.accept()
         t = threading.Thread(target=handle, args=(conn,), daemon=True)
