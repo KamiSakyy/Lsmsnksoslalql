@@ -1,4 +1,4 @@
-name: Restore original detail and correct the girl rig
+name: Precise fingers and facial expressions on the original model
 
 on:
   push:
@@ -67,19 +67,27 @@ jobs:
       - name: Test source fitting, bounded weights, face transfer and original buffers
         run: python -m unittest discover -s tests/rigging -v
 
-      - name: Build the actual skeleton, skin and animation assets on CPU
+      - name: Restore the immutable verified full-resolution body input
         run: |
           set -euo pipefail
           mkdir -p build
-          preview_args=()
-          if [[ "$RENDER_PREVIEWS" == "true" ]]; then
-            preview_args+=(--render)
-          fi
-          python -X faulthandler tools/rigging/rig_model.py \
-            --archive "$SOURCE_ARCHIVE" \
-            --output build/rigged \
-            --target-triangles 160000 \
-            --validate-gltf --quality-renders "${preview_args[@]}" 2>&1 | tee build/rigging.log
+          git fetch origin df1042bad7a9a902898f193bbb023d4b123811e0 --depth=1
+          git show df1042bad7a9a902898f193bbb023d4b123811e0:handoff/rigged/anime-girl-rigged.glb > build/body-base.glb
+          echo 'Original-detail body input, not a LOD replacement. Same working branch stays checked out.'
+
+      - name: Fit and bind all finger phalanges and build actual facial shapes
+        run: |
+          set -euo pipefail
+          python -X faulthandler tools/rigging/refine_model.py \
+            --base build/body-base.glb --archive "$SOURCE_ARCHIVE" \
+            --output build/rigged --validate-gltf 2>&1 | tee build/rigging.log
+
+      - name: Create matching full-detail editable assets and real close-up quality renders
+        run: |
+          set -euo pipefail
+          python -X faulthandler tools/rigging/editable_detail.py \
+            --model build/rigged/anime-girl-rigged.glb \
+            --output build/rigged 2>&1 | tee -a build/rigging.log
 
       - name: Upload complete editable and full-resolution results
         uses: actions/upload-artifact@v7.0.2
@@ -97,6 +105,7 @@ jobs:
             build/rigged/*.gif
             build/rigged/README_RU.md
             build/rigged/quality/*.png
+            build/rigged/quality/*.gif
 
       - name: Save the FULL original-resolution model as the main download in Git
         shell: bash
@@ -108,7 +117,8 @@ jobs:
           rm -f -- handoff/rigged/anime-girl-rigged.fbx
           cp build/rigged/joint-fitting.json handoff/rigged/
           mkdir -p handoff/rigged/quality
-          cp build/rigged/quality/*.png handoff/rigged/quality/
+          rm -f -- handoff/rigged/quality/*.png handoff/rigged/quality/*.gif
+          cp build/rigged/quality/*.png build/rigged/quality/*.gif handoff/rigged/quality/
           cp build/rigged/rig-report.json build/rigged/khronos-validation.json handoff/rigged/
           # Never publish outdated renders as if they belonged to the new model.
           for preview in rest-pose.png skeleton.png animation-preview.gif; do
@@ -127,18 +137,18 @@ jobs:
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
           git add -- handoff/rigged handoff/rigging-diagnostics
           if ! git diff --cached --quiet; then
-            git commit -m "Save full original-detail GLB with corrected fitted rig and deformation checks"
+            git commit -m "Save original-detail GLB with 100 joints, articulated fingers and 40 facial expressions"
             git push origin arena/1e52fcec-lsmsnksoslalql
           fi
           {
             echo '## Модель со скелетом и анимациями готова'
-            echo '- 48 костей: тело, волосы, пальто, юбка; не более 4 влияний на вершину.'
-            echo '- 5 процедурных клипов: Idle, Walk_InPlace, Run_InPlace, Wave, Dance.'
+            echo '- 100 настоящих skin joints: тело + 30 костей фаланг + 22 кости лица; четыре 16-битных влияния.'
+            echo '- 40 настоящих facial targets и 12 клипов; движение всех десяти пальцев и мимики проверено на вершинах полного меша.'
             echo '- ОСНОВНОЙ GLB — исходные 1 159 795 вершин / 1 981 742 треугольника; прямо в handoff/rigged. Эмулятор не нужен.'
             echo '- Внутренняя расчётная поверхность НЕ является выдаваемой моделью. Полноразмерные FBX/Blender: артефакт anime-girl-rigged (90 дней).'
             echo '- Побайтно проверена сохранность исходных геометрии/UV/текстур; исправлена глубина рук/ног; 16-битные веса; 21 время каждого клипа на полном GLB.'
             echo '- Проверка Khronos дополнена проверкой настоящих деформаций и офлайн-рендерами полной модели.'
-            echo '- Это автоматический стартовый FK-риг: без мимики, отдельных пальцев и физической ткани.'
+            echo '- Сохранены полная геометрия и 4K-текстуры; суставы пальцев подогнаны по реальной согнутой позе. Мимика и пальцы теперь есть, не только названия.'
           } >> "$GITHUB_STEP_SUMMARY"
 
       - name: Preserve diagnostics if any build or validation step fails

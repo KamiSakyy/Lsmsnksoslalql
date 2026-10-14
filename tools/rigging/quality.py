@@ -9,7 +9,7 @@ from pathlib import Path
 
 import numpy as np
 
-from core import read_accessor, read_glb, world_matrices
+from core import read_accessor, read_sparse_accessor, read_glb, world_matrices
 
 
 def quaternion_slerp(a, b, factor):
@@ -46,6 +46,17 @@ class SkinEvaluator:
         attrs = self.primitive['attributes']
         self.positions = read_accessor(doc, raw, attrs['POSITION']).astype(np.float64)
         self.triangles = read_accessor(doc, raw, self.primitive['indices']).ravel().reshape(-1, 3)
+        self.morphs = []
+        for target in self.primitive.get('targets', []):
+            index = target['POSITION']
+            accessor = doc['accessors'][index]
+            if 'sparse' in accessor and 'bufferView' not in accessor:
+                self.morphs.append(read_sparse_accessor(doc, raw, index))
+            else:
+                data = read_accessor(doc, raw, index)
+                ids = np.flatnonzero(np.linalg.norm(data, axis=1)>0)
+                self.morphs.append((ids, data[ids]))
+        self.default_morph_weights = node.get('weights', doc['meshes'][node['mesh']].get('weights', [0.]*len(self.morphs)))
         self.joints = read_accessor(doc, raw, attrs['JOINTS_0'])
         self.weights = read_accessor(doc, raw, attrs['WEIGHTS_0'])
         self.inverse_bind = read_accessor(doc, raw, self.skin['inverseBindMatrices']).reshape(-1, 4, 4).transpose(0, 2, 1)
@@ -62,6 +73,8 @@ class SkinEvaluator:
                 times = read_accessor(doc, raw, sampler['input']).ravel()
                 values = read_accessor(doc, raw, sampler['output'])
                 target = channel['target']
+                if target['path'] == 'weights':
+                    values = values.reshape(len(times), len(self.morphs))
                 channels.append((target['node'], target['path'], times, values, interpolation))
                 duration = max(duration, float(times[-1]))
             self.channels[animation['name']] = channels
@@ -74,6 +87,8 @@ class SkinEvaluator:
         doc['nodes'] = [dict(node) for node in self.document['nodes']]
         if name is not None:
             for node, kind, times, values, interpolation in self.channels[name]:
+                if kind == 'weights':
+                    continue
                 left = int(np.clip(np.searchsorted(times, time, side='right') - 1, 0, len(times) - 1))
                 right = min(left + 1, len(times) - 1)
                 fraction = 0. if left == right else float(np.clip((time-times[left]) / (times[right]-times[left]), 0, 1))
@@ -88,13 +103,14 @@ class SkinEvaluator:
         world = world_matrices(doc)
         return np.asarray([world[index] for index in self.skin['joints']]) @ self.inverse_bind
 
-    def deform(self, matrices: np.ndarray, indexes=None, weights=None, chunk=65536) -> np.ndarray:
+    def deform(self, matrices: np.ndarray, indexes=None, weights=None, chunk=65536, positions=None) -> np.ndarray:
         indexes = self.joints if indexes is None else indexes
         weights = self.weights if weights is None else weights
-        result = np.empty_like(self.positions)
+        positions = self.positions if positions is None else positions
+        result = np.empty_like(positions)
         for start in range(0, len(result), chunk):
             stop = min(start + chunk, len(result))
-            p = self.positions[start:stop]
+            p = positions[start:stop]
             deformed = np.zeros_like(p)
             for slot in range(indexes.shape[1]):
                 transforms = matrices[indexes[start:stop, slot]]
@@ -102,6 +118,27 @@ class SkinEvaluator:
                 deformed += moved * weights[start:stop, slot, None]
             result[start:stop] = deformed
         return result
+
+    def positions_at(self, name=None, time=0.):
+        amounts = np.array(self.default_morph_weights, dtype=float)
+        if name is not None:
+            for node, kind, times, values, interpolation in self.channels[name]:
+                if kind != 'weights' or node != self.node_index:
+                    continue
+                left = int(np.clip(np.searchsorted(times, time, side='right')-1, 0, len(times)-1))
+                right = min(left+1, len(times)-1)
+                fraction = 0 if left == right else float(np.clip((time-times[left])/(times[right]-times[left]), 0, 1))
+                amounts = values[left] if interpolation == 'STEP' else values[left]*(1-fraction)+values[right]*fraction
+        if not np.any(amounts):
+            return self.positions
+        result = self.positions.copy()
+        for amount, (ids, delta) in zip(amounts, self.morphs):
+            if amount:
+                result[ids] += amount*delta
+        return result
+
+    def posed(self, name, time):
+        return self.deform(self.matrices(name, time), positions=self.positions_at(name, time))
 
     def audit(self, frames=21, indexes=None, weights=None, worst_edges=0) -> dict:
         indexes = self.joints if indexes is None else indexes
@@ -123,7 +160,7 @@ class SkinEvaluator:
                        'edge_compression_p00_5': 1., 'maximum_extent_in_model_heights': 0.}
             worst = None
             for time in np.linspace(0, duration, frames):
-                posed = self.deform(self.matrices(name, float(time)), indexes, weights)
+                posed = self.deform(self.matrices(name, float(time)), indexes, weights, positions=self.positions_at(name, float(time)))
                 if not np.all(np.isfinite(posed)):
                     raise ValueError(f'Non-finite exported deformation: {name}')
                 ratio = np.linalg.norm(posed[edges[:, 0]] - posed[edges[:, 1]], axis=1) / lengths
@@ -148,7 +185,7 @@ class SkinEvaluator:
         return results
 
 
-def assert_geometry_preserved(source_path: Path, output_path: Path) -> dict:
+def assert_geometry_preserved(source_path: Path, output_path: Path, allow_morph_targets=False) -> dict:
     """Require exact original attribute definitions, binary buffers and textures."""
     source, original = read_glb(source_path)
     output, current = read_glb(output_path)
@@ -170,7 +207,7 @@ def assert_geometry_preserved(source_path: Path, output_path: Path) -> dict:
             for key, value in a['attributes'].items():
                 if b['attributes'].get(key) != value:
                     raise ValueError(f'Original {key} attribute was replaced')
-            for key in ('indices', 'material', 'mode', 'targets'):
+            for key in ('indices', 'material', 'mode') + (() if allow_morph_targets else ('targets',)):
                 if a.get(key) != b.get(key):
                     raise ValueError(f'Original primitive {key} was replaced')
     import hashlib

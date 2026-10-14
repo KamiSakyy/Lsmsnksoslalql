@@ -107,19 +107,41 @@ def write_glb(path: Path, document: dict, binary: bytes | bytearray) -> None:
 
 def read_accessor(document: dict, binary: bytes, index: int) -> np.ndarray:
     accessor = document['accessors'][index]
-    if 'sparse' in accessor:
-        raise ValueError('Sparse accessors are not supported by this inspection helper')
-    view = document['bufferViews'][accessor['bufferView']]
     dtype = np.dtype({5120: 'i1', 5121: 'u1', 5122: '<i2', 5123: '<u2',
                       5125: '<u4', 5126: '<f4'}[accessor['componentType']])
     width = {'SCALAR': 1, 'VEC2': 2, 'VEC3': 3, 'VEC4': 4, 'MAT4': 16}[accessor['type']]
-    stride = view.get('byteStride', width * dtype.itemsize)
-    result = np.ndarray((accessor['count'], width), dtype=dtype, buffer=binary,
-                        offset=view.get('byteOffset', 0) + accessor.get('byteOffset', 0),
-                        strides=(stride, dtype.itemsize)).copy()
+    if 'bufferView' in accessor:
+        view = document['bufferViews'][accessor['bufferView']]
+        result = np.ndarray((accessor['count'], width), dtype=dtype, buffer=binary,
+            offset=view.get('byteOffset', 0)+accessor.get('byteOffset', 0),
+            strides=(view.get('byteStride', width*dtype.itemsize), dtype.itemsize)).copy()
+    else:
+        result = np.zeros((accessor['count'], width), dtype=dtype)
+    if 'sparse' in accessor:
+        ids, values = read_sparse_accessor(document, binary, index)
+        result[ids] = values
     if accessor.get('normalized'):
-        result = result.astype(np.float32) / np.iinfo(dtype).max
+        result = np.maximum(result.astype(np.float32)/np.iinfo(dtype).max, -1)
     return result
+
+
+def read_sparse_accessor(document, binary, index):
+    accessor = document['accessors'][index]
+    sparse = accessor['sparse']
+    ids = sparse['indices']; values = sparse['values']
+    iv = document['bufferViews'][ids['bufferView']]
+    vv = document['bufferViews'][values['bufferView']]
+    idtype = np.dtype({5121: 'u1', 5123: '<u2', 5125: '<u4'}[ids['componentType']])
+    dtype = np.dtype({5120: 'i1', 5121: 'u1', 5122: '<i2', 5123: '<u2',
+                      5125: '<u4', 5126: '<f4'}[accessor['componentType']])
+    width = {'SCALAR': 1, 'VEC2': 2, 'VEC3': 3, 'VEC4': 4, 'MAT4': 16}[accessor['type']]
+    indexes = np.frombuffer(binary, dtype=idtype, count=sparse['count'],
+        offset=iv.get('byteOffset', 0)+ids.get('byteOffset', 0)).copy()
+    array = np.frombuffer(binary, dtype=dtype, count=sparse['count']*width,
+        offset=vv.get('byteOffset', 0)+values.get('byteOffset', 0)).reshape(-1, width).copy()
+    if np.any(indexes >= accessor['count']) or np.any(np.diff(indexes.astype(np.int64)) <= 0):
+        raise ValueError('Invalid sparse accessor indices')
+    return indexes, array
 
 
 def smoothstep(start: float, end: float, x: np.ndarray) -> np.ndarray:
