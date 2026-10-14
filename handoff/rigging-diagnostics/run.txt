@@ -1,6 +1,2 @@
-Run: https://github.com/KamiSakyy/Lsmsnksoslalql/actions/runs/38550554088
-joint-fitting.json 10275 bytes
-README_RU.md 7180 bytes
-anime-girl-rigged.glb 89765092 bytes
-rig-report.json 48026 bytes
-khronos-validation.json 2870 bytes
+Run: https://github.com/KamiSakyy/Lsmsnksoslalql/actions/runs/38552808834
+Status: success

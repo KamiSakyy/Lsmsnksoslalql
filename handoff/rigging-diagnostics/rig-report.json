@@ -8,8 +8,8 @@
   },
   "primary": {
     "file": "anime-girl-rigged.glb",
-    "bytes": 89765092,
-    "sha256": "fcd76db183d278025067bc1c2a24f30bd7b4926fb39e85ede0482f5090cc3e93",
+    "bytes": 89765072,
+    "sha256": "48871ecb571fbf41300847701d8952d0c4182d5b99b6ee810093164c97be061f",
     "vertices": 1159795,
     "triangles": 1981742,
     "skin": {
@@ -236,7 +236,7 @@
         ],
         "locality_power": 1.0,
         "max_active_set_iterations": 30,
-        "elapsed_seconds": 4.915765947000068
+        "elapsed_seconds": 7.341549783000005
       },
       "weighted_vertices_per_phalanx": {
         "mixamorig:RightHandThumb1": 3406,
@@ -265,7 +265,7 @@
             [
               0.13665850647041686,
               0.8021637622848489,
-              0.06334970027109924
+              0.06334970027109922
             ],
             [
               0.12782208902238423,
@@ -284,13 +284,13 @@
             ]
           ],
           "nearest_source_surface_distance": [
-            0.0005687133128083016,
+            0.0005687133128083003,
             0.0016458718031939319,
             0.0,
             0.0
           ],
           "template_adjustment": [
-            0.002799999999999983,
+            0.002799999999999996,
             0.0027999999999999874,
             0.006110373172585223,
             0.013345280106555791
@@ -453,17 +453,17 @@
         ],
         "locality_power": 1.0,
         "max_active_set_iterations": 30,
-        "elapsed_seconds": 8.33964065400005
+        "elapsed_seconds": 11.716880998000079
       },
       "weighted_vertices_per_phalanx": {
         "mixamorig:LeftHandThumb1": 5270,
         "mixamorig:LeftHandThumb2": 1728,
         "mixamorig:LeftHandThumb3": 1119,
         "mixamorig:LeftHandIndex1": 1946,
-        "mixamorig:LeftHandIndex2": 2529,
+        "mixamorig:LeftHandIndex2": 2527,
         "mixamorig:LeftHandIndex3": 1307,
         "mixamorig:LeftHandMiddle1": 738,
-        "mixamorig:LeftHandMiddle2": 5925,
+        "mixamorig:LeftHandMiddle2": 5927,
         "mixamorig:LeftHandMiddle3": 2516,
         "mixamorig:LeftHandRing1": 494,
         "mixamorig:LeftHandRing2": 630,
@@ -959,7 +959,7 @@
       "head": [
         0.13665850647041686,
         0.8021637622848489,
-        0.06334970027109924
+        0.06334970027109922
       ],
       "tail": [
         0.12782208902238423,
@@ -1512,17 +1512,17 @@
     "digits": {
       "RightThumb": {
         "weighted_test_vertices": 2697,
-        "maximum_independent_displacement": 0.021090926054071396,
+        "maximum_independent_displacement": 0.021090926054071372,
         "time_seconds": 0.4
       },
       "RightIndex": {
         "weighted_test_vertices": 2875,
-        "maximum_independent_displacement": 0.03220356675825236,
+        "maximum_independent_displacement": 0.032203566758252186,
         "time_seconds": 1.4
       },
       "RightMiddle": {
         "weighted_test_vertices": 2489,
-        "maximum_independent_displacement": 0.03490705504510995,
+        "maximum_independent_displacement": 0.03490705504510997,
         "time_seconds": 2.4
       },
       "RightRing": {
@@ -1532,27 +1532,27 @@
       },
       "RightPinky": {
         "weighted_test_vertices": 2278,
-        "maximum_independent_displacement": 0.02081161560683541,
+        "maximum_independent_displacement": 0.02081161560683547,
         "time_seconds": 4.4
       },
       "LeftThumb": {
         "weighted_test_vertices": 3120,
-        "maximum_independent_displacement": 0.012678001874092742,
+        "maximum_independent_displacement": 0.0126780018740928,
         "time_seconds": 5.4
       },
       "LeftIndex": {
         "weighted_test_vertices": 2360,
-        "maximum_independent_displacement": 0.015110744712886945,
+        "maximum_independent_displacement": 0.015110744712886941,
         "time_seconds": 6.4
       },
       "LeftMiddle": {
         "weighted_test_vertices": 3855,
-        "maximum_independent_displacement": 0.018879108810839526,
+        "maximum_independent_displacement": 0.018879108810839536,
         "time_seconds": 7.4
       },
       "LeftRing": {
         "weighted_test_vertices": 2597,
-        "maximum_independent_displacement": 0.012346420943354116,
+        "maximum_independent_displacement": 0.012346420943354093,
         "time_seconds": 8.4
       },
       "LeftPinky": {
@@ -1726,15 +1726,15 @@
     "local_hand_deformation": {
       "Right": {
         "tested_physical_edges": 41035,
-        "stretch_p99_5": 1.6415894142136214,
-        "stretch_p99_9": 2.0398184671509387,
-        "maximum": 2.784531443472769
+        "stretch_p99_5": 1.6415894142136096,
+        "stretch_p99_9": 2.0398184671510555,
+        "maximum": 2.78453144347293
       },
       "Left": {
         "tested_physical_edges": 61210,
-        "stretch_p99_5": 2.433203734078986,
-        "stretch_p99_9": 2.8250213274402958,
-        "maximum": 3.159364433714949
+        "stretch_p99_5": 2.433203734079001,
+        "stretch_p99_9": 2.8250213274401568,
+        "maximum": 3.159364433714765
       }
     },
     "Blink": {
@@ -1751,7 +1751,7 @@
     "Dance": {
       "sampled_frames": 21,
       "edge_stretch_p99_5": 1.2928531572868915,
-      "edge_stretch_p99_9": 1.5603947726293783,
+      "edge_stretch_p99_9": 1.560394772629367,
       "edge_stretch_max": 16.00790842599585,
       "edge_compression_p00_5": 0.7086568412217849,
       "maximum_extent_in_model_heights": 0.986053616502108,
@@ -1759,26 +1759,26 @@
     },
     "Idle": {
       "sampled_frames": 21,
-      "edge_stretch_p99_5": 1.0943448477039641,
-      "edge_stretch_p99_9": 1.1897501603327425,
+      "edge_stretch_p99_5": 1.0943448477039295,
+      "edge_stretch_p99_9": 1.1897501603327285,
       "edge_stretch_max": 5.181928955573959,
-      "edge_compression_p00_5": 0.9199114194813482,
+      "edge_compression_p00_5": 0.9199146442973053,
       "maximum_extent_in_model_heights": 1.0000895171810915,
       "worst_time": 0.2
     },
     "Run_InPlace": {
       "sampled_frames": 21,
-      "edge_stretch_p99_5": 1.3392127514839403,
-      "edge_stretch_p99_9": 1.6787284084394603,
-      "edge_stretch_max": 13.218524191561082,
-      "edge_compression_p00_5": 0.6120346142101379,
+      "edge_stretch_p99_5": 1.3392127514839407,
+      "edge_stretch_p99_9": 1.6787284084394658,
+      "edge_stretch_max": 13.218524191561047,
+      "edge_compression_p00_5": 0.6120346142101669,
       "maximum_extent_in_model_heights": 0.9923890513361413,
       "worst_time": 0.5600000083446502
     },
     "Walk_InPlace": {
       "sampled_frames": 21,
-      "edge_stretch_p99_5": 1.1819337905504552,
-      "edge_stretch_p99_9": 1.3349796828233023,
+      "edge_stretch_p99_5": 1.1819337905504101,
+      "edge_stretch_p99_9": 1.3349796828232954,
       "edge_stretch_max": 8.375973670393584,
       "edge_compression_p00_5": 0.7427277488692,
       "maximum_extent_in_model_heights": 0.9930362576750894,
@@ -1788,35 +1788,35 @@
       "sampled_frames": 21,
       "edge_stretch_p99_5": 1.5903115293073486,
       "edge_stretch_p99_9": 2.895142760148918,
-      "edge_stretch_max": 21.51513815740519,
-      "edge_compression_p00_5": 0.7632474664355567,
+      "edge_stretch_max": 21.51513815740518,
+      "edge_compression_p00_5": 0.7632474664355215,
       "maximum_extent_in_model_heights": 1.0000272108952752,
       "worst_time": 1.95
     },
     "Finger_Curl": {
       "sampled_frames": 21,
-      "edge_stretch_p99_5": 1.0574796368669441,
-      "edge_stretch_p99_9": 1.4285142077055806,
-      "edge_stretch_max": 38.80571482908671,
-      "edge_compression_p00_5": 0.9459793160727348,
+      "edge_stretch_p99_5": 1.0574796368668766,
+      "edge_stretch_p99_9": 1.4285142077055955,
+      "edge_stretch_max": 38.8057148290827,
+      "edge_compression_p00_5": 0.9459793160728934,
       "maximum_extent_in_model_heights": 1.0000000000503997,
       "worst_time": 1.5
     },
     "Finger_Spread": {
       "sampled_frames": 21,
-      "edge_stretch_p99_5": 1.0144798312374814,
-      "edge_stretch_p99_9": 1.093042372822443,
+      "edge_stretch_p99_5": 1.0144798312374788,
+      "edge_stretch_p99_9": 1.0930423728224428,
       "edge_stretch_max": 1.8317848572379578,
-      "edge_compression_p00_5": 0.9797085584072069,
+      "edge_compression_p00_5": 0.9797085584072216,
       "maximum_extent_in_model_heights": 1.0000000000503997,
       "worst_time": 1.5
     },
     "Finger_Isolation": {
       "sampled_frames": 21,
-      "edge_stretch_p99_5": 1.0000000264536102,
-      "edge_stretch_p99_9": 1.1379299705085077,
-      "edge_stretch_max": 33.36882529525388,
-      "edge_compression_p00_5": 0.9999999777463217,
+      "edge_stretch_p99_5": 1.0000000264536344,
+      "edge_stretch_p99_9": 1.1379299705085186,
+      "edge_stretch_max": 33.368825295250474,
+      "edge_compression_p00_5": 0.9999999777463218,
       "maximum_extent_in_model_heights": 1.0000000000503997,
       "worst_time": 5.5
     },
