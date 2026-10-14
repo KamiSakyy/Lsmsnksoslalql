@@ -3,11 +3,11 @@
     "uri": "anime-girl-rigged.glb",
     "mimeType": "model/gltf-binary",
     "validatorVersion": "2.0.0-dev.3.10",
-    "validatedAt": "2026-10-11T05:37:48.204Z",
+    "validatedAt": "2026-10-14T10:38:10.449Z",
     "issues": {
       "numErrors": 0,
       "numWarnings": 2,
-      "numInfos": 0,
+      "numInfos": 2,
       "numHints": 0,
       "messages": [
         {
@@ -21,19 +21,31 @@
           "message": "Local transforms will not affect a skinned mesh.",
           "severity": 1,
           "pointer": "/nodes/0"
+        },
+        {
+          "code": "UNUSED_OBJECT",
+          "message": "This object may be unused.",
+          "severity": 2,
+          "pointer": "/accessors/4"
+        },
+        {
+          "code": "UNUSED_MESH_WEIGHTS",
+          "message": "The static morph target weights are always overridden.",
+          "severity": 2,
+          "pointer": "/meshes/0/weights"
         }
       ],
       "truncated": false
     },
     "info": {
       "version": "2.0",
-      "generator": "Blender 4.2 LTS + libigl BBW; original Tripo mesh and textures byte-preserved",
+      "generator": "Source-preserved Blender/libigl body; source-fitted articulated fingers and geodesic facial rig with sparse expression geometry",
       "resources": [
         {
           "pointer": "/buffers/0",
           "mimeType": "application/gltf-buffer",
           "storage": "glb",
-          "byteLength": 84217472
+          "byteLength": 89503704
         },
         {
           "pointer": "/images/0",
@@ -71,9 +83,9 @@
           }
         }
       ],
-      "animationCount": 5,
+      "animationCount": 12,
       "materialCount": 1,
-      "hasMorphTargets": false,
+      "hasMorphTargets": true,
       "hasSkins": true,
       "hasTextures": true,
       "hasDefaultScene": true,
