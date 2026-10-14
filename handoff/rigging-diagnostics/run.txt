@@ -1,2 +1,3 @@
-Run: https://github.com/KamiSakyy/Lsmsnksoslalql/actions/runs/38115131801
-Status: success
+Run: https://github.com/KamiSakyy/Lsmsnksoslalql/actions/runs/38546903924
+anime-girl-rigged.glb 89765092 bytes
+rig-report.json 36790 bytes

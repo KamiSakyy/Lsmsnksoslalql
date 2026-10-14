@@ -1,26 +1,59 @@
-[    0.0s] Blender 4.2.23 LTS; archive SHA-256 5b3a69491504d2a526c3a25f32012a102456663d7dbb3082d154287cfbab2eb5
-[    0.6s] Joint depths fitted to the actual source: free hand, raised arm, backward leg and both ankles
-[    6.0s] Welded runtime topology: 1,117,173 → 990,818 vertices; UV corners preserved
-[   35.7s] Mesh: 1,117,173 source vertices; 79,947 runtime vertices / 160,000 triangles
-[   36.1s] libigl BBW: 79,947 vertices, 321 handles, 1 surface components
-[  178.8s] BBW solved in 142.7s; raw bounds [-0.0012442340623878116, 1.0017397627740305]
-[  179.4s] Generating Idle: 121 keyframes on the fitted skeleton
-[  179.9s] Generating Walk_InPlace: 37 keyframes on the fitted skeleton
-[  180.1s] Generating Run_InPlace: 25 keyframes on the fitted skeleton
-[  180.2s] Generating Wave: 91 keyframes on the fitted skeleton
-[  180.5s] Generating Dance: 121 keyframes on the fitted skeleton
-[  181.0s] Exporting the INTERNAL solver cage and sampled animation carriers; not the delivered model
-[  184.2s] Transferring skin to full-resolution Blender geometry using closest faces
-[  189.4s] Transferring skin to ALL original GLB vertices; geometry/UV/textures remain untouched
-[  191.7s] Auditing REAL EXPORTED FULL-resolution skin at 21 times per clip
-[  251.4s] FULL QA Dance: p99.5=1.277, p99.9=1.472, max=6.129, compression=0.709
-[  251.4s] FULL QA Idle: p99.5=1.090, p99.9=1.180, max=2.350, compression=0.921
-[  251.4s] FULL QA Run_InPlace: p99.5=1.322, p99.9=1.567, max=8.539, compression=0.612
-[  251.4s] FULL QA Walk_InPlace: p99.5=1.174, p99.9=1.289, max=4.658, compression=0.743
-[  251.4s] FULL QA Wave: p99.5=1.567, p99.9=2.825, max=8.495, compression=0.764
-anime-girl-rigged.glb: 0 errors, 2 warnings
-[  253.0s] Exporting FULL-resolution FBX with sampled clips, not an optimized replacement
-[  281.9s] Quality render: untouched high-poly source at rest
-[  297.8s] Quality render: the same high-poly geometry with its real skin at rest
-[  314.3s] Quality render: full high-poly Wave at the audited worst time 0.750s
-[  331.6s] DONE: original-detail GLB 84,393,664 bytes; original buffers verified; high-poly FBX/Blender; deformation gates passed
+[    0.8s] Face fitted to 18,617 original vertices; measured eye/lip landmarks {'Left': {'eye': [0.011770273999614897, 0.8956249610761662, 0.07856309535220231], 'eye_bounds_p05': [0.005753523648479343, 0.8907330136389114, 0.07708943900294653], 'eye_bounds_p95': [0.01778702435075045, 0.900516908513421, 0.08003675170145809], 'feature_samples': 157}, 'Right': {'eye': [-0.04349836691710099, 0.8957970044217476, 0.07671206483153764], 'eye_bounds_p05': [-0.05156144099803629, 0.8910755433767205, 0.07352517593572896], 'eye_bounds_p95': [-0.03543529283616569, 0.9005184654667746, 0.07989895372734633], 'feature_samples': 236}, 'mouth': [-0.01432123972349968, 0.8586247431026967, 0.08453245451020194], 'mouth_bounds_p05': [-0.025862365141079435, 0.857165099333624, 0.0833670749249743], 'mouth_bounds_p95': [-0.002780114305919926, 0.8600843868717694, 0.08569783409542957], 'face_vertex_count': 18617, 'method': 'nose-seeded surface geodesics + actual UV eye/lip features + 3D geometry'}
+[    0.9s] Fine hand-only surface BBW solve for Right, 15 individual phalanges
+[    1.0s] libigl BBW: 13,108 vertices, 105 handles, 2 surface components
+[    5.6s] BBW solved in 4.6s; raw bounds [-8.778289599327044e-05, 1.0000005421483185]
+[    5.6s] Fine hand-only surface BBW solve for Left, 15 individual phalanges
+[    5.7s] libigl BBW: 19,829 vertices, 105 handles, 1 surface components
+[   13.0s] BBW solved in 7.3s; raw bounds [-0.00038372306394447904, 1.0003724481458922]
+[   13.1s] Correcting face skin to head/jaw/lips/lids/brows instead of distant hair/spine fields
+[   13.2s] Building actual sparse expression eyeBlinkLeft: 4,021 vertices
+[   13.2s] Building actual sparse expression eyeSquintLeft: 4,014 vertices
+[   13.2s] Building actual sparse expression eyeWideLeft: 4,007 vertices
+[   13.3s] Building actual sparse expression browOuterUpLeft: 2,902 vertices
+[   13.3s] Building actual sparse expression browDownLeft: 1,838 vertices
+[   13.3s] Building actual sparse expression mouthSmileLeft: 2,246 vertices
+[   13.3s] Building actual sparse expression mouthFrownLeft: 2,213 vertices
+[   13.4s] Building actual sparse expression mouthStretchLeft: 2,240 vertices
+[   13.4s] Building actual sparse expression mouthUpperUpLeft: 1,729 vertices
+[   13.4s] Building actual sparse expression mouthLowerDownLeft: 2,074 vertices
+[   13.4s] Building actual sparse expression mouthPressLeft: 1,848 vertices
+[   13.5s] Building actual sparse expression cheekSquintLeft: 4,197 vertices
+[   13.5s] Building actual sparse expression noseSneerLeft: 2,098 vertices
+[   13.5s] Building actual sparse expression eyeBlinkRight: 4,504 vertices
+[   13.5s] Building actual sparse expression eyeSquintRight: 4,503 vertices
+[   13.6s] Building actual sparse expression eyeWideRight: 4,499 vertices
+[   13.6s] Building actual sparse expression browOuterUpRight: 2,351 vertices
+[   13.6s] Building actual sparse expression browDownRight: 2,398 vertices
+[   13.7s] Building actual sparse expression mouthSmileRight: 2,415 vertices
+[   13.7s] Building actual sparse expression mouthFrownRight: 2,392 vertices
+[   13.7s] Building actual sparse expression mouthStretchRight: 2,409 vertices
+[   13.7s] Building actual sparse expression mouthUpperUpRight: 1,878 vertices
+[   13.8s] Building actual sparse expression mouthLowerDownRight: 2,047 vertices
+[   13.8s] Building actual sparse expression mouthPressRight: 1,938 vertices
+[   13.8s] Building actual sparse expression cheekSquintRight: 4,495 vertices
+[   13.9s] Building actual sparse expression noseSneerRight: 2,178 vertices
+[   13.9s] Building actual sparse expression browInnerUp: 5,412 vertices
+[   13.9s] Building actual sparse expression jawOpen: 3,633 vertices
+[   13.9s] Building actual sparse expression jawLeft: 3,627 vertices
+[   14.0s] Building actual sparse expression jawRight: 3,627 vertices
+[   14.0s] Building actual sparse expression jawForward: 3,627 vertices
+[   14.0s] Building actual sparse expression mouthPucker: 5,953 vertices
+[   14.1s] Building actual sparse expression mouthFunnel: 6,013 vertices
+[   14.1s] Building actual sparse expression mouthClose: 3,627 vertices
+[   14.1s] Building actual sparse expression cheekPuff: 10,979 vertices
+[   14.2s] Building actual sparse expression viseme_A: 3,633 vertices
+[   14.2s] Building actual sparse expression viseme_I: 5,978 vertices
+[   14.2s] Building actual sparse expression viseme_U: 6,075 vertices
+[   14.2s] Building actual sparse expression viseme_E: 5,926 vertices
+[   14.3s] Building actual sparse expression viseme_O: 6,005 vertices
+[   17.6s] LOCAL hand QA Right: {'tested_physical_edges': 41035, 'stretch_p99_5': 1.5990140112371505, 'stretch_p99_9': 2.0634891782216656, 'maximum': 2.784531443472769}
+[   19.2s] LOCAL hand QA Left: {'tested_physical_edges': 61210, 'stretch_p99_5': 4.454765114083924, 'stretch_p99_9': 19.08829614933635, 'maximum': 49.65613580308427}
+Traceback (most recent call last):
+  File "/home/runner/work/Lsmsnksoslalql/Lsmsnksoslalql/tools/rigging/refine_model.py", line 521, in <module>
+    main()
+  File "/home/runner/work/Lsmsnksoslalql/Lsmsnksoslalql/tools/rigging/refine_model.py", line 495, in main
+    report['actual_motion_checks'] = local_motion_checks(path, finger_bones, finger_regions, face_ids, list(fields))
+                                     ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/home/runner/work/Lsmsnksoslalql/Lsmsnksoslalql/tools/rigging/refine_model.py", line 322, in local_motion_checks
+    raise ValueError(f'Local {side} hand deformation needs correction: {item}')
+ValueError: Local Left hand deformation needs correction: {'tested_physical_edges': 61210, 'stretch_p99_5': 4.454765114083924, 'stretch_p99_9': 19.08829614933635, 'maximum': 49.65613580308427}
