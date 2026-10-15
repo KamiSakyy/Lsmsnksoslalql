@@ -5,7 +5,7 @@ import android.widget.EditText;
 import android.widget.TextView;
 import androidx.appcompat.widget.Toolbar;
 import com.google.android.material.imageview.ShapeableImageView;
-import com.tsuyu.Lsmsnksoslalql.R;
+import com.tsuyu.messenger.R;
 
 /**
  * Контроллер экрана редактирования профиля (screen_profile_editor).

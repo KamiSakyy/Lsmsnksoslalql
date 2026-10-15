@@ -2,7 +2,7 @@ package com.tsuyu.messenger.ui.controllers;
 
 import android.view.View;
 import android.widget.TextView;
-import com.tsuyu.Lsmsnksoslalql.R;
+import com.tsuyu.messenger.R;
 
 /**
  * Контроллер плашки закреплённого сообщения (chat_pinned_bar).

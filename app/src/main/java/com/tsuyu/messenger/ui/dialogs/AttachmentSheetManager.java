@@ -4,7 +4,7 @@ import android.content.Context;
 import android.view.LayoutInflater;
 import android.view.View;
 import com.google.android.material.bottomsheet.BottomSheetDialog;
-import com.tsuyu.Lsmsnksoslalql.R;
+import com.tsuyu.messenger.R;
 
 /**
  * Менеджер модальной шторки вложений (sheet_attachments).

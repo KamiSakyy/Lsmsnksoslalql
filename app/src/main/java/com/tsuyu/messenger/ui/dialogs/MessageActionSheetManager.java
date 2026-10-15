@@ -5,7 +5,7 @@ import android.view.LayoutInflater;
 import android.view.View;
 import android.widget.TextView;
 import com.google.android.material.bottomsheet.BottomSheetDialog;
-import com.tsuyu.Lsmsnksoslalql.R;
+import com.tsuyu.messenger.R;
 
 /**
  * Менеджер контекстной шторки действий над сообщением (sheet_message_actions).

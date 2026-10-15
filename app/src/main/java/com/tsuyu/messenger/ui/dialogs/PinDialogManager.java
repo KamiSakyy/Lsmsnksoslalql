@@ -8,7 +8,7 @@ import android.view.View;
 import android.widget.Button;
 import android.widget.EditText;
 import android.widget.TextView;
-import com.tsuyu.Lsmsnksoslalql.R;
+import com.tsuyu.messenger.R;
 
 /**
  * Менеджер диалога блокировки и ввода PIN-кода (dialog_pin).

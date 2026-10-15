@@ -6,7 +6,7 @@ import android.view.View;
 import android.widget.EditText;
 import androidx.appcompat.widget.Toolbar;
 import androidx.recyclerview.widget.RecyclerView;
-import com.tsuyu.Lsmsnksoslalql.R;
+import com.tsuyu.messenger.R;
 
 /**
  * Контроллер экрана глобального поиска пользователей (screen_search).

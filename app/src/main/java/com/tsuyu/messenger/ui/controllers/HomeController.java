@@ -5,7 +5,7 @@ import android.text.TextWatcher;
 import android.view.View;
 import android.widget.EditText;
 import androidx.recyclerview.widget.RecyclerView;
-import com.tsuyu.Lsmsnksoslalql.R;
+import com.tsuyu.messenger.R;
 
 /**
  * Контроллер экрана со списком чатов (screen_home).

@@ -3,7 +3,7 @@ package com.tsuyu.messenger.ui.controllers;
 import android.view.View;
 import android.widget.TextView;
 import com.google.android.material.imageview.ShapeableImageView;
-import com.tsuyu.Lsmsnksoslalql.R;
+import com.tsuyu.messenger.R;
 
 /**
  * Контроллер верхней панели открытого чата (chat_toolbar).

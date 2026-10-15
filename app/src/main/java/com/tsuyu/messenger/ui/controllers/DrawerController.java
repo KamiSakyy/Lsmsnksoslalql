@@ -6,7 +6,7 @@ import android.widget.TextView;
 import androidx.drawerlayout.widget.DrawerLayout;
 import com.google.android.material.imageview.ShapeableImageView;
 import com.google.android.material.materialswitch.MaterialSwitch;
-import com.tsuyu.Lsmsnksoslalql.R;
+import com.tsuyu.messenger.R;
 
 /**
  * Контроллер бокового меню (view_drawer).

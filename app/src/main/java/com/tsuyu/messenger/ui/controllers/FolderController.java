@@ -5,7 +5,7 @@ import android.graphics.Typeface;
 import android.view.View;
 import android.widget.LinearLayout;
 import android.widget.TextView;
-import com.tsuyu.Lsmsnksoslalql.R;
+import com.tsuyu.messenger.R;
 import java.util.List;
 
 /**

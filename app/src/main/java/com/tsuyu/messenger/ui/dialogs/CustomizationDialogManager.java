@@ -8,7 +8,7 @@ import android.widget.TextView;
 import com.google.android.material.checkbox.MaterialCheckBox;
 import com.google.android.material.materialswitch.MaterialSwitch;
 import com.google.android.material.slider.Slider;
-import com.tsuyu.Lsmsnksoslalql.R;
+import com.tsuyu.messenger.R;
 
 /**
  * Менеджер модального диалога кастомизации (dialog_customization).

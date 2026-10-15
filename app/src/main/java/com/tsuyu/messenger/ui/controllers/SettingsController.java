@@ -5,7 +5,7 @@ import android.widget.TextView;
 import androidx.appcompat.widget.Toolbar;
 import com.google.android.material.imageview.ShapeableImageView;
 import com.google.android.material.materialswitch.MaterialSwitch;
-import com.tsuyu.Lsmsnksoslalql.R;
+import com.tsuyu.messenger.R;
 
 /**
  * Контроллер экрана настроек (screen_settings).

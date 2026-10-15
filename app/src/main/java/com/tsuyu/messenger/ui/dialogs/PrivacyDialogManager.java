@@ -7,7 +7,7 @@ import android.view.View;
 import android.widget.ArrayAdapter;
 import android.widget.Spinner;
 import com.google.android.material.materialswitch.MaterialSwitch;
-import com.tsuyu.Lsmsnksoslalql.R;
+import com.tsuyu.messenger.R;
 
 /**
  * Менеджер диалога настроек конфиденциальности (dialog_privacy).
