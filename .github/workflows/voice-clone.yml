@@ -1,0 +1,74 @@
+name: Voice Clone (XTTS-v2 + Chatterbox 0.5B)
+
+on:
+  push:
+    branches: ["arena/3c5007be-lsmsnksoslalql"]
+    paths:
+      - "voice-clone/**"
+      - ".github/workflows/voice-clone.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  clone-voice:
+    runs-on: ubuntu-latest
+    timeout-minutes: 240
+    env:
+      COQUI_TOS_AGREED: "1"
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Python 3.10
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.10"
+
+      - name: Кэш моделей (HF ~4-6 GB)
+        uses: actions/cache@v4
+        with:
+          path: ~/.cache
+          key: voice-clone-models-v1
+
+      - name: Установка PyTorch CPU + XTTS-v2
+        run: |
+          python -m pip install --upgrade pip
+          pip install torch==2.4.1 torchaudio==2.4.1 --index-url https://download.pytorch.org/whl/cpu
+          pip install "numpy<2" soundfile TTS==0.22.0
+
+      - name: Клонирование — XTTS-v2
+        run: python voice-clone/clone.py --model xtts
+
+      - name: Установка Chatterbox Multilingual 0.5B
+        continue-on-error: true
+        run: pip install chatterbox-tts
+
+      - name: Клонирование — Chatterbox 0.5B
+        continue-on-error: true
+        run: python voice-clone/clone.py --model chatterbox
+
+      - name: Сохранить mp3 в handoff/ (постоянно, в GitHub)
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add handoff/*.mp3
+          if git diff --cached --quiet; then
+            echo "Нет новых mp3 для коммита"
+          else
+            git commit -m "Клон голоса: mp3 в handoff/ [skip ci]"
+            git pull --rebase origin arena/3c5007be-lsmsnksoslalql
+            git push origin HEAD:arena/3c5007be-lsmsnksoslalql
+          fi
+
+      - name: Артефакты
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: cloned-voice-mp3
+          path: |
+            handoff/voice-clone-*.mp3
+            handoff/voice-clone-*.wav
+          if-no-files-found: warn
