@@ -180,23 +180,40 @@ def release_text(release: Any, is_fav: bool = False) -> str:
 
 def release_kb(release_id: int, is_fav: bool = False, has_episodes: bool = True,
                site_url: Optional[str] = None, deep_link: Optional[str] = None) -> InlineKeyboardMarkup:
-    """Карточка тайтла: только «Смотреть», избранное, поделиться и меню."""
     rows: List[List[InlineKeyboardButton]] = []
     if has_episodes:
-        rows.append([InlineKeyboardButton("▶️ Смотреть", callback_data=f"E|{release_id}|0")])
+        # «Смотреть» — сразу выбор качества для 1-й серии, «Все серии» — список серий
+        rows.append([
+            InlineKeyboardButton("▶️ Смотреть", callback_data=f"P|{release_id}|1"),
+            InlineKeyboardButton("📺 Все серии", callback_data=f"E|{release_id}|0"),
+        ])
+    else:
+        rows.append([InlineKeyboardButton("🔗 Открыть на сайте", url=site_url or "https://anilibria.top")])
     fav_text = "💔 Убрать из избранного" if is_fav else "⭐ В избранное"
     rows.append([InlineKeyboardButton(fav_text, callback_data=f"F|{release_id}")])
+    third: List[InlineKeyboardButton] = []
+    if site_url:
+        third.append(InlineKeyboardButton("🔗 AniLibria", url=site_url))
     if deep_link:
-        rows.append([InlineKeyboardButton("📤 Поделиться", url=deep_link)])
+        third.append(InlineKeyboardButton("📤 Поделиться", url=deep_link))
+    if third:
+        rows.append(third)
     rows.append([InlineKeyboardButton("🏠 Меню", callback_data="M|0")])
     return InlineKeyboardMarkup(rows)
 
 
-def inline_card_text(release: Any) -> str:
-    """Карточка, которую отправляет инлайн-режим (ссылка в конце = превью постера)."""
+def inline_card_text(release: Any, bot_username: str = "") -> str:
+    """Карточка, которую отправляет инлайн-режим.
+
+    В конце — ссылка на бота с выбором серий: если карточку отправили прямо в чат
+    с ботом, он мгновенно откроет этот тайтл (см. handle_inline_result).
+    """
     text = release_text(release)
-    if len(text) > 900:
-        text = text[:900].rsplit("\n", 1)[0] + "…"
+    if len(text) > 820:
+        text = text[:820].rsplit("\n", 1)[0] + "…"
+    if bot_username:
+        link = f"https://t.me/{bot_username}?start=eps_{int(getattr(release, 'id', 0) or 0)}"
+        return f"{text}\n\n▶️ {link}"
     site = getattr(release, "site_url", "") or ""
     return f"{text}\n\n{site}" if site else text
 

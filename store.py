@@ -91,6 +91,21 @@ CREATE TABLE IF NOT EXISTS user_files (
     saved_path      TEXT,
     created_at      REAL
 );
+CREATE TABLE IF NOT EXISTS channel_media (
+    key         TEXT PRIMARY KEY,
+    channel_id  INTEGER,
+    message_id  INTEGER,
+    file_id     TEXT,
+    size        INTEGER,
+    duration    REAL,
+    width       INTEGER,
+    height      INTEGER,
+    title       TEXT,
+    episode     INTEGER,
+    quality     INTEGER,
+    source      TEXT,
+    created_at  REAL
+);
 CREATE TABLE IF NOT EXISTS stats (
     key     TEXT PRIMARY KEY,
     value   INTEGER
@@ -309,6 +324,36 @@ class Storage:
 
     async def set_user_file_path(self, row_id: int, path: str) -> None:
         await self._a("UPDATE user_files SET saved_path = ? WHERE id = ?", (str(path), int(row_id)))
+
+    # -- канал-хранилище (медиа, уже отправленное в канал) -------------------
+    async def put_channel_media(self, key: str, channel_id: int, message_id: int, file_id: str,
+                                size: int, duration: float, width: int, height: int,
+                                title: str, episode: int, quality: int, source: str = "local") -> None:
+        await self._a(
+            """INSERT OR REPLACE INTO channel_media
+               (key, channel_id, message_id, file_id, size, duration, width, height,
+                title, episode, quality, source, created_at)
+               VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
+            (key, int(channel_id), int(message_id), file_id or "", int(size or 0), float(duration or 0),
+             int(width or 0), int(height or 0), title or "", int(episode or 0), int(quality or 0),
+             source, time.time()),
+        )
+
+    async def get_channel_media(self, key: str) -> Optional[Dict[str, Any]]:
+        row = await self._a("SELECT * FROM channel_media WHERE key = ?", (key,), "one")
+        if not row:
+            return None
+        row["channel_message_id"] = row.get("message_id")
+        return row
+
+    async def delete_channel_media(self, key: str) -> None:
+        await self._a("DELETE FROM channel_media WHERE key = ?", (key,))
+
+    async def channel_media_stats(self) -> Dict[str, Any]:
+        row = await self._a(
+            "SELECT COUNT(*) AS files, COALESCE(SUM(size), 0) AS bytes FROM channel_media", fetch="one"
+        )
+        return row or {"files": 0, "bytes": 0}
 
     # -- статистика ---------------------------------------------------------
     async def bump_stat(self, key: str, amount: int = 1) -> None:

@@ -13,6 +13,8 @@
 #    2) Settings → Volumes → новый том с Mount path = /data
 #       (там хранятся кэш видео, сессия MTProto и SQLite с file_id)
 #    3) Variables → при желании BOT_TOKEN / OWNER_ID / MAX_FILE_MB (по умолчанию ключи уже вшиты в код)
+#    4) Бота — администратором в канал-хранилище (-1004445072922), тогда каждая серия уходит
+#       туда, а люди получают её мгновенной копией (id сообщений хранятся в Firebase RTDB)
 #
 #  Локально:  docker build -t animebot .   &&   docker run -d -v anime_data:/data animebot
 # ============================================================================
@@ -48,7 +50,7 @@ RUN pip install --no-cache-dir --retries 5 --timeout 60 -r requirements.txt \
  || pip install --no-cache-dir --retries 5 --timeout 60 pyrogram==2.0.106 aiohttp
 
 # Код бота (в корне репозитория)
-COPY api_keys.py config.py anilibria_api.py dl_engine.py store.py ui.py anime_bot.py /app/
+COPY api_keys.py config.py anilibria_api.py dl_engine.py store.py ui.py rtdb.py media_index.py anime_bot.py /app/
 
 # Проверка зависимостей прямо на этапе сборки: если тут упало — сразу видно в build logs Railway
 RUN mkdir -p /data/cache /data/sessions \

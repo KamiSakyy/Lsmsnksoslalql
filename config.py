@@ -11,7 +11,7 @@ from __future__ import annotations
 
 import os
 from pathlib import Path
-from typing import List, Optional, Tuple
+from typing import Dict, List, Optional, Tuple
 
 from api_keys import BY_ID, credentials_for, iter_credentials, random_credentials
 
@@ -134,15 +134,16 @@ FFMPEG_RW_TIMEOUT_US: int = _int_env("FFMPEG_RW_TIMEOUT_US", 30_000_000)
 # несколько сотен КБ/с — именно это и тормозило выдачу серий).
 HLS_PARALLEL: bool = (os.environ.get("HLS_PARALLEL", "1") not in ("0", "false", "False"))
 HLS_CONNECTIONS: int = _int_env("HLS_CONNECTIONS", 8)          # потолок одновременных соединений к CDN
-HLS_START_CONNECTIONS: int = _int_env("HLS_START_CONNECTIONS", 6)   # стартуем сразу с 6 потоков
-HLS_RAMP_AFTER: int = _int_env("HLS_RAMP_AFTER", 10)           # +1 соединение за столько успешных сегментов
+HLS_START_CONNECTIONS: int = _int_env("HLS_START_CONNECTIONS", 3)   # старт после успешной пробы
+HLS_FAST_RAMP_AFTER: int = _int_env("HLS_FAST_RAMP_AFTER", 3)  # быстрый разгон до 6 потоков
+HLS_RAMP_AFTER: int = _int_env("HLS_RAMP_AFTER", 10)           # дальше — медленнее, до потолка
 HLS_JITTER: float = float(os.environ.get("HLS_JITTER", "0.35"))     # разброс старта запросов, сек
 HLS_SEGMENT_RETRIES: int = _int_env("HLS_SEGMENT_RETRIES", 4)  # повторы на сетевые сбои
-HLS_MAX_RATE_HITS: int = _int_env("HLS_MAX_RATE_HITS", 40)     # сколько лимитов CDN терпим за загрузку
+HLS_MAX_RATE_HITS: int = _int_env("HLS_MAX_RATE_HITS", 25)     # сколько лимитов CDN терпим за загрузку
 HLS_MAX_FORBIDDEN: int = _int_env("HLS_MAX_FORBIDDEN", 6)      # сколько 403 терпим (гео/бан IP)
 HLS_BACKOFF_BASE: float = float(os.environ.get("HLS_BACKOFF_BASE", "2.0"))
-HLS_RETRY_AFTER_MAX: int = _int_env("HLS_RETRY_AFTER_MAX", 180)     # дольше столько секунд не ждём
-HLS_MAX_TOTAL_WAIT: int = _int_env("HLS_MAX_TOTAL_WAIT", 900)       # суммарное ожидание лимитов
+HLS_RETRY_AFTER_MAX: int = _int_env("HLS_RETRY_AFTER_MAX", 60)      # дольше столько секунд не ждём
+HLS_MAX_TOTAL_WAIT: int = _int_env("HLS_MAX_TOTAL_WAIT", 300)       # суммарное ожидание лимитов
 HLS_LONG_PAUSE: float = float(os.environ.get("HLS_LONG_PAUSE", "20.0"))  # пауза перед докачкой
 THUMBNAIL_MAX_BYTES: int = 190 * 1024                           # Telegram: превью ≤ 200 КБ
 THUMBNAIL_WIDTH: int = _int_env("THUMBNAIL_WIDTH", 320)
@@ -184,6 +185,32 @@ def pyrogram_proxy() -> Optional[dict]:
 
 USER_AGENT_APP: str = os.environ.get("USER_AGENT_APP") or "AnimeLibriaMTProto/1.0"
 
+# ---------------------------------------------------------------------------
+# Firebase Realtime Database (вшитый конфиг проекта) + канал-хранилище видео
+# ---------------------------------------------------------------------------
+FIREBASE_CONFIG: Dict[str, str] = {
+    "apiKey": "AIzaSyBm0mIvHVznIeF2PoFk6dtdaiT5r877wyA",
+    "authDomain": "meow-874ce.firebaseapp.com",
+    "databaseURL": "https://meow-874ce-default-rtdb.europe-west1.firebasedatabase.app",
+    "projectId": "meow-874ce",
+    "storageBucket": "meow-874ce.firebasestorage.app",
+    "messagingSenderId": "471541334599",
+    "appId": "1:471541334599:web:567af3e7dbe70a37572762",
+}
+
+# RTDB: пишем/читаем id видео по REST (apiKey для RTDB не нужен, но оставлен выше для полноты)
+RTDB_ENABLED: bool = (os.environ.get("RTDB_ENABLED", "1") not in ("0", "false", "False"))
+RTDB_URL: str = os.environ.get("RTDB_URL") or FIREBASE_CONFIG["databaseURL"]
+RTDB_AUTH: str = (os.environ.get("RTDB_AUTH") or "").strip()   # database secret или ID-токен (если правила закрыты)
+RTDB_ROOT: str = (os.environ.get("RTDB_ROOT") or "anime").strip("/")
+
+# Канал-хранилище: ссылка https://t.me/c/4445072922/42 => внутренний id 4445072922,
+# полный id супергруппы/канала = -100 + 4445072922 = -1004445072922
+TELEGRAM_CHANNEL_ID: int = _int_env("TELEGRAM_CHANNEL_ID", -1004445072922)
+TELEGRAM_CHANNEL_LINK: str = os.environ.get("TELEGRAM_CHANNEL_LINK") or "https://t.me/c/4445072922/42"
+# Отправлять каждую новую серию в канал и отдавать её людям копированием из канала
+MIRROR_TO_CHANNEL: bool = (os.environ.get("MIRROR_TO_CHANNEL", "1") not in ("0", "false", "False"))
+
 
 __all__ = [
     "BOT_TOKEN", "API_ID", "API_HASH", "credential_candidates",
@@ -195,11 +222,13 @@ __all__ = [
     "SEARCH_LIMIT", "INLINE_LIMIT", "DEFAULT_QUALITY", "QUALITY_CHOICES",
     "FFMPEG", "FFPROBE", "FFMPEG_THREADS", "DOWNLOAD_USER_AGENT", "DOWNLOAD_REFERER",
     "FFMPEG_RW_TIMEOUT_US", "HLS_PARALLEL", "HLS_CONNECTIONS", "HLS_SEGMENT_RETRIES",
-    "HLS_START_CONNECTIONS", "HLS_RAMP_AFTER", "HLS_JITTER", "HLS_MAX_RATE_HITS",
+    "HLS_START_CONNECTIONS", "HLS_RAMP_AFTER", "HLS_FAST_RAMP_AFTER", "HLS_JITTER", "HLS_MAX_RATE_HITS",
     "DELETE_AFTER_SEND",
     "HLS_MAX_FORBIDDEN", "HLS_BACKOFF_BASE", "HLS_RETRY_AFTER_MAX", "HLS_MAX_TOTAL_WAIT",
     "HLS_LONG_PAUSE", "THUMBNAIL_MAX_BYTES", "THUMBNAIL_WIDTH",
     "PROGRESS_INTERVAL", "EPISODES_PER_PAGE", "TRY_LOWER_QUALITY_ON_TOOBIG",
     "SEND_AS_DOCUMENT", "ENABLE_FILE_INTAKE", "KEEP_INCOMING_FILES", "LOG_LEVEL",
     "TG_PROXY", "ANILIBRIA_PROXY", "pyrogram_proxy", "USER_AGENT_APP", "credentials_for",
+    "FIREBASE_CONFIG", "RTDB_ENABLED", "RTDB_URL", "RTDB_AUTH", "RTDB_ROOT",
+    "TELEGRAM_CHANNEL_ID", "TELEGRAM_CHANNEL_LINK", "MIRROR_TO_CHANNEL",
 ]

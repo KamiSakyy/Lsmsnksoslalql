@@ -24,6 +24,7 @@ from __future__ import annotations
 import asyncio
 import logging
 import os
+import re
 import sys
 import time
 import uuid
@@ -52,6 +53,8 @@ from pyrogram.types import (
 
 import config
 import dl_engine
+import media_index
+import rtdb
 import store
 import ui
 from anilibria_api import (
@@ -86,6 +89,11 @@ TASKS: Dict[str, Dict[str, Any]] = {}       # task_id -> состояние за
 INFLIGHT: Dict[str, str] = {}               # media_key -> task_id
 RELEASE_MEMO: Dict[int, tuple[float, Release]] = {}
 STARTED_AT = time.time()
+
+# Канал-хранилище: туда складываются все скачанные серии, оттуда люди получают их копией
+CHANNEL_ID: int = config.TELEGRAM_CHANNEL_ID
+CHANNEL_READY: bool = False
+CHANNEL_TITLE: str = ""
 
 PER_PAGE = 10
 
@@ -342,6 +350,87 @@ async def upload_media(chat_id: int, info: dl_engine.MediaInfo, release: Release
     return message
 
 
+async def upload_to_channel(info: dl_engine.MediaInfo, release: Release, episode_number: int,
+                            quality: int, work: Dict[str, Any]) -> Optional[Message]:
+    """Кладёт готовый файл в канал-хранилище (с тем же прогрессом загрузки)."""
+    if not (config.MIRROR_TO_CHANNEL and CHANNEL_READY):
+        return None
+    caption = ui.video_caption(release.title, episode_number, quality, info.size)
+    filename = f"{release.alias}_s{episode_number}_{quality}p.mp4"
+    state: dl_engine.ProgressState = work["state"]
+    last_edit = 0.0
+
+    async def channel_progress(current: int, total: int, *_args) -> None:
+        nonlocal last_edit
+        now = time.time()
+        state.touch(stage="upload", uploaded=current, total_upload=total or info.size,
+                    percent=(current / total * 100) if total else 0.0)
+        if now - last_edit < config.PROGRESS_INTERVAL:
+            return
+        last_edit = now
+        await safe_edit(chat_id=work["chat_id"], message_id=work["message_id"],
+                        text=ui.progress_text(state, release.title, episode_number, quality),
+                        reply_markup=ui.progress_kb(work["task_id"]))
+
+    try:
+        as_video = (not config.SEND_AS_DOCUMENT) and info.size <= config.UPLOAD_AS_VIDEO_LIMIT_MB * 1024 * 1024
+        async with UP_SEMAPHORE:
+            if as_video:
+                return await APP.send_video(
+                    CHANNEL_ID, info.path,
+                    caption=caption, parse_mode=ParseMode.HTML,
+                    duration=int(info.duration or 0), width=int(info.width or 0), height=int(info.height or 0),
+                    thumb=info.thumb_path, file_name=filename, supports_streaming=True,
+                    progress=channel_progress, progress_args=(),
+                )
+            return await APP.send_document(
+                CHANNEL_ID, info.path,
+                caption=caption, parse_mode=ParseMode.HTML,
+                thumb=info.thumb_path, file_name=filename,
+                progress=channel_progress, progress_args=(),
+            )
+    except RPCError as exc:
+        log.warning("Не удалось положить серию в канал %s: %s", CHANNEL_ID, exc)
+        return None
+
+
+async def copy_from_channel(chat_id: int, entry: Dict[str, Any], release: Release,
+                            episode_number: int, quality: int, user_id: int) -> bool:
+    """Мгновенно отдаёт серию копией из канала (без пометки «переслано», канал не виден)."""
+    message_id = int(entry.get("message_id") or entry.get("channel_message_id") or 0)
+    channel_id = int(entry.get("channel_id") or CHANNEL_ID)
+    if not message_id:
+        return False
+    try:
+        await APP.copy_message(
+            chat_id, channel_id, message_id,
+            caption=ui.video_caption(release.title, episode_number, quality, int(entry.get("size") or 0)),
+            parse_mode=ParseMode.HTML,
+            reply_markup=ui.video_kb(release.id, episode_number, release.max_episode, quality),
+        )
+        return True
+    except RPCError as exc:
+        log.warning("Копирование из канала не удалось (%s) — убираю запись и качаю заново", exc)
+        await media_index.forget(release.id, episode_number, quality, storage)
+        return False
+
+
+async def send_from_index(chat_id: int, release: Release, episode_number: int, quality: int,
+                          user_id: int) -> bool:
+    """Есть ли серия в индексе (RTDB/SQLite)? Если да — отдаём моментально копией из канала."""
+    entry = await media_index.lookup(release.id, episode_number, quality, storage)
+    if not entry or not entry.get("message_id"):
+        return False
+    ok = await copy_from_channel(chat_id, entry, release, episode_number, quality, user_id)
+    if ok:
+        await storage.cache_hit(media_key(release.id, episode_number, quality))
+        await storage.bump_stat("sent_from_channel")
+        await storage.add_history(user_id, release.id, release.alias, release.title, episode_number, quality)
+        await storage.bump_downloads(user_id)
+        return True
+    return False
+
+
 async def try_shrink_quality(quality: int, available: List[int]) -> Optional[int]:
     """Подбирает более низкое качество, если файл не лезет в лимит Telegram."""
     if not config.TRY_LOWER_QUALITY_ON_TOOBIG:
@@ -369,6 +458,13 @@ async def process_episode(work: Dict[str, Any], release: Release, episode_number
         raise dl_engine.DownloadError("у серии нет HLS-ссылок")
 
     key = media_key(release.id, episode_number, chosen)
+
+    # 1) Серия уже лежит в канале-хранилище (RTDB/SQLite)? Отдаём копией — моментально.
+    if await send_from_index(chat_id, release, episode_number, chosen, user_id):
+        await storage.bump_stat("sent_from_index")
+        return True
+
+    # 2) Серия уже отправлялась этому боту? Мгновенно по file_id.
     if await send_cached(chat_id, key, release, episode_number, chosen):
         await storage.add_history(user_id, release.id, release.alias, release.title, episode_number, chosen)
         await storage.bump_stat("sent_from_cache")
@@ -411,8 +507,31 @@ async def process_episode(work: Dict[str, Any], release: Release, episode_number
                     ui.progress_text(state, release.title, episode_number, chosen),
                     ui.progress_kb(work["task_id"]))
 
-    await upload_media(chat_id, info, release, episode_number, chosen, work)
-    # Файл уже в Telegram (и file_id сохранён) — освобождаем диск сервера
+    # 3) Отправляем: сначала в канал-хранилище, затем пользователю копией из канала
+    #    (копия не показывает канал и занимает миллисекунды — файл уже в Telegram).
+    delivered = False
+    channel_message = await upload_to_channel(info, release, episode_number, chosen, work)
+    if channel_message is not None:
+        try:
+            media = getattr(channel_message, "video", None) or getattr(channel_message, "document", None)
+            entry = {
+                "key": media_index.key_for(release.id, episode_number, chosen),
+                "channel_id": CHANNEL_ID,
+                "message_id": channel_message.id,
+                "file_id": getattr(media, "file_id", "") or "",
+                "size": info.size, "duration": info.duration, "width": info.width, "height": info.height,
+                "title": release.title, "episode": episode_number, "quality": chosen,
+                "release_id": release.id,
+            }
+            await media_index.remember(entry, storage)
+            delivered = await copy_from_channel(chat_id, entry, release, episode_number, chosen, user_id)
+        except Exception as exc:  # noqa: BLE001
+            log.warning("Индексация в канале не удалась: %s", exc)
+    if not delivered:
+        # канал отключён/недоступен — отправляем файл пользователю напрямую, как раньше
+        await upload_media(chat_id, info, release, episode_number, chosen, work)
+
+    # Файл уже в Telegram (и file_id/индекс сохранены) — освобождаем диск сервера
     if config.DELETE_AFTER_SEND:
         freed = await asyncio.to_thread(dl_engine.purge_episode_files, release.id, episode_number, chosen)
         if freed:
@@ -738,6 +857,8 @@ async def cmd_stats(client: Client, message: Message) -> None:
 async def collect_stats() -> Dict[str, Any]:
     stats = await storage.stats()
     cache = await storage.cache_stats()
+    channel = await storage.channel_media_stats()
+    rtdb_status = rtdb.client().status if config.RTDB_ENABLED else "выключен"
     disk = await asyncio.to_thread(dl_engine.directory_size, config.DOWNLOAD_DIR)
     uptime = time.time() - STARTED_AT
     return {
@@ -745,6 +866,10 @@ async def collect_stats() -> Dict[str, Any]:
         "Отправлено файлов": stats.get("sent_files", 0),
         "Отдано из кэша Telegram": stats.get("sent_from_cache", 0),
         "Принято файлов от людей": stats.get("intake_files", 0),
+        "Файлов в канале-хранилище": channel.get("files", 0),
+        "Отдано копией из канала": stats.get("sent_from_index", 0),
+        "Канал": CHANNEL_TITLE if CHANNEL_READY else "нет доступа",
+        "RTDB": rtdb_status,
         "Файлов в кэше Telegram": cache.get("files", 0),
         "Попаданий в кэш": cache.get("hits", 0),
         "Кэш на диске": dl_engine.human_size(disk),
@@ -820,42 +945,30 @@ async def inline_query_handler(client: Client, query: InlineQuery) -> None:
             desc_parts.append(f"{release.episodes_total} серий")
         if release.name_english and release.name_english != release.title:
             desc_parts.append(release.name_english)
-        # одна кнопка: сразу карточка тайтла внутри бота (выбор серии и качества)
+        # Одна кнопка: сразу выбор серий (список серий + качество) внутри бота.
+        # Результат — обычная (не фото) карточка: тап по ней мгновенный, без галочки и превью.
         kb = InlineKeyboardMarkup([
-            [InlineKeyboardButton("▶️ Смотреть", url=deep_link(f"ep_{release.id}_1"))],
+            [InlineKeyboardButton("▶️ Смотреть", url=deep_link(f"eps_{release.id}"))],
         ])
-        caption = ui.inline_card_text(release)
-        original = release.poster or release.poster_preview or release.poster_thumbnail
-        small_thumb = release.poster_thumbnail or release.poster_preview
-        if original:
-            # Фото-результат: в списке подсказок миниатюра, а в отправленном сообщении —
-            # полноразмерный постер (то самое «без сжатия», что просили).
-            results.append(
-                InlineQueryResultPhoto(
-                    id=f"r{release.id}",
-                    photo_url=original,
-                    thumb_url=small_thumb or original,
-                    title=ui.truncate(release.title, 64),
-                    description=ui.truncate(" · ".join(desc_parts), 120),
-                    caption=caption,
+        caption = ui.inline_card_text(release, BOT_USERNAME)
+        poster = release.poster or release.poster_preview or release.poster_thumbnail
+        results.append(
+            InlineQueryResultArticle(
+                id=f"r{release.id}",
+                title=ui.truncate(release.title, 64),
+                description=ui.truncate(" · ".join(desc_parts), 120),
+                # иконка — оригинальный постер (не предварительно сжатый thumbnail)
+                thumb_url=poster or None,
+                thumb_width=320,
+                thumb_height=480,
+                reply_markup=kb,
+                input_message_content=InputTextMessageContent(
+                    message_text=caption,
                     parse_mode=ParseMode.HTML,
-                    reply_markup=kb,
-                )
+                    disable_web_page_preview=True,
+                ),
             )
-        else:
-            results.append(
-                InlineQueryResultArticle(
-                    id=f"r{release.id}",
-                    title=ui.truncate(release.title, 64),
-                    description=ui.truncate(" · ".join(desc_parts), 120),
-                    reply_markup=kb,
-                    input_message_content=InputTextMessageContent(
-                        message_text=caption,
-                        parse_mode=ParseMode.HTML,
-                        disable_web_page_preview=False,
-                    ),
-                )
-            )
+        )
 
     if not results:
         results.append(
@@ -876,6 +989,39 @@ async def inline_query_handler(client: Client, query: InlineQuery) -> None:
 # ---------------------------------------------------------------------------
 # Обработчики: текстовые сообщения и входящие файлы
 # ---------------------------------------------------------------------------
+async def handle_inline_result(message: Message) -> bool:
+    """Если пользователь тапнул результат инлайн-поиска прямо в чате с ботом,
+    сразу открываем выбранный тайтл (выбор серий) — без лишних нажатий."""
+    via = getattr(message, "via_bot", None)
+    username = (getattr(via, "username", "") or "").lower()
+    if not username or username != (BOT_USERNAME or "").lower():
+        return False
+    text = message.text or message.caption or ""
+    match = re.search(r"(?:start=|\?start=)(rel|eps|ep)_(\d+)(?:_(\d+))?", text)
+    if not match:
+        return False
+    kind, release_id = match.group(1), int(match.group(2))
+    number = int(match.group(3)) if match.group(3) else None
+    chat_id, user_id = message.chat.id, message.from_user.id
+    try:
+        release = await load_release(release_id)
+    except (AniLibriaError, ReleaseNotFound):
+        return False
+    if kind == "eps" or number is None:
+        await show_episodes(chat_id, None, release, 0)          # сразу выбор серий
+    elif kind == "ep":
+        user = await storage.get_user(user_id) or {}
+        await show_qualities(chat_id, None, release, number, int(user.get("quality") or 0))
+    else:
+        await show_release(chat_id, None, release, user_id)
+    # убираем саму карточку-сообщение, чтобы чат остался чистым
+    try:
+        await APP.delete_messages(chat_id, message.id)
+    except RPCError:
+        pass
+    return True
+
+
 async def text_handler(client: Client, message: Message) -> None:
     """Обычный текст бот НЕ обрабатывает: поиск только через инлайн (@бот …).
 
@@ -886,6 +1032,8 @@ async def text_handler(client: Client, message: Message) -> None:
     await storage.upsert_user(user.id, user.username or "", user.first_name or "")
     if not is_allowed(user.id):
         await message.reply_text("🚫 Доступ ограничен.")
+        return
+    if await handle_inline_result(message):
         return
     text = (message.text or "").strip()
     if text == BUTTON_FAVORITES:
@@ -1294,6 +1442,7 @@ def register_handlers(client: Client) -> None:
         media_filter = filters.video | filters.document | filters.audio | filters.photo
         client.add_handler(MessageHandler(file_handler, filters.private & media_filter))
     client.add_handler(MessageHandler(text_handler, filters.private & filters.text))
+    client.add_handler(MessageHandler(text_handler, filters.private & filters.caption))
 
 
 async def start_client() -> Client:
@@ -1318,6 +1467,7 @@ async def start_client() -> Client:
             await client.start()
             me = await client.get_me()
             await _set_bot_commands(client)
+            await check_channel(client)
             BOT_USERNAME = me.username or ""
             APP = client
             log.info("Бот запущен как @%s (api_id=%s, %s) — MTProto, лимит %s МБ",
@@ -1331,6 +1481,27 @@ async def start_client() -> Client:
             except Exception:  # noqa: BLE001
                 pass
     raise RuntimeError(f"Не удалось запустить клиент ни с одной парой api_id/api_hash: {last_error}")
+
+
+async def check_channel(client: Client) -> None:
+    """Проверяет доступ бота к каналу-хранилищу (иначе серии идут напрямую в чат)."""
+    global CHANNEL_READY, CHANNEL_TITLE
+    if not config.MIRROR_TO_CHANNEL:
+        CHANNEL_READY = False
+        log.info("Канал-хранилище отключён (MIRROR_TO_CHANNEL=0)")
+        return
+    try:
+        chat = await client.get_chat(CHANNEL_ID)
+        CHANNEL_TITLE = getattr(chat, "title", "") or str(CHANNEL_ID)
+        CHANNEL_READY = True
+        log.info("Канал-хранилище доступен: «%s» (%s)", CHANNEL_TITLE, CHANNEL_ID)
+    except RPCError as exc:
+        CHANNEL_READY = False
+        log.warning(
+            "Канал-хранилище недоступен (%s). Добавь бота администратором в канал %s "
+            "(id %s) с правом публикации — тогда серии будут отдаваться копией из канала.",
+            exc, config.TELEGRAM_CHANNEL_LINK, CHANNEL_ID,
+        )
 
 
 async def _set_bot_commands(client: Client) -> None:
