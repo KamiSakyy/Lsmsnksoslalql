@@ -72,6 +72,11 @@ def credential_candidates() -> List[Tuple[int, str, str]]:
     return candidates[: max(1, limit)]
 
 
+# Версия кода — чтобы в /stats и логах было видно, какая сборка реально запущена на сервере
+CODE_VERSION: str = os.environ.get("CODE_VERSION") or "stable-download + smart-routing"
+BUILD_SHA: str = (os.environ.get("RAILWAY_GIT_COMMIT_SHA") or os.environ.get("GIT_COMMIT") or "")[:7]
+
+
 # ---------------------------------------------------------------------------
 # Владелец / доступ
 # ---------------------------------------------------------------------------
@@ -155,16 +160,15 @@ FFMPEG_RW_TIMEOUT_US: int = _int_env("FFMPEG_RW_TIMEOUT_US", 30_000_000)
 # несколько сотен КБ/с — именно это и тормозило выдачу серий).
 HLS_PARALLEL: bool = (os.environ.get("HLS_PARALLEL", "1") not in ("0", "false", "False"))
 HLS_CONNECTIONS: int = _int_env("HLS_CONNECTIONS", 8)          # потолок одновременных соединений к CDN
-HLS_START_CONNECTIONS: int = _int_env("HLS_START_CONNECTIONS", 3)   # старт после успешной пробы
-HLS_FAST_RAMP_AFTER: int = _int_env("HLS_FAST_RAMP_AFTER", 3)  # быстрый разгон до 6 потоков
-HLS_RAMP_AFTER: int = _int_env("HLS_RAMP_AFTER", 10)           # дальше — медленнее, до потолка
+HLS_START_CONNECTIONS: int = _int_env("HLS_START_CONNECTIONS", 3)   # с чего начинаем (защита от 429)
+HLS_RAMP_AFTER: int = _int_env("HLS_RAMP_AFTER", 12)           # +1 соединение за столько успешных сегментов
 HLS_JITTER: float = float(os.environ.get("HLS_JITTER", "0.35"))     # разброс старта запросов, сек
 HLS_SEGMENT_RETRIES: int = _int_env("HLS_SEGMENT_RETRIES", 4)  # повторы на сетевые сбои
-HLS_MAX_RATE_HITS: int = _int_env("HLS_MAX_RATE_HITS", 25)     # сколько лимитов CDN терпим за загрузку
+HLS_MAX_RATE_HITS: int = _int_env("HLS_MAX_RATE_HITS", 40)     # сколько лимитов CDN терпим за загрузку
 HLS_MAX_FORBIDDEN: int = _int_env("HLS_MAX_FORBIDDEN", 6)      # сколько 403 терпим (гео/бан IP)
 HLS_BACKOFF_BASE: float = float(os.environ.get("HLS_BACKOFF_BASE", "2.0"))
-HLS_RETRY_AFTER_MAX: int = _int_env("HLS_RETRY_AFTER_MAX", 60)      # дольше столько секунд не ждём
-HLS_MAX_TOTAL_WAIT: int = _int_env("HLS_MAX_TOTAL_WAIT", 300)       # суммарное ожидание лимитов
+HLS_RETRY_AFTER_MAX: int = _int_env("HLS_RETRY_AFTER_MAX", 180)     # дольше столько секунд не ждём
+HLS_MAX_TOTAL_WAIT: int = _int_env("HLS_MAX_TOTAL_WAIT", 900)       # суммарное ожидание лимитов
 HLS_LONG_PAUSE: float = float(os.environ.get("HLS_LONG_PAUSE", "20.0"))  # пауза перед докачкой
 THUMBNAIL_MAX_BYTES: int = 190 * 1024                           # Telegram: превью ≤ 200 КБ
 THUMBNAIL_WIDTH: int = _int_env("THUMBNAIL_WIDTH", 320)
@@ -234,7 +238,8 @@ MIRROR_TO_CHANNEL: bool = (os.environ.get("MIRROR_TO_CHANNEL", "1") not in ("0",
 
 
 __all__ = [
-    "BOT_TOKEN", "API_ID", "API_HASH", "credential_candidates",
+    "BOT_TOKEN", "CODE_VERSION", "BUILD_SHA",
+    "API_ID", "API_HASH", "credential_candidates",
     "API_KEYS_ROTATION", "API_KEYS_RANDOMIZE", "MAX_API_KEY_ATTEMPTS",
     "API_KEYS_PUBLISHED_COOLDOWN", "API_KEYS_AUTH_COOLDOWN", "API_KEYS_FLOOD_MAX",
     "API_KEYS_NETWORK_COOLDOWN", "API_KEYS_UNKNOWN_COOLDOWN",

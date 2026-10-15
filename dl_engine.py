@@ -149,45 +149,6 @@ def episode_paths(release_id: int | str, episode: int, quality: int) -> Dict[str
     }
 
 
-def purge_episode_files(release_id: int | str, episode: int, quality: int) -> int:
-    """Удаляет с диска всё по серии (mp4, превью, сегменты) после успешной отправки.
-
-    Возвращает, сколько байт освободилось; пустая папка релиза тоже удаляется.
-    file_id при этом остаётся в SQLite, поэтому повторная выдача серии мгновенная
-    и диск для неё больше не нужен.
-    """
-    paths = episode_paths(release_id, episode, quality)
-    freed = 0
-    for path in (paths["video"], paths["thumb"], paths["part"]):
-        try:
-            if path.exists():
-                freed += path.stat().st_size
-                path.unlink()
-        except OSError:
-            continue
-    seg_dir = paths["dir"] / (paths["video"].stem + ".segments")
-    if seg_dir.exists():
-        freed += directory_size(seg_dir)
-        shutil.rmtree(seg_dir, ignore_errors=True)
-    # остатки от прерванных задач: недокачанные куски и папки сегментов
-    for leftover in list(paths["dir"].glob("*.part*")) + list(paths["dir"].glob("*.segments")):
-        try:
-            if leftover.is_dir():
-                freed += directory_size(leftover)
-                shutil.rmtree(leftover, ignore_errors=True)
-            else:
-                freed += leftover.stat().st_size
-                leftover.unlink()
-        except OSError:
-            continue
-    try:
-        if not any(paths["dir"].iterdir()):
-            paths["dir"].rmdir()
-    except OSError:
-        pass
-    return freed
-
-
 def directory_size(path: Path) -> int:
     total = 0
     for root, _dirs, files in os.walk(path):
@@ -722,8 +683,6 @@ class AdaptiveLimiter:
         self.limit = max(1, min(int(start), self.maximum))
         self.active = 0
         self._successes = 0
-        self.calm = False          # True = CDN уже упирался в лимит: не разгоняемся
-        self._calm_successes = 0
         self._cooldown_until = 0.0
         self._condition = asyncio.Condition()
 
@@ -743,18 +702,9 @@ class AdaptiveLimiter:
         self._successes = 0
 
     def note_success(self) -> None:
-        """Разгоняемся до 6 потоков быстро, дальше — осторожно (за каждые HLS_RAMP_AFTER)."""
-        if self.calm:
-            # CDN уже тормозил: возвращаемся к разгону только после длинной серии успехов
-            self._calm_successes += 1
-            if self._calm_successes >= 40:
-                self.calm = False
-                self._calm_successes = 0
-            return
+        """После серии успешных сегментов осторожно добавляем ещё одно соединение."""
         self._successes += 1
-        fast_zone = min(6, self.maximum)
-        need = config.HLS_FAST_RAMP_AFTER if self.limit < fast_zone else config.HLS_RAMP_AFTER
-        if self._successes >= max(2, need) and self.limit < self.maximum:
+        if self._successes >= config.HLS_RAMP_AFTER and self.limit < self.maximum:
             self.limit += 1
             self._successes = 0
 
@@ -762,8 +712,6 @@ class AdaptiveLimiter:
         """CDN тормозит: пауза для всех воркеров + вдвое меньше соединений."""
         self._cooldown_until = max(self._cooldown_until, time.time() + max(0.5, float(delay)))
         self.set_limit(max(1, self.limit // 2))
-        self.calm = True
-        self._calm_successes = 0
 
     async def wait_if_paused(self) -> None:
         while True:
@@ -835,7 +783,7 @@ async def _fetch_segment(
                     if hits > config.HLS_MAX_RATE_HITS:
                         raise RateLimited(f"CDN держит лимит запросов (сработал {int(hits)} раз)")
                     delay = retry_after if retry_after is not None else min(
-                        config.HLS_BACKOFF_BASE * (2 ** min(int(hits), 6)), 30.0
+                        config.HLS_BACKOFF_BASE * (2 ** min(int(hits), 6)), 60.0
                     )
                     if delay > config.HLS_RETRY_AFTER_MAX:
                         raise RateLimited(f"CDN просит подождать {delay:.0f} с — это слишком долго")
@@ -921,12 +869,13 @@ async def parallel_fetch(
             raise DownloadError("не удалось получить список сегментов HLS")
 
         total_duration = playlist.duration or expected_duration or 0.0
+
         names = [f"seg_{index:05d}{_segment_ext(url)}" for index, (url, _dur) in enumerate(playlist.segments)]
         stats: Dict[str, float] = {"requests": 0, "rate_hits": 0, "forbidden": 0, "waited": 0.0}
         lock = asyncio.Lock()
         started = time.time()
         state = ProgressState(stage="download", duration=total_duration)
-        counters = {"duration": 0.0, "bytes": 0, "last_push": 0.0, "phase": "probe"}
+        counters = {"duration": 0.0, "bytes": 0, "last_push": 0.0}
 
         todo: List[int] = []
         for index, name in enumerate(names):
@@ -956,11 +905,25 @@ async def parallel_fetch(
                 return
             await on_progress(state.touch(stage="download"))
 
-        # heartbeat включаем ПЕРВЫМ делом: пока CDN отвечает 429 и мы ждём Retry-After
-        # (в том числе на init-сегменте и на пробе), в чате всё равно идёт прогресс —
-        # сообщение не выглядит «зависшим на 0%».
+        async def worker(index: int) -> None:
+            size = await _fetch_segment(
+                session, limiter, playlist.segments[index][0], work_dir / names[index], cancel_event, stats
+            )
+            async with lock:
+                counters["duration"] += playlist.segments[index][1]
+                counters["bytes"] += size
+            await push()
+
+        if on_progress:
+            await on_progress(state.touch(stage="download"))
+        await push(force=True)
+
+        # heartbeat — единственное добавление к проверенной схеме загрузки: пока CDN отвечает
+        # 429/403 и бот ждёт Retry-After, сообщение в чате всё равно обновляется. Никаких
+        # дополнительных запросов к CDN он не делает, скорость не меняет.
         stop_heartbeat = asyncio.Event()
-        hb = {"waited": stats.get("waited", 0.0), "hits": stats.get("rate_hits", 0) + stats.get("forbidden", 0)}
+        hb = {"waited": stats.get("waited", 0.0),
+              "hits": stats.get("rate_hits", 0) + stats.get("forbidden", 0)}
 
         async def heartbeat() -> None:
             while not stop_heartbeat.is_set():
@@ -976,12 +939,8 @@ async def parallel_fetch(
                 if cooldown > 0.5:
                     state.extra = (f"CDN тормозит — пауза {cooldown:.0f} с "
                                    f"(соединений: {limiter.limit})")
-                elif waited_delta > 0.5 or hits_delta > 0:
-                    # только что ловили лимит и ждали по Retry-After — объясняем паузу в чате
+                elif hits_delta or waited_delta > 0.5:
                     state.extra = (f"CDN тормозит — жду сервера (пауза), "
-                                   f"соединений: {limiter.limit}")
-                elif counters["phase"] == "probe":
-                    state.extra = (f"проверяю CDN — безопасный старт, "
                                    f"соединений: {limiter.limit}")
                 elif not state.extra:
                     state.extra = f"качаю параллельно · соединений: {limiter.limit}"
@@ -992,79 +951,30 @@ async def parallel_fetch(
                     await push()
 
         heartbeat_task = asyncio.create_task(heartbeat())
-        state.extra = (f"начинаю загрузку · соединений: {config.HLS_START_CONNECTIONS}")
-        await push(force=True)
-
-
-        async def worker(index: int) -> None:
-            size = await _fetch_segment(
-                session, limiter, playlist.segments[index][0], work_dir / names[index], cancel_event, stats
-            )
-            async with lock:
-                counters["duration"] += playlist.segments[index][1]
-                counters["bytes"] += size
-            await push()
-
-        # 2) init-сегмент (fMP4/CMAF), если он есть в плейлисте
-        init_name: Optional[str] = None
-        if playlist.init_url:
-            init_name = "init" + _segment_ext(playlist.init_url, ".mp4")
-            hits_before_init = stats.get("rate_hits", 0) + stats.get("forbidden", 0)
-            init_size = await _fetch_segment(session, limiter, playlist.init_url, work_dir / init_name,
-                                             cancel_event, stats)
-            counters["bytes"] += init_size
-            if (stats.get("rate_hits", 0) + stats.get("forbidden", 0)) > hits_before_init:
-                # 429 ещё до первого сегмента: CDN явно лимитит — не разгоняемся
-                limiter.calm = True
-                limiter.set_limit(1)
-                log.warning("CDN лимитит уже на init-сегменте: иду по одной связи с паузами")
-            await push(force=True)
-
-        # 2b) Безопасный старт: первые сегменты тянем на HLS_START_CONNECTIONS (3),
-        #     а не залпом на всех потоках. Так сразу видно, лимитит ли CDN: увидели 429 —
-        #     мгновенно откатываемся на одну связь с паузами, не устраивая 429-шторм.
-        first_batch = todo[: max(1, config.HLS_START_CONNECTIONS)]
-
-        async def drain_one_by_one(reason: str) -> None:
-            """CDN упёрся в лимит: докачиваем по одной связи, с паузами и резюмом."""
-            log.warning("Лимит CDN (%s) — докачиваю по одной связи", reason)
-            limiter.set_limit(1)
-            stats["rate_hits"] = stats["forbidden"] = 0
-            stats["waited"] = 0.0
-            await asyncio.sleep(min(5.0 + random.uniform(0, 3), 15.0))
-            for index in todo:
-                target = work_dir / names[index]
-                if target.exists() and target.stat().st_size > 0:
-                    continue
-                await worker(index)
 
         try:
-            if first_batch:
-                before_hits = stats.get("rate_hits", 0) + stats.get("forbidden", 0)
-                limiter.set_limit(max(1, config.HLS_START_CONNECTIONS))
-                failed = False
-                try:
-                    await asyncio.gather(*(worker(index) for index in first_batch))
-                except RateLimited:
-                    failed = True
-                pressured = (stats.get("rate_hits", 0) + stats.get("forbidden", 0)) > before_hits
-                todo = [index for index in todo if index not in first_batch]
-                counters["phase"] = "download"
-                if failed or pressured or limiter.calm:
-                    if failed:
-                        todo = list(first_batch) + todo      # недокачанные вернём в работу
-                    await push(force=True)
-                    await drain_one_by_one("лимит уже на первых сегментах")
-                else:
-                    log.info("Старт на %s соединениях прошёл без лимитов — разгоняюсь",
-                             config.HLS_START_CONNECTIONS)
-                    await push(force=True)
+            # 2) init-сегмент (fMP4/CMAF), если он есть в плейлисте. Качается уже под heartbeat:
+            # если CDN тормозит именно на нём, в чате видно паузу, а не «зависшие 0%».
+            init_name: Optional[str] = None
+            if playlist.init_url:
+                init_name = "init" + _segment_ext(playlist.init_url, ".mp4")
+                await _fetch_segment(session, limiter, playlist.init_url, work_dir / init_name,
+                                     cancel_event, {"requests": 0})
 
-            counters["phase"] = "download"
             try:
                 await asyncio.gather(*(worker(index) for index in todo))
             except RateLimited as exc:
-                await drain_one_by_one(str(exc))
+                # CDN упёрся в лимит: аккуратный режим «по одной связи» с паузами
+                log.warning("Лимит CDN (%s) — докачиваю по одной связи", exc)
+                limiter.set_limit(1)
+                stats["rate_hits"] = stats["forbidden"] = 0
+                stats["waited"] = 0.0
+                await asyncio.sleep(min(5.0 + random.uniform(0, 3), 15.0))
+                for index in todo:
+                    target = work_dir / names[index]
+                    if target.exists() and target.stat().st_size > 0:
+                        continue
+                    await worker(index)
         finally:
             # heartbeat живёт ровно столько, сколько идёт загрузка
             stop_heartbeat.set()
@@ -1237,7 +1147,45 @@ __all__ = [
     "download_episode", "make_thumbnail", "probe", "hls_duration", "cleanup_cache",
     "directory_size", "episode_paths", "cache_key", "human_size", "human_time",
     "MediaInfo", "ProgressState", "DownloadError", "DownloadCancelled", "FileTooBig",
-    "purge_episode_files",
     "parallel_fetch", "parse_playlist", "pick_variant", "HlsPlaylist",
     "AdaptiveLimiter", "global_limiter", "RateLimited", "StreamExpired",
 ]
+
+
+def purge_episode_files(release_id: int | str, episode: int, quality: int) -> int:
+    """Удаляет с диска всё по серии (mp4, превью, сегменты) после успешной отправки.
+
+    Возвращает, сколько байт освободилось; пустая папка релиза тоже удаляется.
+    file_id при этом остаётся в SQLite, поэтому повторная выдача серии мгновенная
+    и диск для неё больше не нужен.
+    """
+    paths = episode_paths(release_id, episode, quality)
+    freed = 0
+    for path in (paths["video"], paths["thumb"], paths["part"]):
+        try:
+            if path.exists():
+                freed += path.stat().st_size
+                path.unlink()
+        except OSError:
+            continue
+    seg_dir = paths["dir"] / (paths["video"].stem + ".segments")
+    if seg_dir.exists():
+        freed += directory_size(seg_dir)
+        shutil.rmtree(seg_dir, ignore_errors=True)
+    # остатки от прерванных задач: недокачанные куски и папки сегментов
+    for leftover in list(paths["dir"].glob("*.part*")) + list(paths["dir"].glob("*.segments")):
+        try:
+            if leftover.is_dir():
+                freed += directory_size(leftover)
+                shutil.rmtree(leftover, ignore_errors=True)
+            else:
+                freed += leftover.stat().st_size
+                leftover.unlink()
+        except OSError:
+            continue
+    try:
+        if not any(paths["dir"].iterdir()):
+            paths["dir"].rmdir()
+    except OSError:
+        pass
+    return freed

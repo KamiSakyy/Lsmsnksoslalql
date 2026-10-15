@@ -885,6 +885,7 @@ async def collect_stats() -> Dict[str, Any]:
         "Активных задач": len(TASKS),
         "Аптайм": dl_engine.human_time(uptime),
         "Лимит файла": f"{config.MAX_FILE_MB} МБ (MTProto)",
+        "Версия": f"{config.CODE_VERSION} ({config.BUILD_SHA or 'локальная сборка'})",
         "ffmpeg": config.FFMPEG,
     }
 
@@ -954,20 +955,20 @@ async def inline_query_handler(client: Client, query: InlineQuery) -> None:
             desc_parts.append(f"{release.episodes_total} серий")
         if release.name_english and release.name_english != release.title:
             desc_parts.append(release.name_english)
-        # Одна кнопка: сразу выбор серий (список серий + качество) внутри бота.
-        # Результат — обычная (не фото) карточка: тап по ней мгновенный, без галочки и превью.
+        # Одна кнопка — сразу список серий с выбором качества («где серии»). Результат —
+        # обычная (не фото) карточка: тап мгновенный, без «галочки» и предпросмотра файла.
+        # Иконка — миниатюра (маленькая и быстрая), а не полноразмерный постер.
         kb = InlineKeyboardMarkup([
-            [InlineKeyboardButton("▶️ Смотреть", url=deep_link(f"eps_{release.id}"))],
+            [InlineKeyboardButton("📺 Все серии", url=deep_link(f"eps_{release.id}"))],
         ])
         caption = ui.inline_card_text(release, BOT_USERNAME)
-        poster = release.poster or release.poster_preview or release.poster_thumbnail
+        poster = release.poster_thumbnail or release.poster_preview or release.poster
         results.append(
             InlineQueryResultArticle(
                 id=f"r{release.id}",
                 title=ui.truncate(release.title, 64),
                 description=ui.truncate(" · ".join(desc_parts), 120),
-                # иконка — оригинальный постер (не предварительно сжатый thumbnail)
-                thumb_url=poster or None,
+                thumb_url=poster or None,       # миниатюра: быстрая загрузка списка результатов
                 thumb_width=320,
                 thumb_height=480,
                 reply_markup=kb,
@@ -1702,6 +1703,7 @@ async def check_credentials(test_all: bool = False) -> int:
 async def check_environment() -> int:
     """python anime_bot.py --check — быстрая проверка без запуска бота."""
     config.ensure_dirs()
+    print(f"• Версия кода: {config.CODE_VERSION} ({config.BUILD_SHA or 'локальная сборка'})")
     print(f"• Токен бота: {'задан' if config.BOT_TOKEN else 'НЕТ'}")
     print(f"• Пара по умолчанию: api_id={config.API_ID}")
     print(f"• Файлы: до {config.MAX_FILE_MB} МБ, кэш до {config.MAX_CACHE_GB} ГБ, задач параллельно {config.CONCURRENT_DOWNLOADS}")
@@ -1766,7 +1768,8 @@ async def main() -> None:
         sys.exit(await check_credentials(test_all="--creds-all" in sys.argv))
     config.ensure_dirs()
     storage.init()
-    log.info("Запуск: лимит файлов %s МБ (MTProto), кэш %s ГБ, задач %s",
+    log.info("Запуск: версия %s (%s), лимит файлов %s МБ (MTProto), кэш %s ГБ, задач %s",
+             config.CODE_VERSION, config.BUILD_SHA or "локальная сборка",
              config.MAX_FILE_MB, config.MAX_CACHE_GB, config.CONCURRENT_DOWNLOADS)
     health = await start_health_server()
     try:

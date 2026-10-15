@@ -213,7 +213,7 @@ def inline_card_text(release: Any, bot_username: str = "") -> str:
         text = text[:820].rsplit("\n", 1)[0] + "…"
     if bot_username:
         link = f"https://t.me/{bot_username}?start=eps_{int(getattr(release, 'id', 0) or 0)}"
-        return f"{text}\n\n▶️ {link}"
+        return f"{text}\n\n📺 Все серии и качество: {link}"
     site = getattr(release, "site_url", "") or ""
     return f"{text}\n\n{site}" if site else text
 
