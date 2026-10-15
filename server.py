@@ -11,7 +11,6 @@ import time
 import uuid
 from aiohttp import web, WSMsgType
 
-# Логирование строго в stdout без stderr, чтобы Railway не красил логи в error
 logging.basicConfig(
     level=logging.INFO,
     format='%(asctime)s [%(levelname)s] TsuyuProtoCore: %(message)s',
@@ -19,7 +18,12 @@ logging.basicConfig(
 )
 logger = logging.getLogger("TsuyuProtoCore")
 
-PORT = int(os.environ.get("PORT", 8080))
+raw_port = os.environ.get("PORT", "8080")
+try:
+    PORT = int(raw_port)
+except Exception:
+    PORT = 8080
+
 DB_PATH = os.environ.get("DB_PATH", "tsuyu_data.db")
 UPLOAD_DIR = os.environ.get("UPLOAD_DIR", "uploads")
 
@@ -239,7 +243,12 @@ async def ws_handler(request):
 
 # ----------------- REST API Endpoints -----------------
 async def ping(request):
-    return web.json_response({"status": "ok", "service": "Tsuyu Core", "version": "2026.1", "time": int(time.time())})
+    return web.json_response({
+        "status": "ok",
+        "service": "Tsuyu Core",
+        "version": "2026.1",
+        "time": int(time.time())
+    })
 
 async def health(request):
     return web.Response(text="OK", status=200)
@@ -362,7 +371,7 @@ async def api_profile(request):
         conn.close()
         return web.json_response({"status": "success"})
 
-# Media / File Upload (No Base64!)
+# Media / File Upload
 async def api_upload(request):
     uid = authenticate(request)
     if not uid:
@@ -501,7 +510,6 @@ async def api_search(request):
 def create_app():
     app = web.Application()
     
-    # Enable CORS headers for any client/browser
     @web.middleware
     async def cors_middleware(req, handler):
         if req.method == "OPTIONS":
@@ -533,6 +541,10 @@ def create_app():
     return app
 
 if __name__ == "__main__":
-    print(f"Tsuyu Modern 2026 High-Performance Server Starting on port {PORT}", flush=True)
+    print(f"Tsuyu Modern 2026 Core starting on port {PORT}...", flush=True)
     web_app = create_app()
-    web.run_app(web_app, host="0.0.0.0", port=PORT, access_log=None)
+    # Railway private and public networking requires binding to all interfaces (:: or 0.0.0.0)
+    try:
+        web.run_app(web_app, host="::", port=PORT, access_log=None)
+    except Exception:
+        web.run_app(web_app, host="0.0.0.0", port=PORT, access_log=None)
