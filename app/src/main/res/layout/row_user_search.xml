@@ -13,16 +13,16 @@
         android:layout_width="match_parent"
         android:layout_height="wrap_content"
         android:gravity="center_vertical"
-        android:minHeight="@dimen/row_min_height"
+        android:minHeight="68dp"
         android:orientation="horizontal"
-        android:paddingStart="@dimen/screen_gutter"
-        android:paddingTop="@dimen/space_md"
-        android:paddingEnd="@dimen/screen_gutter"
-        android:paddingBottom="@dimen/space_md">
+        android:paddingStart="16dp"
+        android:paddingTop="10dp"
+        android:paddingEnd="16dp"
+        android:paddingBottom="10dp">
 
         <FrameLayout
-            android:layout_width="@dimen/avatar_row"
-            android:layout_height="@dimen/avatar_row">
+            android:layout_width="48dp"
+            android:layout_height="48dp">
 
             <TextView
                 android:id="@+id/user_initial"
@@ -32,7 +32,7 @@
                 android:fontFamily="sans-serif-medium"
                 android:gravity="center"
                 android:textColor="@color/tsuyu_white"
-                android:textSize="20sp" />
+                android:textSize="18sp" />
 
             <com.google.android.material.imageview.ShapeableImageView
                 android:id="@+id/user_avatar"
@@ -46,7 +46,7 @@
         <LinearLayout
             android:layout_width="0dp"
             android:layout_height="wrap_content"
-            android:layout_marginStart="@dimen/space_md"
+            android:layout_marginStart="14dp"
             android:layout_weight="1"
             android:orientation="vertical">
 
@@ -55,31 +55,37 @@
                 android:layout_width="match_parent"
                 android:layout_height="wrap_content"
                 android:ellipsize="end"
+                android:fontFamily="sans-serif-medium"
                 android:maxLines="1"
-                android:textAppearance="@style/TextAppearance.Tsuyu.RowItemTitle" />
+                android:textColor="@color/tsuyu_white"
+                android:textSize="16sp" />
 
             <TextView
                 android:id="@+id/user_handle"
                 android:layout_width="match_parent"
                 android:layout_height="wrap_content"
-                android:layout_marginTop="@dimen/space_2xs"
+                android:layout_marginTop="2dp"
                 android:ellipsize="end"
+                android:fontFamily="sans-serif"
                 android:maxLines="1"
-                android:textAppearance="@style/TextAppearance.Tsuyu.RowMeta" />
+                android:textColor="@color/tsuyu_blue"
+                android:textSize="13sp" />
         </LinearLayout>
 
         <com.google.android.material.button.MaterialButton
             android:id="@+id/user_message_button"
             style="@style/Widget.Tsuyu.Chip"
             android:layout_width="wrap_content"
-            android:layout_height="@dimen/icon_button_small"
-            android:layout_marginStart="@dimen/space_sm"
+            android:layout_height="36dp"
+            android:layout_marginStart="8dp"
+            android:paddingStart="14dp"
+            android:paddingEnd="14dp"
             android:text="Написать" />
     </LinearLayout>
 
     <View
         android:layout_width="match_parent"
         android:layout_height="@dimen/hairline"
-        android:layout_marginStart="@dimen/divider_inset"
+        android:layout_marginStart="78dp"
         android:background="@color/tsuyu_border" />
 </LinearLayout>

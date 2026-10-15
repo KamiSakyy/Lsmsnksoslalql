@@ -1,13 +1,92 @@
 <?xml version="1.0" encoding="utf-8"?>
-<!-- Message action sheet, mirrors the web client .action-sheet markup. -->
 <LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
     xmlns:app="http://schemas.android.com/apk/res-auto"
     android:layout_width="match_parent"
     android:layout_height="wrap_content"
     android:background="@drawable/bg_sheet_surface"
     android:orientation="vertical"
-    android:padding="@dimen/sheet_padding">
+    android:paddingStart="16dp"
+    android:paddingTop="12dp"
+    android:paddingEnd="16dp"
+    android:paddingBottom="24dp">
 
+    <!-- Ручка шторки -->
+    <View
+        android:layout_width="@dimen/sheet_handle_width"
+        android:layout_height="@dimen/sheet_handle_height"
+        android:layout_gravity="center_horizontal"
+        android:layout_marginBottom="12dp"
+        android:background="@drawable/bg_sheet_handle" />
+
+    <!-- Панель быстрых реакций Telegram (Emoji reactions bar) -->
+    <LinearLayout
+        android:id="@+id/message_react"
+        android:layout_width="match_parent"
+        android:layout_height="48dp"
+        android:layout_marginBottom="12dp"
+        android:background="@drawable/bg_home_search"
+        android:gravity="center_vertical"
+        android:orientation="horizontal"
+        android:paddingStart="12dp"
+        android:paddingEnd="12dp">
+
+        <TextView
+            android:layout_width="0dp"
+            android:layout_height="wrap_content"
+            android:layout_weight="1"
+            android:gravity="center"
+            android:text="❤️"
+            android:textSize="22sp" />
+
+        <TextView
+            android:layout_width="0dp"
+            android:layout_height="wrap_content"
+            android:layout_weight="1"
+            android:gravity="center"
+            android:text="👍"
+            android:textSize="22sp" />
+
+        <TextView
+            android:layout_width="0dp"
+            android:layout_height="wrap_content"
+            android:layout_weight="1"
+            android:gravity="center"
+            android:text="🔥"
+            android:textSize="22sp" />
+
+        <TextView
+            android:layout_width="0dp"
+            android:layout_height="wrap_content"
+            android:layout_weight="1"
+            android:gravity="center"
+            android:text="😂"
+            android:textSize="22sp" />
+
+        <TextView
+            android:layout_width="0dp"
+            android:layout_height="wrap_content"
+            android:layout_weight="1"
+            android:gravity="center"
+            android:text="👏"
+            android:textSize="22sp" />
+
+        <TextView
+            android:layout_width="0dp"
+            android:layout_height="wrap_content"
+            android:layout_weight="1"
+            android:gravity="center"
+            android:text="🎉"
+            android:textSize="22sp" />
+    </LinearLayout>
+
+    <View
+        android:id="@+id/message_actions_divider"
+        android:layout_width="match_parent"
+        android:layout_height="@dimen/hairline"
+        android:layout_marginBottom="6dp"
+        android:background="@color/tsuyu_border" />
+
+    <!-- Действия над сообщением -->
     <LinearLayout
         android:id="@+id/message_reply"
         style="@style/Widget.Tsuyu.SheetActionRow">
@@ -46,7 +125,8 @@
         <ImageView
             style="@style/Widget.Tsuyu.SheetActionIcon"
             android:contentDescription=""
-            android:src="@drawable/ic_export" />
+            android:src="@drawable/ic_reply"
+            android:rotationY="180" />
 
         <TextView
             style="@style/Widget.Tsuyu.SheetActionLabel"
@@ -92,36 +172,28 @@
             style="@style/Widget.Tsuyu.SheetActionIcon"
             android:contentDescription=""
             android:src="@drawable/ic_delete"
-            app:tint="@color/tsuyu_danger" />
+            app:tint="@color/tsuyu_red" />
 
         <TextView
             style="@style/Widget.Tsuyu.SheetActionLabel"
             android:text="@string/msg_delete"
-            android:textColor="@color/tsuyu_danger" />
+            android:textColor="@color/tsuyu_red" />
     </LinearLayout>
 
     <LinearLayout
         android:id="@+id/message_cancel"
         style="@style/Widget.Tsuyu.SheetActionRow"
-        android:layout_marginTop="@dimen/sheet_gap"
-        android:gravity="center">
+        android:layout_marginTop="@dimen/space_md">
+
+        <ImageView
+            style="@style/Widget.Tsuyu.SheetActionIcon"
+            android:contentDescription=""
+            android:src="@drawable/ic_close"
+            app:tint="@color/tsuyu_secondary" />
 
         <TextView
             style="@style/Widget.Tsuyu.SheetActionLabel"
-            android:text="@string/msg_cancel"
-            android:textColor="@color/tsuyu_preview" />
+            android:text="Отмена"
+            android:textColor="@color/tsuyu_secondary" />
     </LinearLayout>
-
-    <!-- Kept for compatibility with the existing sheet logic; never shown. -->
-    <View
-        android:id="@+id/message_react"
-        android:layout_width="0dp"
-        android:layout_height="0dp"
-        android:visibility="gone" />
-
-    <View
-        android:id="@+id/message_actions_divider"
-        android:layout_width="0dp"
-        android:layout_height="0dp"
-        android:visibility="gone" />
 </LinearLayout>

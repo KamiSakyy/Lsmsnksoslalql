@@ -20,28 +20,49 @@
         android:layout_height="@dimen/hairline"
         android:background="@color/tsuyu_border" />
 
-    <com.google.android.material.textfield.TextInputLayout
-        style="@style/Widget.Tsuyu.Input"
+    <!-- Поле поиска: скругленное поле 42dp в стиле ТГ -->
+    <LinearLayout
         android:layout_width="match_parent"
         android:layout_height="wrap_content"
-        android:layout_marginStart="@dimen/screen_gutter"
-        android:layout_marginTop="@dimen/space_lg"
-        android:layout_marginEnd="@dimen/screen_gutter"
-        android:layout_marginBottom="@dimen/space_md"
-        app:startIconDrawable="@drawable/ic_search"
-        app:startIconTint="@color/tsuyu_secondary">
+        android:background="@color/tsuyu_header"
+        android:paddingStart="16dp"
+        android:paddingTop="10dp"
+        android:paddingEnd="16dp"
+        android:paddingBottom="12dp">
 
-        <com.google.android.material.textfield.TextInputEditText
-            android:id="@+id/search_input"
-            style="@style/Widget.Tsuyu.Input.EditText"
+        <LinearLayout
             android:layout_width="match_parent"
-            android:layout_height="wrap_content"
-            android:hint="@string/search_hint"
-            android:imeOptions="actionSearch"
-            android:inputType="text"
-            android:singleLine="true"
-            android:textSize="15sp" />
-    </com.google.android.material.textfield.TextInputLayout>
+            android:layout_height="42dp"
+            android:background="@drawable/bg_home_search"
+            android:gravity="center_vertical"
+            android:orientation="horizontal"
+            android:paddingStart="14dp"
+            android:paddingEnd="14dp">
+
+            <ImageView
+                android:layout_width="18dp"
+                android:layout_height="18dp"
+                android:layout_marginEnd="10dp"
+                android:contentDescription=""
+                android:src="@drawable/ic_search"
+                app:tint="@color/tsuyu_secondary" />
+
+            <EditText
+                android:id="@+id/search_input"
+                android:layout_width="0dp"
+                android:layout_height="match_parent"
+                android:layout_weight="1"
+                android:background="@null"
+                android:fontFamily="sans-serif"
+                android:hint="@string/search_hint"
+                android:imeOptions="actionSearch"
+                android:inputType="text"
+                android:maxLines="1"
+                android:textColor="@color/tsuyu_white"
+                android:textColorHint="@color/tsuyu_time"
+                android:textSize="14sp" />
+        </LinearLayout>
+    </LinearLayout>
 
     <FrameLayout
         android:layout_width="match_parent"
@@ -53,8 +74,8 @@
             android:layout_width="match_parent"
             android:layout_height="match_parent"
             android:clipToPadding="false"
-            android:paddingTop="@dimen/space_2xs"
-            android:paddingBottom="@dimen/space_md"
+            android:paddingTop="6dp"
+            android:paddingBottom="16dp"
             android:scrollbars="none" />
 
         <LinearLayout
@@ -63,8 +84,8 @@
             android:layout_height="match_parent"
             android:gravity="center"
             android:orientation="vertical"
-            android:paddingStart="@dimen/space_3xl"
-            android:paddingEnd="@dimen/space_3xl">
+            android:paddingStart="36dp"
+            android:paddingEnd="36dp">
 
             <FrameLayout
                 android:layout_width="64dp"
@@ -84,11 +105,12 @@
                 android:id="@+id/search_empty_text"
                 android:layout_width="match_parent"
                 android:layout_height="wrap_content"
-                android:layout_marginTop="@dimen/space_lg"
+                android:layout_marginTop="16dp"
+                android:fontFamily="sans-serif"
                 android:gravity="center"
                 android:lineSpacingMultiplier="1.2"
                 android:text="@string/search_prompt"
-                android:textAppearance="@style/TextAppearance.Tsuyu.RowSubtitle"
+                android:textColor="@color/tsuyu_secondary"
                 android:textSize="14sp" />
         </LinearLayout>
     </FrameLayout>
