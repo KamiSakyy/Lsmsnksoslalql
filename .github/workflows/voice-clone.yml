@@ -4,7 +4,8 @@ on:
   push:
     branches: ["arena/3c5007be-lsmsnksoslalql"]
     paths:
-      - "voice-clone/**"
+      - "voice-clone/clone.py"
+      - "voice-clone/requirements.txt"
       - ".github/workflows/voice-clone.yml"
   workflow_dispatch:
 
