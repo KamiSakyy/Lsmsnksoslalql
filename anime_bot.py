@@ -1441,8 +1441,9 @@ def register_handlers(client: Client) -> None:
     if config.ENABLE_FILE_INTAKE:
         media_filter = filters.video | filters.document | filters.audio | filters.photo
         client.add_handler(MessageHandler(file_handler, filters.private & media_filter))
+    # только текст: карточки инлайна — обычные (без медиа), поэтому перехват подписей не нужен,
+    # а широкий filters.caption мог бы съедать присланные пользователем файлы
     client.add_handler(MessageHandler(text_handler, filters.private & filters.text))
-    client.add_handler(MessageHandler(text_handler, filters.private & filters.caption))
 
 
 async def start_client() -> Client:
