@@ -11,9 +11,11 @@ import time
 import uuid
 from aiohttp import web, WSMsgType
 
+# Логирование строго в stdout без stderr, чтобы Railway не красил логи в error
 logging.basicConfig(
     level=logging.INFO,
-    format='%(asctime)s [%(levelname)s] %(name)s: %(message)s'
+    format='%(asctime)s [%(levelname)s] TsuyuProtoCore: %(message)s',
+    stream=sys.stdout
 )
 logger = logging.getLogger("TsuyuProtoCore")
 
@@ -238,6 +240,9 @@ async def ws_handler(request):
 # ----------------- REST API Endpoints -----------------
 async def ping(request):
     return web.json_response({"status": "ok", "service": "Tsuyu Core", "version": "2026.1", "time": int(time.time())})
+
+async def health(request):
+    return web.Response(text="OK", status=200)
 
 async def api_register(request):
     try:
@@ -512,6 +517,7 @@ def create_app():
 
     # Routes
     app.router.add_get("/", ping)
+    app.router.add_get("/health", health)
     app.router.add_get("/api/ping", ping)
     app.router.add_get("/ws", ws_handler)
     app.router.add_post("/api/auth/register", api_register)
@@ -527,6 +533,6 @@ def create_app():
     return app
 
 if __name__ == "__main__":
-    logger.info("Tsuyu Modern 2026 High-Performance Server Starting on port %s", PORT)
+    print(f"Tsuyu Modern 2026 High-Performance Server Starting on port {PORT}", flush=True)
     web_app = create_app()
-    web.run_app(web_app, host="0.0.0.0", port=PORT)
+    web.run_app(web_app, host="0.0.0.0", port=PORT, access_log=None)
