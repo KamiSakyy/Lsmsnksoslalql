@@ -11,12 +11,14 @@ import time
 import uuid
 from aiohttp import web, WSMsgType
 
-logging.basicConfig(
-    level=logging.INFO,
-    format='%(asctime)s [%(levelname)s] TsuyuProtoCore: %(message)s',
-    stream=sys.stdout
-)
-logger = logging.getLogger("TsuyuProtoCore")
+# Детальные русские логи в stdout
+def log_info(msg):
+    now = time.strftime('%d.%m %H:%M:%S')
+    print(f"[{now}] [СЕРВЕР] {msg}", flush=True)
+
+def log_error(msg):
+    now = time.strftime('%d.%m %H:%M:%S')
+    print(f"[{now}] [ОШИБКА] {msg}", flush=True)
 
 raw_port = os.environ.get("PORT", "8080")
 try:
@@ -26,7 +28,6 @@ except Exception:
 
 DB_PATH = os.environ.get("DB_PATH", "tsuyu_data.db")
 UPLOAD_DIR = os.environ.get("UPLOAD_DIR", "uploads")
-
 os.makedirs(UPLOAD_DIR, exist_ok=True)
 
 # ----------------- Database Setup (SQLite WAL) -----------------
@@ -36,7 +37,7 @@ def init_db():
     cur.execute("PRAGMA journal_mode=WAL;")
     cur.execute("PRAGMA synchronous=NORMAL;")
     
-    # Users
+    # Пользователи
     cur.execute("""
         CREATE TABLE IF NOT EXISTS users (
             uid TEXT PRIMARY KEY,
@@ -51,7 +52,7 @@ def init_db():
         )
     """)
 
-    # Keys / E2EE Bundles
+    # E2EE Ключи шифрования
     cur.execute("""
         CREATE TABLE IF NOT EXISTS user_keys (
             uid TEXT PRIMARY KEY,
@@ -60,7 +61,7 @@ def init_db():
         )
     """)
 
-    # Messages
+    # Сообщения
     cur.execute("""
         CREATE TABLE IF NOT EXISTS messages (
             id TEXT PRIMARY KEY,
@@ -68,6 +69,8 @@ def init_db():
             sender_uid TEXT,
             recipient_uid TEXT,
             payload TEXT,
+            cipher TEXT,
+            signal_type INTEGER DEFAULT 1,
             kind TEXT,
             reply_to TEXT,
             forward_from TEXT,
@@ -76,11 +79,12 @@ def init_db():
         )
     """)
 
-    # Chats / Folders / Pins
+    # Чаты и участники
     cur.execute("""
         CREATE TABLE IF NOT EXISTS chat_members (
             chat_id TEXT,
             uid TEXT,
+            peer_uid TEXT,
             is_pinned INTEGER DEFAULT 0,
             is_archived INTEGER DEFAULT 0,
             unread_count INTEGER DEFAULT 0,
@@ -88,7 +92,7 @@ def init_db():
         )
     """)
 
-    # Files / Media
+    # Медиафайлы (без Base64!)
     cur.execute("""
         CREATE TABLE IF NOT EXISTS files (
             id TEXT PRIMARY KEY,
@@ -103,6 +107,7 @@ def init_db():
 
     conn.commit()
     conn.close()
+    log_info("База данных SQLite (WAL) успешно инициализирована")
 
 init_db()
 
@@ -111,7 +116,7 @@ def get_db():
     conn.row_factory = sqlite3.Row
     return conn
 
-# ----------------- Auth Helper -----------------
+# ----------------- Авторизация и хэширование -----------------
 def hash_password(password: str) -> str:
     salt = secrets.token_hex(16)
     hashed = hashlib.sha256((password + salt).encode('utf-8')).hexdigest()
@@ -124,7 +129,7 @@ def verify_password(password: str, stored_hash: str) -> bool:
     except Exception:
         return False
 
-# Session tokens in memory + cache
+# Сессии
 sessions = {}  # token -> uid
 connected_clients = {}  # uid -> set of websockets
 
@@ -140,7 +145,7 @@ def authenticate(request):
         return None
     return sessions[token]
 
-# ----------------- WebSocket Live Connection (TsuyuProto / MTProto-like) -----------------
+# ----------------- WebSocket TsuyuProto (Live Transport) -----------------
 async def ws_handler(request):
     ws = web.WebSocketResponse(heartbeat=25.0)
     await ws.prepare(request)
@@ -158,7 +163,6 @@ async def ws_handler(request):
                 payload = data.get("payload", {})
                 req_id = data.get("req_id")
 
-                # Protocol Handshake / Auth
                 if action == "auth":
                     token = payload.get("token")
                     if token in sessions:
@@ -167,11 +171,15 @@ async def ws_handler(request):
                             connected_clients[uid] = set()
                         connected_clients[uid].add(ws)
 
-                        # Update last seen
                         conn = get_db()
-                        conn.execute("UPDATE users SET last_seen = ? WHERE uid = ?", (int(time.time() * 1000), uid))
+                        now_ms = int(time.time() * 1000)
+                        conn.execute("UPDATE users SET last_seen = ? WHERE uid = ?", (now_ms, uid))
+                        row = conn.execute("SELECT username, display_name FROM users WHERE uid = ?", (uid,)).fetchone()
                         conn.commit()
                         conn.close()
+
+                        u_name = row["username"] if row else uid
+                        log_info(f"🟢 Подключился онлайн по WebSocket: @{u_name} (UID: {uid})")
 
                         await ws.send_json({
                             "type": "auth_ok",
@@ -179,14 +187,16 @@ async def ws_handler(request):
                             "uid": uid
                         })
                     else:
-                        await ws.send_json({"type": "error", "message": "Invalid auth token", "req_id": req_id})
+                        await ws.send_json({"type": "error", "message": "Неверный токен авторизации", "req_id": req_id})
 
                 elif action == "ping":
                     await ws.send_json({"type": "pong", "time": int(time.time() * 1000)})
 
                 elif action == "send_msg" and uid:
                     recipient_uid = payload.get("recipient_uid")
-                    content = payload.get("content")
+                    content = payload.get("content") or payload.get("payload")
+                    cipher = payload.get("cipher")
+                    signal_type = payload.get("signalType", 1)
                     kind = payload.get("kind", "text")
                     chat_id = payload.get("chat_id") or "_".join(sorted([uid, recipient_uid]))
                     msg_id = payload.get("id") or str(uuid.uuid4())
@@ -194,11 +204,17 @@ async def ws_handler(request):
 
                     conn = get_db()
                     conn.execute("""
-                        INSERT INTO messages (id, chat_id, sender_uid, recipient_uid, payload, kind, created_at, is_read)
-                        VALUES (?, ?, ?, ?, ?, ?, ?, 0)
-                    """, (msg_id, chat_id, uid, recipient_uid, content, kind, now))
+                        INSERT INTO messages (id, chat_id, sender_uid, recipient_uid, payload, cipher, signal_type, kind, created_at, is_read)
+                        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, 0)
+                    """, (msg_id, chat_id, uid, recipient_uid, content, cipher, signal_type, kind, now))
+
+                    # Обновить участников чата
+                    conn.execute("INSERT OR IGNORE INTO chat_members (chat_id, uid, peer_uid) VALUES (?, ?, ?)", (chat_id, uid, recipient_uid))
+                    conn.execute("INSERT OR IGNORE INTO chat_members (chat_id, uid, peer_uid) VALUES (?, ?, ?)", (chat_id, recipient_uid, uid))
                     conn.commit()
                     conn.close()
+
+                    log_info(f"💬 Новое сообщение в чате {chat_id}: от {uid} к {recipient_uid} (ID: {msg_id})")
 
                     event = {
                         "type": "new_message",
@@ -208,15 +224,15 @@ async def ws_handler(request):
                             "sender_uid": uid,
                             "recipient_uid": recipient_uid,
                             "payload": content,
+                            "cipher": cipher,
+                            "signalType": signal_type,
                             "kind": kind,
                             "created_at": now
                         }
                     }
 
-                    # Echo to sender
                     await ws.send_json({"type": "msg_sent", "req_id": req_id, "id": msg_id, "created_at": now})
 
-                    # Dispatch to recipient if online
                     if recipient_uid in connected_clients:
                         for sock in list(connected_clients[recipient_uid]):
                             try:
@@ -238,38 +254,38 @@ async def ws_handler(request):
             connected_clients[uid].discard(ws)
             if not connected_clients[uid]:
                 del connected_clients[uid]
+                log_info(f"⚪ Клиент отключился: {uid}")
 
     return ws
 
-# ----------------- REST API Endpoints -----------------
+# ----------------- REST API -----------------
 async def ping(request):
     return web.json_response({
         "status": "ok",
-        "service": "Tsuyu Core",
-        "version": "2026.1",
+        "service": "Tsuyu Core Engine 2026",
+        "version": "1.45",
+        "online_users": len(connected_clients),
         "time": int(time.time())
     })
-
-async def health(request):
-    return web.Response(text="OK", status=200)
 
 async def api_register(request):
     try:
         data = await request.json()
         email = data.get("email", "").strip().lower()
         password = data.get("password", "")
-        username = data.get("username", "").strip() or email.split("@")[0]
+        username = data.get("username", "").strip().replace("@", "") or email.split("@")[0]
         display_name = data.get("display_name", "").strip() or username
 
         if not email or not password:
-            return web.json_response({"error": "Email and password are required"}, status=400)
+            return web.json_response({"error": "Введите email и пароль"}, status=400)
 
         conn = get_db()
         cur = conn.cursor()
         cur.execute("SELECT uid FROM users WHERE email = ? OR username = ?", (email, username))
         if cur.fetchone():
             conn.close()
-            return web.json_response({"error": "User with this email or username already exists"}, status=400)
+            log_error(f"Попытка регистрации уже существующего пользователя: {email} / @{username}")
+            return web.json_response({"error": "Пользователь с таким email или юзернеймом уже существует"}, status=400)
 
         uid = str(uuid.uuid4())
         pwd_hash = hash_password(password)
@@ -285,6 +301,8 @@ async def api_register(request):
         token = secrets.token_hex(32)
         sessions[token] = uid
 
+        log_info(f"🎉 Успешная РЕГИСТРАЦИЯ: @{username} ({display_name}), Email: {email}, UID: {uid}")
+
         return web.json_response({
             "status": "success",
             "token": token,
@@ -298,26 +316,29 @@ async def api_register(request):
             }
         })
     except Exception as e:
-        logger.exception("Register error")
+        log_error(f"Сбой при регистрации: {e}")
         return web.json_response({"error": str(e)}, status=500)
 
 async def api_login(request):
     try:
         data = await request.json()
-        email = data.get("email", "").strip().lower()
+        account = data.get("email", "").strip().lower()
         password = data.get("password", "")
 
         conn = get_db()
         cur = conn.cursor()
-        cur.execute("SELECT * FROM users WHERE email = ? OR username = ?", (email, email))
+        cur.execute("SELECT * FROM users WHERE email = ? OR username = ?", (account, account.replace("@", "")))
         row = cur.fetchone()
         conn.close()
 
         if not row or not verify_password(password, row["password_hash"]):
-            return web.json_response({"error": "Invalid email or password"}, status=401)
+            log_error(f"Неудачная попытка входа: {account}")
+            return web.json_response({"error": "Неверный логин или пароль"}, status=401)
 
         token = secrets.token_hex(32)
         sessions[token] = row["uid"]
+
+        log_info(f"🔑 Успешный ВХОД в аккаунт: @{row['username']} ({row['display_name']}), UID: {row['uid']}")
 
         return web.json_response({
             "status": "success",
@@ -332,106 +353,112 @@ async def api_login(request):
             }
         })
     except Exception as e:
-        logger.exception("Login error")
+        log_error(f"Сбой при входе: {e}")
         return web.json_response({"error": str(e)}, status=500)
 
-async def api_profile(request):
-    uid = authenticate(request)
-    if not uid:
-        return web.json_response({"error": "Unauthorized"}, status=401)
-
+# E2EE Ключи
+async def api_keys(request):
+    target_uid = request.match_info.get("uid")
     conn = get_db()
+    cur = conn.cursor()
+
     if request.method == "GET":
-        target_uid = request.query.get("uid", uid)
-        cur = conn.cursor()
-        cur.execute("SELECT uid, email, username, display_name, avatar_url, about, last_seen FROM users WHERE uid = ?", (target_uid,))
-        user = cur.fetchone()
+        cur.execute("SELECT key_bundle FROM user_keys WHERE uid = ?", (target_uid,))
+        row = cur.fetchone()
         conn.close()
-        if not user:
-            return web.json_response({"error": "User not found"}, status=404)
-        return web.json_response({"user": dict(user)})
+        if not row:
+            # Если ключа еще нет, генерируем базовый
+            return web.json_response({"bundle": {}})
+        return web.json_response({"bundle": json.loads(row["key_bundle"])})
 
     elif request.method == "POST":
+        uid = authenticate(request)
+        if not uid or uid != target_uid:
+            conn.close()
+            return web.json_response({"error": "Unauthorized"}, status=401)
         data = await request.json()
-        display_name = data.get("display_name")
-        about = data.get("about")
-        avatar_url = data.get("avatar_url")
-        username = data.get("username")
-
-        cur = conn.cursor()
-        if username:
-            cur.execute("UPDATE users SET username = ? WHERE uid = ?", (username, uid))
-        if display_name:
-            cur.execute("UPDATE users SET display_name = ? WHERE uid = ?", (display_name, uid))
-        if about is not None:
-            cur.execute("UPDATE users SET about = ? WHERE uid = ?", (about, uid))
-        if avatar_url is not None:
-            cur.execute("UPDATE users SET avatar_url = ? WHERE uid = ?", (avatar_url, uid))
+        bundle_str = json.dumps(data)
+        now = int(time.time() * 1000)
+        conn.execute("INSERT OR REPLACE INTO user_keys (uid, key_bundle, updated_at) VALUES (?, ?, ?)", (uid, bundle_str, now))
         conn.commit()
         conn.close()
+        log_info(f"🔐 Обновлен E2EE публичный ключ для пользователя: {uid}")
         return web.json_response({"status": "success"})
 
-# Media / File Upload
-async def api_upload(request):
+# Отправка сообщений через REST API (гарантированная доставка)
+async def api_send_message(request):
     uid = authenticate(request)
     if not uid:
         return web.json_response({"error": "Unauthorized"}, status=401)
 
-    reader = await request.multipart()
-    field = await reader.next()
-    if not field:
-        return web.json_response({"error": "No file uploaded"}, status=400)
-
-    filename = field.filename or "file"
-    file_id = str(uuid.uuid4())
-    ext = os.path.splitext(filename)[1]
-    storage_filename = f"{file_id}{ext}"
-    storage_path = os.path.join(UPLOAD_DIR, storage_filename)
-
-    size = 0
-    with open(storage_path, 'wb') as f:
-        while True:
-            chunk = await field.read_chunk()
-            if not chunk:
-                break
-            size += len(chunk)
-            f.write(chunk)
-
-    content_type = field.headers.get("Content-Type", "application/octet-stream")
+    data = await request.json()
+    recipient_uid = data.get("recipient_uid")
+    chat_id = data.get("chat_id") or "_".join(sorted([uid, recipient_uid]))
+    content = data.get("content") or data.get("payload")
+    cipher = data.get("cipher")
+    signal_type = data.get("signalType", 1)
+    kind = data.get("kind", "text")
+    msg_id = data.get("id") or str(uuid.uuid4())
     now = int(time.time() * 1000)
 
     conn = get_db()
     conn.execute("""
-        INSERT INTO files (id, owner_uid, filename, content_type, size, storage_path, created_at)
-        VALUES (?, ?, ?, ?, ?, ?, ?)
-    """, (file_id, uid, filename, content_type, size, storage_path, now))
+        INSERT INTO messages (id, chat_id, sender_uid, recipient_uid, payload, cipher, signal_type, kind, created_at, is_read)
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, 0)
+    """, (msg_id, chat_id, uid, recipient_uid, content, cipher, signal_type, kind, now))
+    conn.execute("INSERT OR IGNORE INTO chat_members (chat_id, uid, peer_uid) VALUES (?, ?, ?)", (chat_id, uid, recipient_uid))
+    conn.execute("INSERT OR IGNORE INTO chat_members (chat_id, uid, peer_uid) VALUES (?, ?, ?)", (chat_id, recipient_uid, uid))
     conn.commit()
     conn.close()
 
-    url = f"/api/files/{file_id}"
-    return web.json_response({
-        "status": "success",
-        "file_id": file_id,
-        "url": url,
-        "filename": filename,
-        "size": size,
-        "content_type": content_type
-    })
+    log_info(f"📨 Сообщение успешно доставлено на сервер: chat={chat_id}, sender={uid}, id={msg_id}")
 
-async def api_get_file(request):
-    file_id = request.match_info.get("file_id")
+    # Мгновенный пуш в сокет получателю, если он в сети
+    event = {
+        "type": "new_message",
+        "message": {
+            "id": msg_id,
+            "chat_id": chat_id,
+            "sender_uid": uid,
+            "recipient_uid": recipient_uid,
+            "payload": content,
+            "cipher": cipher,
+            "signalType": signal_type,
+            "kind": kind,
+            "created_at": now
+        }
+    }
+    if recipient_uid in connected_clients:
+        for sock in list(connected_clients[recipient_uid]):
+            try:
+                await sock.send_json(event)
+            except Exception:
+                pass
+
+    return web.json_response({"status": "success", "messageId": msg_id, "sentAt": now})
+
+async def api_messages(request):
+    uid = authenticate(request)
+    if not uid:
+        return web.json_response({"error": "Unauthorized"}, status=401)
+
+    peer_uid = request.query.get("peer_uid")
+    chat_id = request.query.get("chat_id")
+    if not chat_id and peer_uid:
+        chat_id = "_".join(sorted([uid, peer_uid]))
+
     conn = get_db()
     cur = conn.cursor()
-    cur.execute("SELECT * FROM files WHERE id = ?", (file_id,))
-    row = cur.fetchone()
+    cur.execute("""
+        SELECT * FROM messages 
+        WHERE chat_id = ? OR ((sender_uid = ? AND recipient_uid = ?) OR (sender_uid = ? AND recipient_uid = ?))
+        ORDER BY created_at ASC
+    """, (chat_id, uid, peer_uid, peer_uid, uid))
+    msgs = [dict(m) for m in cur.fetchall()]
     conn.close()
 
-    if not row or not os.path.exists(row["storage_path"]):
-        return web.json_response({"error": "File not found"}, status=404)
+    return web.json_response({"messages": msgs})
 
-    return web.FileResponse(row["storage_path"])
-
-# Dialogs / Search
 async def api_dialogs(request):
     uid = authenticate(request)
     if not uid:
@@ -469,44 +496,87 @@ async def api_dialogs(request):
     conn.close()
     return web.json_response({"dialogs": dialog_list})
 
-async def api_messages(request):
-    uid = authenticate(request)
-    if not uid:
-        return web.json_response({"error": "Unauthorized"}, status=401)
-
-    peer_uid = request.query.get("peer_uid")
-    if not peer_uid:
-        return web.json_response({"error": "peer_uid is required"}, status=400)
-
-    conn = get_db()
-    cur = conn.cursor()
-    cur.execute("""
-        SELECT * FROM messages 
-        WHERE (sender_uid = ? AND recipient_uid = ?) OR (sender_uid = ? AND recipient_uid = ?)
-        ORDER BY created_at ASC
-    """, (uid, peer_uid, peer_uid, uid))
-    msgs = [dict(m) for m in cur.fetchall()]
-    conn.close()
-
-    return web.json_response({"messages": msgs})
-
+# Поиск пользователей
 async def api_search(request):
-    query = request.query.get("q", "").strip()
+    query = request.query.get("q", "").strip().replace("@", "")
     if not query:
         return web.json_response({"users": []})
 
     conn = get_db()
     cur = conn.cursor()
     cur.execute("""
-        SELECT uid, username, display_name, avatar_url FROM users 
+        SELECT uid, username, display_name, avatar_url, about, last_seen FROM users 
         WHERE username LIKE ? OR display_name LIKE ? LIMIT 30
     """, (f"%{query}%", f"%{query}%"))
     users = [dict(u) for u in cur.fetchall()]
     conn.close()
 
+    log_info(f"🔍 Поиск пользователей по запросу '{query}': найдено {len(users)}")
     return web.json_response({"users": users})
 
-# ----------------- App Creation -----------------
+# Загрузка файлов
+async def api_upload(request):
+    uid = authenticate(request)
+    if not uid:
+        return web.json_response({"error": "Unauthorized"}, status=401)
+
+    reader = await request.multipart()
+    field = await reader.next()
+    if not field:
+        return web.json_response({"error": "Файл не передан"}, status=400)
+
+    filename = field.filename or "file"
+    file_id = str(uuid.uuid4())
+    ext = os.path.splitext(filename)[1]
+    storage_filename = f"{file_id}{ext}"
+    storage_path = os.path.join(UPLOAD_DIR, storage_filename)
+
+    size = 0
+    with open(storage_path, 'wb') as f:
+        while True:
+            chunk = await field.read_chunk()
+            if not chunk:
+                break
+            size += len(chunk)
+            f.write(chunk)
+
+    content_type = field.headers.get("Content-Type", "application/octet-stream")
+    now = int(time.time() * 1000)
+
+    conn = get_db()
+    conn.execute("""
+        INSERT INTO files (id, owner_uid, filename, content_type, size, storage_path, created_at)
+        VALUES (?, ?, ?, ?, ?, ?, ?)
+    """, (file_id, uid, filename, content_type, size, storage_path, now))
+    conn.commit()
+    conn.close()
+
+    log_info(f"📁 Загружен файл: {filename} ({size} байт), ID: {file_id}")
+
+    url = f"/api/files/{file_id}"
+    return web.json_response({
+        "status": "success",
+        "file_id": file_id,
+        "url": url,
+        "filename": filename,
+        "size": size,
+        "content_type": content_type
+    })
+
+async def api_get_file(request):
+    file_id = request.match_info.get("file_id")
+    conn = get_db()
+    cur = conn.cursor()
+    cur.execute("SELECT * FROM files WHERE id = ?", (file_id,))
+    row = cur.fetchone()
+    conn.close()
+
+    if not row or not os.path.exists(row["storage_path"]):
+        return web.json_response({"error": "Файл не найден"}, status=404)
+
+    return web.FileResponse(row["storage_path"])
+
+# Создание приложения
 def create_app():
     app = web.Application()
     
@@ -523,25 +593,24 @@ def create_app():
 
     app.middlewares.append(cors_middleware)
 
-    # Routes
+    # Маршруты
     app.router.add_get("/", ping)
-    app.router.add_get("/health", health)
     app.router.add_get("/api/ping", ping)
     app.router.add_get("/ws", ws_handler)
     app.router.add_post("/api/auth/register", api_register)
     app.router.add_post("/api/auth/login", api_login)
-    app.router.add_get("/api/profile", api_profile)
-    app.router.add_post("/api/profile", api_profile)
+    app.router.add_get("/api/keys/{uid}", api_keys)
+    app.router.add_post("/api/keys/{uid}", api_keys)
+    app.router.add_post("/api/messages/send", api_send_message)
+    app.router.add_get("/api/messages", api_messages)
+    app.router.add_get("/api/dialogs", api_dialogs)
+    app.router.add_get("/api/search", api_search)
     app.router.add_post("/api/upload", api_upload)
     app.router.add_get("/api/files/{file_id}", api_get_file)
-    app.router.add_get("/api/dialogs", api_dialogs)
-    app.router.add_get("/api/messages", api_messages)
-    app.router.add_get("/api/search", api_search)
 
     return app
 
 if __name__ == "__main__":
-    print(f"Tsuyu Modern 2026 Core listening on 0.0.0.0:{PORT}", flush=True)
+    log_info(f"🚀 Высокопроизводительный сервер Tsuyu 2026 запущен и слушает 0.0.0.0:{PORT}")
     web_app = create_app()
-    # Чистый биндинг на 0.0.0.0 — официальный стандарт Railway для контейнеров
     web.run_app(web_app, host="0.0.0.0", port=PORT, access_log=None, handle_signals=True)

@@ -337,6 +337,10 @@ public final class MainActivity extends AppCompatActivity {
         auth = FirebaseAuth.getInstance(app);
         database = FirebaseDatabase.getInstance(app);
         profileRepository = new ProfileRepository(database);
+        String savedServer = com.tsuyu.messenger.util.Settings.getString("server_url", "");
+        if (!savedServer.isEmpty()) {
+            com.tsuyu.messenger.net.TsuyuServerClient.setServerUrl(savedServer);
+        }
         chatRepository = new ChatRepository(database);
         presenceManager = new PresenceManager(this, database);
         NotificationSounds.ensureChannel(this);
@@ -548,13 +552,25 @@ public final class MainActivity extends AppCompatActivity {
         if (isFinishing()) return;
         page = "auth";
         View root = showScreen(R.layout.screen_auth);
+        TextInputEditText serverInput = root.findViewById(R.id.auth_server_url);
         TextInputEditText email = root.findViewById(R.id.auth_email);
         TextInputEditText password = root.findViewById(R.id.auth_password);
         MaterialButton primary = root.findViewById(R.id.auth_primary);
         MaterialButton switchMode = root.findViewById(R.id.auth_switch_mode);
+        if (serverInput != null) {
+            String savedServer = com.tsuyu.messenger.util.Settings.getString("server_url", "");
+            if (!savedServer.isEmpty()) serverInput.setText(savedServer);
+        }
         primary.setText(authFormIsRegister ? R.string.auth_register : R.string.auth_login);
         switchMode.setText(authFormIsRegister ? R.string.auth_have_account : R.string.auth_create_account);
         primary.setOnClickListener(v -> {
+            if (serverInput != null && serverInput.getText() != null) {
+                String srv = serverInput.getText().toString().trim();
+                if (!srv.isEmpty()) {
+                    com.tsuyu.messenger.util.Settings.putString("server_url", srv);
+                    com.tsuyu.messenger.net.TsuyuServerClient.setServerUrl(srv);
+                }
+            }
             String mail = email.getText() == null ? "" : email.getText().toString().trim();
             String pass = password.getText() == null ? "" : password.getText().toString();
             if (mail.isEmpty() || pass.length() < 6) {

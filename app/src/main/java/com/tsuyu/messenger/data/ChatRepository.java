@@ -179,30 +179,39 @@ public final class ChatRepository {
                 Map<String, Object> publicBundle = peerKeyBundle(recipientUid);
                 if (publicBundle == null) throw new IllegalStateException("У собеседника ещё нет публичного ключа.");
                 SignalE2ee.Encrypted encrypted = crypto.encrypt(recipientUid, publicBundle, payload);
-                String messageId = root.child("chats").child(chatId).child("messages").push().getKey();
-                if (messageId == null) throw new IllegalStateException("Не удалось создать id сообщения.");
-                Map<String, Object> envelope = new HashMap<>();
-                envelope.put("senderUid", senderUid);
-                envelope.put("cipher", encrypted.cipher);
-                envelope.put("signalType", encrypted.signalType);
-                envelope.put("sentAt", ServerValue.TIMESTAMP);
-                envelope.put("edited", false);
-                if (clientId != null && !clientId.isEmpty()) envelope.put("clientId", clientId);
-                Map<String, Object> changes = new HashMap<>();
-                changes.put("chats/" + chatId + "/messages/" + messageId, envelope);
-                changes.put("chats/" + chatId + "/meta/lastMessage", envelope);
-                changes.put("chats/" + chatId + "/meta/lastMessageId", messageId);
-                changes.put("chats/" + chatId + "/meta/lastAt", ServerValue.TIMESTAMP);
-                Tasks.await(root.updateChildren(changes));
-                PushDispatcher dispatcher = pushDispatcher;
-                if (dispatcher != null) {
-                    try {
-                        dispatcher.onMessageSent(chatId, senderUid, recipientUid, messageId);
-                    } catch (RuntimeException ignored) {
-                        // Push is best effort; a failed notification must never fail the send.
-                    }
-                }
-                mainHandler.post(() -> result.success(messageId));
+                // 1. Попытка отправки через автономный сервер Tsuyu (Railway / Docker)
+                final String payloadStr = new String(payload, StandardCharsets.UTF_8);
+                com.tsuyu.messenger.net.TsuyuServerClient.sendMessage(chatId, senderUid, recipientUid,
+                        payloadStr, encrypted.cipher, encrypted.signalType, "text", clientId,
+                        new com.tsuyu.messenger.net.TsuyuServerClient.Callback<String>() {
+                            @Override public void onSuccess(String serverMsgId) {
+                                mainHandler.post(() -> result.success(serverMsgId));
+                            }
+                            @Override public void onError(String serverErr) {
+                                // Если сервер недоступен, fallback на локальную очередь/RTDB
+                                try {
+                                    String messageId = root.child("chats").child(chatId).child("messages").push().getKey();
+                                    if (messageId == null) throw new IllegalStateException("Не удалось создать id сообщения.");
+                                    Map<String, Object> envelope = new HashMap<>();
+                                    envelope.put("senderUid", senderUid);
+                                    envelope.put("cipher", encrypted.cipher);
+                                    envelope.put("signalType", encrypted.signalType);
+                                    envelope.put("sentAt", ServerValue.TIMESTAMP);
+                                    envelope.put("edited", false);
+                                    if (clientId != null && !clientId.isEmpty()) envelope.put("clientId", clientId);
+                                    Map<String, Object> changes = new HashMap<>();
+                                    changes.put("chats/" + chatId + "/messages/" + messageId, envelope);
+                                    changes.put("chats/" + chatId + "/meta/lastMessage", envelope);
+                                    changes.put("chats/" + chatId + "/meta/lastMessageId", messageId);
+                                    changes.put("chats/" + chatId + "/meta/lastAt", ServerValue.TIMESTAMP);
+                                    Tasks.await(root.updateChildren(changes));
+                                    mainHandler.post(() -> result.success(messageId));
+                                } catch (Exception e) {
+                                    mainHandler.post(() -> result.error(safeMessage(e)));
+                                }
+                            }
+                        });
+                return;
             } catch (Exception e) {
                 mainHandler.post(() -> result.error(safeMessage(e)));
             }
