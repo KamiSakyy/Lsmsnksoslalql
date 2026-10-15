@@ -1,0 +1,69 @@
+# ============================================================================
+#  Аниме-бот AniLibria -> Telegram (MTProto, до 2 ГБ на файл)
+#  Запуск:  docker compose up -d --build
+#  Логи:    docker compose logs -f
+#  Стоп:    docker compose down
+# ============================================================================
+services:
+  animebot:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    image: animebot:latest
+    container_name: animebot
+    restart: unless-stopped
+    # ffmpeg любит /dev/shm — на маленьких VPS дефолтные 64 МБ маловаты
+    shm_size: "512m"
+    init: true
+    stop_grace_period: 30s
+    environment:
+      # --- ключи (уже вшиты в код, тут можно переопределить) -----------------
+      BOT_TOKEN: "${BOT_TOKEN:-8877653509:AAHkFOL8Vj6aqICiOg9Xwpn9ONE92affKtc}"
+      # API_ID/API_HASH можно не указывать — возьмутся вшитые (Public Win Beta 2040),
+      # а при проблемах авторизации бот сам переберёт остальные пары из api_keys.py
+      # API_ID: "2040"
+      # API_HASH: "b18441a1ff607e10a989891a5462e627"
+
+      # --- доступ ------------------------------------------------------------
+      PUBLIC_BOT: "1"          # 1 = бот открыт для всех, 0 = только ALLOWED_USERS/OWNER_ID
+      OWNER_ID: "${OWNER_ID:-0}"   # свой ID узнать командой /id
+      # ALLOWED_USERS: "123456789,987654321"
+
+      # --- файлы и лимиты -----------------------------------------------------
+      MAX_FILE_MB: "2000"        # лимит Telegram по MTProto = 2000 МБ
+      MAX_CACHE_GB: "25"         # сколько скачанного держать на диске
+      CONCURRENT_DOWNLOADS: "2"  # одновременных ffmpeg-сборок
+      CONCURRENT_UPLOADS: "2"
+      DEFAULT_QUALITY: "1080"
+      QUALITY_CHOICES: "1080,720,480"
+      TRY_LOWER_QUALITY_ON_TOOBIG: "1"
+      EPISODES_PER_PAGE: "12"
+      PROGRESS_INTERVAL: "4.0"
+
+      # --- AniLibria API v1 (зеркала) ----------------------------------------
+      ANILIBRIA_MIRRORS: "https://anilibria.top,https://api.anilibria.app"
+      SEARCH_LIMIT: "20"
+      INLINE_LIMIT: "30"
+
+      # --- сеть/прокси (если провайдер блокирует TG или AniLibria) -----------
+      # TG_PROXY: "socks5://user:pass@host:1080"
+      # ANILIBRIA_PROXY: "http://user:pass@host:3128"
+
+      # --- необязательный health-порт для PaaS (Render/Railway) --------------
+      # HEALTH_PORT: "8080"
+
+      LOG_LEVEL: "INFO"
+    volumes:
+      # кэш видео, сессии MTProto и SQLite — чтобы не терять file_id и логин
+      - anime_data:/data
+    # Если нужен health-порт наружу, раскомментируй:
+    # ports:
+    #   - "8080:8080"
+    deploy:
+      resources:
+        limits:
+          # ffmpeg + 2 ГБ файлы: меньше 1 ГБ ОЗУ лучше не ставить
+          memory: 1g
+
+volumes:
+  anime_data:

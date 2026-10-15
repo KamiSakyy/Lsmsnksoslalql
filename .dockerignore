@@ -1,0 +1,53 @@
+# ============================================================================
+#  Что НЕ попадает в docker-образ (образ маленький и без секретов проекта)
+# ============================================================================
+# Git и артефакты Android-проекта, лежащего в этом же репозитории
+.git
+.github
+gradle*
+*.gradle
+*.apk
+*.aab
+*.ap_
+*.dex
+app/
+tools/
+handoff/
+signing/
+signing/
+
+# Мусор и медиа
+*.zip
+*.jar
+*.aar
+*.tar
+*.tar.gz
+*.mp4
+*.mkv
+*.ts
+*.png
+*.jpg
+*.jpeg
+node_modules/
+
+# Личные/секретные файлы (важно: в образ не должны попадать ключи Firebase и пр.)
+*firebase-adminsdk*.json
+database.rules.json
+firebase.json
+.env
+.env.*
+!.env.example
+data/
+*.sqlite3
+*.session
+*.session-journal
+
+# Документация и прочее
+*.md
+!BOT_README.md
+index*.html
+*.pyc
+__pycache__/
+.venv/
+venv/
+.DS_Store
