@@ -384,10 +384,23 @@ async def process_episode(work: Dict[str, Any], release: Release, episode_number
                         ui.progress_kb(work["task_id"]))
 
     async with user_lock(user_id):
-        info = await dl_engine.download_episode(
-            release.id, episode_number, chosen, hls_url,
-            on_progress=on_progress, cancel_event=cancel,
-        )
+        try:
+            info = await dl_engine.download_episode(
+                release.id, episode_number, chosen, hls_url,
+                on_progress=on_progress, cancel_event=cancel,
+            )
+        except dl_engine.StreamExpired:
+            # ссылка на HLS со временем истекает — берём свежую из API и пробуем ещё раз
+            log.info("Ссылка на поток истекла — обновляю через AniLibria API")
+            fresh = await load_release(work["release_id"], force=True)
+            fresh_episode = fresh.episode(episode_number)
+            fresh_url = fresh_episode.url_for(chosen) if fresh_episode is not None else None
+            if not fresh_url:
+                raise
+            info = await dl_engine.download_episode(
+                release.id, episode_number, chosen, fresh_url,
+                on_progress=on_progress, cancel_event=cancel,
+            )
 
     if info.size > config.MAX_FILE_BYTES:
         raise dl_engine.FileTooBig(f"{dl_engine.human_size(info.size)} — больше лимита {config.MAX_FILE_MB} МБ")
@@ -460,6 +473,16 @@ async def download_worker(work: Dict[str, Any]) -> None:
                         f"🚫 {ui.esc(exc)}\n\nНужен VPN/прокси: задай <code>ANILIBRIA_PROXY</code> в переменных окружения.")
     except (AniLibriaError, ReleaseNotFound) as exc:
         await safe_edit(chat_id, work["message_id"], f"⚠️ API AniLibria: {ui.esc(exc)}")
+    except dl_engine.RateLimited as exc:
+        await safe_edit(
+            chat_id, work["message_id"],
+            f"⚠️ <b>CDN AniLibria ограничил запросы</b>\n{ui.esc(exc)}\n\n"
+            "Бот уже сам снижает потоки и ждёт по <code>Retry-After</code>. "
+            "Если повторяется — выстави в переменных <code>HLS_CONNECTIONS=4</code> "
+            "(и <code>HLS_START_CONNECTIONS=2</code>), а на Railway выбери регион "
+            "<b>EU West (Amsterdam)</b>: он ближе к CDN и реже попадает под лимиты.\n"
+            "Файл можно докачать этой же кнопкой — уже скачанные сегменты сохраняются."
+        )
     except dl_engine.DownloadError as exc:
         await safe_edit(chat_id, work["message_id"],
                         f"⚠️ Не получилось собрать файл: {ui.esc(exc)}\n\n"

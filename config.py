@@ -129,8 +129,17 @@ FFMPEG_RW_TIMEOUT_US: int = _int_env("FFMPEG_RW_TIMEOUT_US", 30_000_000)
 # Качаем сегменты m3u8 параллельно (одна связь к CDN AniLibria отдаёт всего
 # несколько сотен КБ/с — именно это и тормозило выдачу серий).
 HLS_PARALLEL: bool = (os.environ.get("HLS_PARALLEL", "1") not in ("0", "false", "False"))
-HLS_CONNECTIONS: int = _int_env("HLS_CONNECTIONS", 16)      # одновременных соединений к CDN
-HLS_SEGMENT_RETRIES: int = _int_env("HLS_SEGMENT_RETRIES", 4)
+HLS_CONNECTIONS: int = _int_env("HLS_CONNECTIONS", 8)          # потолок одновременных соединений к CDN
+HLS_START_CONNECTIONS: int = _int_env("HLS_START_CONNECTIONS", 3)   # с чего начинаем (защита от 429)
+HLS_RAMP_AFTER: int = _int_env("HLS_RAMP_AFTER", 12)           # +1 соединение за столько успешных сегментов
+HLS_JITTER: float = float(os.environ.get("HLS_JITTER", "0.35"))     # разброс старта запросов, сек
+HLS_SEGMENT_RETRIES: int = _int_env("HLS_SEGMENT_RETRIES", 4)  # повторы на сетевые сбои
+HLS_MAX_RATE_HITS: int = _int_env("HLS_MAX_RATE_HITS", 40)     # сколько лимитов CDN терпим за загрузку
+HLS_MAX_FORBIDDEN: int = _int_env("HLS_MAX_FORBIDDEN", 6)      # сколько 403 терпим (гео/бан IP)
+HLS_BACKOFF_BASE: float = float(os.environ.get("HLS_BACKOFF_BASE", "2.0"))
+HLS_RETRY_AFTER_MAX: int = _int_env("HLS_RETRY_AFTER_MAX", 180)     # дольше столько секунд не ждём
+HLS_MAX_TOTAL_WAIT: int = _int_env("HLS_MAX_TOTAL_WAIT", 900)       # суммарное ожидание лимитов
+HLS_LONG_PAUSE: float = float(os.environ.get("HLS_LONG_PAUSE", "20.0"))  # пауза перед докачкой
 THUMBNAIL_MAX_BYTES: int = 190 * 1024                           # Telegram: превью ≤ 200 КБ
 THUMBNAIL_WIDTH: int = _int_env("THUMBNAIL_WIDTH", 320)
 
@@ -181,7 +190,10 @@ __all__ = [
     "ANILIBRIA_MIRRORS", "ANILIBRIA_SITE", "HTTP_TIMEOUT", "HTTP_RETRIES",
     "SEARCH_LIMIT", "INLINE_LIMIT", "DEFAULT_QUALITY", "QUALITY_CHOICES",
     "FFMPEG", "FFPROBE", "FFMPEG_THREADS", "DOWNLOAD_USER_AGENT", "DOWNLOAD_REFERER",
-    "FFMPEG_RW_TIMEOUT_US", "HLS_PARALLEL", "HLS_CONNECTIONS", "HLS_SEGMENT_RETRIES", "THUMBNAIL_MAX_BYTES", "THUMBNAIL_WIDTH",
+    "FFMPEG_RW_TIMEOUT_US", "HLS_PARALLEL", "HLS_CONNECTIONS", "HLS_SEGMENT_RETRIES",
+    "HLS_START_CONNECTIONS", "HLS_RAMP_AFTER", "HLS_JITTER", "HLS_MAX_RATE_HITS",
+    "HLS_MAX_FORBIDDEN", "HLS_BACKOFF_BASE", "HLS_RETRY_AFTER_MAX", "HLS_MAX_TOTAL_WAIT",
+    "HLS_LONG_PAUSE", "THUMBNAIL_MAX_BYTES", "THUMBNAIL_WIDTH",
     "PROGRESS_INTERVAL", "EPISODES_PER_PAGE", "TRY_LOWER_QUALITY_ON_TOOBIG",
     "SEND_AS_DOCUMENT", "ENABLE_FILE_INTAKE", "KEEP_INCOMING_FILES", "LOG_LEVEL",
     "TG_PROXY", "ANILIBRIA_PROXY", "pyrogram_proxy", "USER_AGENT_APP", "credentials_for",

@@ -348,6 +348,7 @@ def progress_text(state: dl_engine.ProgressState, title: str, episode: int, qual
             + speed + eta
             + (f"\nРазмер: {dl_engine.human_size(state.downloaded)}" if state.downloaded else "")
             + f"\n<i>Прошло {dl_engine.human_time(elapsed)}</i>"
+            + (f"\n\n⚠️ {esc(state.extra)}" if state.extra else "")
         )
     if state.stage == "upload":
         percent = state.percent

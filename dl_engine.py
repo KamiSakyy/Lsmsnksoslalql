@@ -26,6 +26,7 @@ import asyncio
 import hashlib
 import logging
 import os
+import random
 import re
 import shutil
 import time
@@ -54,6 +55,14 @@ class DownloadCancelled(Exception):
 
 class FileTooBig(DownloadError):
     """Файл больше лимита Telegram (2000 МБ)."""
+
+
+class StreamExpired(DownloadError):
+    """Ссылка на поток устарела или закрыта (401/403 на плейлисте) — нужна свежая из API."""
+
+
+class RateLimited(DownloadError):
+    """CDN AniLibria ограничил запросы (429/403) — сработала защита от всплеска."""
 
 
 @dataclass
@@ -426,13 +435,14 @@ async def _spawn(
             stderr_task.cancel()
 
 
-async def _cleanup_tmp(part_path: Path, seg_dir: Path) -> None:
-    """Убирает недокачанный mp4 и папку с сегментами (после отмены/ошибки)."""
+async def _cleanup_tmp(part_path: Path, seg_dir: Path, keep_segments: bool = True) -> None:
+    """Убирает недокачанный mp4; сегменты по умолчанию сохраняем — это задел для докачки."""
     try:
         Path(part_path).unlink(missing_ok=True)
     except OSError:
         pass
-    await asyncio.to_thread(shutil.rmtree, seg_dir, True)
+    if not keep_segments:
+        await asyncio.to_thread(shutil.rmtree, seg_dir, True)
 
 
 async def _reap(process: asyncio.subprocess.Process, timeout: float = 10.0) -> None:
@@ -642,58 +652,180 @@ def _http_headers() -> Dict[str, str]:
 
 async def _http_text(session: aiohttp.ClientSession, url: str) -> str:
     async with session.get(url, proxy=config.ANILIBRIA_PROXY) as response:
+        if response.status in (401, 403):
+            raise StreamExpired(f"HTTP {response.status}: ссылка на поток устарела или закрыта")
         if response.status >= 400:
             raise DownloadError(f"HTTP {response.status} на {url}")
         return await response.text()
 
 
-async def _download_file(
+def _retry_after_seconds(headers: Any) -> Optional[float]:
+    value = headers.get("Retry-After")
+    if not value:
+        return None
+    try:
+        return max(0.0, float(str(value).strip()))
+    except ValueError:
+        return None
+
+
+class AdaptiveLimiter:
+    """Ограничитель одновременных запросов к CDN, общий на весь процесс.
+
+    Зачем: одна связь к cache.libria.fun отдаёт ~200-500 КБ/с (серия «ехала» десятки
+    минут), а 16 соединений залпом — это 429 от CDN (серия обрывалась на 33%).
+    Поэтому: стартуем с нескольких соединений, плавно разгоняемся при успехах,
+    при давлении CDN — общая пауза и мгновенное уменьшение числа потоков.
+    """
+
+    def __init__(self, start: int, maximum: int) -> None:
+        self.maximum = max(1, int(maximum))
+        self.limit = max(1, min(int(start), self.maximum))
+        self.active = 0
+        self._successes = 0
+        self._cooldown_until = 0.0
+        self._condition = asyncio.Condition()
+
+    async def acquire(self) -> None:
+        async with self._condition:
+            while self.active >= self.limit:
+                await self._condition.wait()
+            self.active += 1
+
+    async def release(self) -> None:
+        async with self._condition:
+            self.active = max(0, self.active - 1)
+            self._condition.notify(1)
+
+    def set_limit(self, value: int) -> None:
+        self.limit = max(1, min(int(value), self.maximum))
+        self._successes = 0
+
+    def note_success(self) -> None:
+        """После серии успешных сегментов осторожно добавляем ещё одно соединение."""
+        self._successes += 1
+        if self._successes >= config.HLS_RAMP_AFTER and self.limit < self.maximum:
+            self.limit += 1
+            self._successes = 0
+
+    def note_pressure(self, delay: float) -> None:
+        """CDN тормозит: пауза для всех воркеров + вдвое меньше соединений."""
+        self._cooldown_until = max(self._cooldown_until, time.time() + max(0.5, float(delay)))
+        self.set_limit(max(1, self.limit // 2))
+
+    async def wait_if_paused(self) -> None:
+        while True:
+            delay = self._cooldown_until - time.time()
+            if delay <= 0:
+                return
+            await asyncio.sleep(min(delay, 5.0))
+
+    @property
+    def cooldown_left(self) -> float:
+        return max(0.0, self._cooldown_until - time.time())
+
+
+_GLOBAL_LIMITER: Optional[AdaptiveLimiter] = None
+
+
+def global_limiter() -> AdaptiveLimiter:
+    """Один лимитер на процесс: две одновременные задачи не дадут двойной всплеск."""
+    global _GLOBAL_LIMITER
+    if _GLOBAL_LIMITER is None or _GLOBAL_LIMITER.maximum != max(1, config.HLS_CONNECTIONS):
+        _GLOBAL_LIMITER = AdaptiveLimiter(config.HLS_START_CONNECTIONS, config.HLS_CONNECTIONS)
+    return _GLOBAL_LIMITER
+
+
+# Статусы, на которые имеет смысл подождать и повторить, а не падать
+RETRYABLE_STATUSES = {408, 425, 429, 500, 502, 503, 504, 520, 522, 524}
+PRESSURE_STATUSES = {403, 429}
+
+
+async def _fetch_segment(
     session: aiohttp.ClientSession,
+    limiter: AdaptiveLimiter,
     url: str,
     path: Path,
-    semaphore: Optional[asyncio.Semaphore] = None,
-    cancel_event: Optional[asyncio.Event] = None,
-    retries: int = 1,
+    cancel_event: Optional[asyncio.Event],
+    stats: Dict[str, float],
 ) -> int:
-    """Качает один файл с ретраями; пишет через .part, чтобы не оставлять битых кусков."""
+    """Качает один сегмент: докачка, учёт давления CDN, пауза по Retry-After."""
     part = path.with_name(path.name + ".part")
-    last_error: Optional[Exception] = None
+    if path.exists() and path.stat().st_size > 0:
+        return path.stat().st_size  # уже скачан раньше — файлы серии переиспользуются
 
-    async def _once() -> int:
-        async with session.get(url, proxy=config.ANILIBRIA_PROXY) as response:
-            if response.status >= 400:
-                raise DownloadError(f"HTTP {response.status}")
-            written = 0
-            with open(part, "wb") as handle:
-                async for chunk in response.content.iter_chunked(256 * 1024):
-                    if cancel_event is not None and cancel_event.is_set():
-                        raise DownloadCancelled()
-                    handle.write(chunk)
-                    written += len(chunk)
-            return written
-
-    for attempt in range(1, max(1, retries) + 1):
+    network_errors = 0
+    while True:
         if cancel_event is not None and cancel_event.is_set():
+            part.unlink(missing_ok=True)
             raise DownloadCancelled()
+
+        await limiter.wait_if_paused()
+        await limiter.acquire()
         try:
-            if semaphore is not None:
-                async with semaphore:
-                    size = await _once()
-            else:
-                size = await _once()
-            if size <= 0:
+            if config.HLS_JITTER:
+                # не бьём залпом: CDN видит разнесённые по времени запросы
+                await asyncio.sleep(random.uniform(0, config.HLS_JITTER))
+            stats["requests"] = stats.get("requests", 0) + 1
+            async with session.get(url, proxy=config.ANILIBRIA_PROXY) as response:
+                status = response.status
+                if status in PRESSURE_STATUSES or status in RETRYABLE_STATUSES:
+                    retry_after = _retry_after_seconds(response.headers)
+                    if status == 403:
+                        stats["forbidden"] = stats.get("forbidden", 0) + 1
+                        if stats["forbidden"] > config.HLS_MAX_FORBIDDEN:
+                            raise RateLimited(
+                                "CDN отвечает 403 — похоже на блокировку IP или гео-ограничение"
+                            )
+                    else:
+                        stats["rate_hits"] = stats.get("rate_hits", 0) + 1
+                    hits = stats.get("rate_hits", 0) + stats.get("forbidden", 0)
+                    if hits > config.HLS_MAX_RATE_HITS:
+                        raise RateLimited(f"CDN держит лимит запросов (сработал {int(hits)} раз)")
+                    delay = retry_after if retry_after is not None else min(
+                        config.HLS_BACKOFF_BASE * (2 ** min(int(hits), 6)), 60.0
+                    )
+                    if delay > config.HLS_RETRY_AFTER_MAX:
+                        raise RateLimited(f"CDN просит подождать {delay:.0f} с — это слишком долго")
+                    stats["waited"] = stats.get("waited", 0.0) + delay
+                    if stats["waited"] > config.HLS_MAX_TOTAL_WAIT:
+                        raise RateLimited("ожидание лимитов CDN превысило допустимое")
+                    limiter.note_pressure(delay)
+                    log.warning(
+                        "CDN AniLibria тормозит (%s): пауза %.1f с, соединений теперь %s",
+                        status, delay, limiter.limit,
+                    )
+                    continue
+
+                if status >= 400:
+                    raise DownloadError(f"HTTP {status}")
+
+                written = 0
+                handle = open(part, "wb")
+                try:
+                    async for chunk in response.content.iter_chunked(256 * 1024):
+                        if cancel_event is not None and cancel_event.is_set():
+                            raise DownloadCancelled()
+                        handle.write(chunk)
+                        written += len(chunk)
+                finally:
+                    handle.close()
+            if written <= 0:
                 raise DownloadError("пустой сегмент")
             part.replace(path)
-            return size
-        except DownloadCancelled:
+            limiter.note_success()
+            return written
+        except (DownloadCancelled, RateLimited, DownloadError):
             part.unlink(missing_ok=True)
             raise
-        except Exception as exc:  # noqa: BLE001
-            last_error = exc
+        except Exception as exc:  # noqa: BLE001 - сеть/таймауты: повторяем
+            network_errors += 1
             part.unlink(missing_ok=True)
-            if attempt < retries:
-                await asyncio.sleep(min(0.4 * attempt, 2.5))
-    raise DownloadError(f"не скачалось ({last_error})")
+            if network_errors > config.HLS_SEGMENT_RETRIES:
+                raise DownloadError(f"сегмент не скачался ({exc})")
+            await asyncio.sleep(min(0.6 * network_errors, 4.0) + random.uniform(0, 0.4))
+        finally:
+            await limiter.release()
 
 
 async def parallel_fetch(
@@ -703,15 +835,19 @@ async def parallel_fetch(
     cancel_event: Optional[asyncio.Event] = None,
     expected_duration: float = 0.0,
 ) -> Tuple[Path, float]:
-    """Скачивает все сегменты HLS параллельно и собирает локальный плейлист.
+    """Скачивает все сегменты HLS (адаптивно, параллельно) и собирает локальный плейлист.
 
     Возвращает (путь к локальному m3u8, длительность в секундах).
+    Уже скачанные сегменты не перекачиваются — оборванная загрузка продолжается с места.
     """
     work_dir = Path(work_dir)
     work_dir.mkdir(parents=True, exist_ok=True)
-    connections = max(1, config.HLS_CONNECTIONS)
+    limiter = global_limiter()
     connector = aiohttp.TCPConnector(
-        limit=connections + 8, limit_per_host=connections + 4, ttl_dns_cache=300, enable_cleanup_closed=True
+        limit=max(4, config.HLS_CONNECTIONS + 4),
+        limit_per_host=max(4, config.HLS_CONNECTIONS + 2),
+        ttl_dns_cache=300,
+        enable_cleanup_closed=True,
     )
 
     async with aiohttp.ClientSession(
@@ -731,25 +867,33 @@ async def parallel_fetch(
             current_url = variant
         if not playlist.segments:
             raise DownloadError("не удалось получить список сегментов HLS")
-        if playlist.has_byterange:
-            raise DownloadError("плейлист с байтовыми диапазонами — нужен резервный режим")
 
         total_duration = playlist.duration or expected_duration or 0.0
-        semaphore = asyncio.Semaphore(connections)
 
-        # 2) init-сегмент (для fMP4/CMAF) — если есть
+        # 2) init-сегмент (fMP4/CMAF), если он есть в плейлисте
         init_name: Optional[str] = None
         if playlist.init_url:
             init_name = "init" + _segment_ext(playlist.init_url, ".mp4")
-            await _download_file(session, playlist.init_url, work_dir / init_name,
-                                 cancel_event=cancel_event, retries=config.HLS_SEGMENT_RETRIES)
+            await _fetch_segment(session, limiter, playlist.init_url, work_dir / init_name,
+                                 cancel_event, {"requests": 0})
 
-        # 3) параллельно качаем сегменты, считая прогресс по длительности
         names = [f"seg_{index:05d}{_segment_ext(url)}" for index, (url, _dur) in enumerate(playlist.segments)]
-        counters = {"duration": 0.0, "bytes": 0, "last_push": 0.0}
+        stats: Dict[str, float] = {"requests": 0, "rate_hits": 0, "forbidden": 0, "waited": 0.0}
         lock = asyncio.Lock()
         started = time.time()
         state = ProgressState(stage="download", duration=total_duration)
+        counters = {"duration": 0.0, "bytes": 0, "last_push": 0.0}
+
+        todo: List[int] = []
+        for index, name in enumerate(names):
+            existing = work_dir / name
+            if existing.exists() and existing.stat().st_size > 0:
+                counters["duration"] += playlist.segments[index][1]
+                counters["bytes"] += existing.stat().st_size
+            else:
+                todo.append(index)
+        if todo and len(todo) != len(names):
+            log.info("Докачка: %s из %s сегментов уже на диске", len(names) - len(todo), len(names))
 
         async def push(force: bool = False) -> None:
             if on_progress is None:
@@ -758,10 +902,9 @@ async def parallel_fetch(
             if not force and now - counters["last_push"] < max(0.5, config.PROGRESS_INTERVAL / 2):
                 return
             counters["last_push"] = now
-            state.downloaded = counters["bytes"]
+            state.downloaded = int(counters["bytes"])
             state.position = counters["duration"]
             state.percent = (counters["duration"] / total_duration * 100) if total_duration else 0.0
-            # средняя скорость за всю загрузку — устойчиво и без «телепортов» цифр
             elapsed = max(now - started, 0.05)
             if counters["bytes"]:
                 state.speed = f"{human_size(counters['bytes'] / elapsed)}/с"
@@ -769,9 +912,9 @@ async def parallel_fetch(
                 return
             await on_progress(state.touch(stage="download"))
 
-        async def fetch_segment(index: int, url: str, name: str) -> None:
-            size = await _download_file(
-                session, url, work_dir / name, semaphore, cancel_event, config.HLS_SEGMENT_RETRIES
+        async def worker(index: int) -> None:
+            size = await _fetch_segment(
+                session, limiter, playlist.segments[index][0], work_dir / names[index], cancel_event, stats
             )
             async with lock:
                 counters["duration"] += playlist.segments[index][1]
@@ -779,16 +922,29 @@ async def parallel_fetch(
             await push()
 
         if on_progress:
-            await on_progress(state.touch(stage="download", extra="качаю сегменты параллельно"))
-        try:
-            await asyncio.gather(
-                *(fetch_segment(index, url, names[index]) for index, (url, _dur) in enumerate(playlist.segments))
-            )
-        except Exception:
-            await asyncio.to_thread(shutil.rmtree, work_dir, True)
-            raise
+            await on_progress(state.touch(stage="download"))
+        await push(force=True)
 
-        # 4) локальный плейлист: ffmpeg читает его с диска, сеть уже не нужна
+        try:
+            await asyncio.gather(*(worker(index) for index in todo))
+        except RateLimited as exc:
+            # CDN упёрся в лимит: аккуратный режим «по одной связи» с паузами
+            log.warning("Лимит CDN (%s) — докачиваю по одной связи", exc)
+            limiter.set_limit(1)
+            stats["rate_hits"] = stats["forbidden"] = 0
+            stats["waited"] = 0.0
+            await asyncio.sleep(min(5.0 + random.uniform(0, 3), 15.0))
+            for index in todo:
+                target = work_dir / names[index]
+                if target.exists() and target.stat().st_size > 0:
+                    continue
+                await worker(index)
+
+        missing = [name for name in names if not (work_dir / name).exists() or (work_dir / name).stat().st_size == 0]
+        if missing:
+            raise DownloadError(f"не докачано сегментов: {len(missing)}")
+
+        # 3) локальный плейлист: ffmpeg читает его с диска, сеть уже не нужна
         lines: List[str] = ["#EXTM3U", "#EXT-X-VERSION:3"]
         longest = max((dur for _url, dur in playlist.segments), default=10)
         lines.append(f"#EXT-X-TARGETDURATION:{max(int(longest) + 1, 2)}")
@@ -804,14 +960,19 @@ async def parallel_fetch(
         local_playlist = work_dir / "local.m3u8"
         local_playlist.write_text("\n".join(lines) + "\n", encoding="utf-8")
 
-        duration = total_duration or (time.time() - started)
+        # подчищаем недокачанные куски, чтобы они не мешали следующему запуску
+        for stale in work_dir.glob("*.part"):
+            stale.unlink(missing_ok=True)
+
         await push(force=True)
-        return local_playlist, duration
+        log.info(
+            "Сегменты: %s шт, запросов %s, лимитов CDN %s, пауз %.1f с, соединений на финише %s",
+            len(names), int(stats["requests"]), int(stats["rate_hits"] + stats["forbidden"]),
+            stats["waited"], limiter.limit,
+        )
+        return local_playlist, total_duration
 
 
-# ---------------------------------------------------------------------------
-# Главная функция скачивания
-# ---------------------------------------------------------------------------
 async def download_episode(
     release_id: int | str,
     episode: int,
@@ -851,17 +1012,35 @@ async def download_episode(
     local_playlist: Optional[Path] = None
     duration = 0.0
 
+    rate_limited: Optional[DownloadError] = None
     if config.HLS_PARALLEL:
-        try:
-            local_playlist, duration = await parallel_fetch(
-                hls_url, seg_dir, on_progress=on_progress, cancel_event=cancel_event
-            )
-        except DownloadCancelled:
-            await _cleanup_tmp(part_path, seg_dir)
-            raise
-        except Exception as exc:  # noqa: BLE001 - падать не нужно, есть резервный путь
-            log.warning("Параллельная загрузка не удалась (%s) — перехожу на прямое чтение потока ffmpeg", exc)
-            local_playlist = None
+        for attempt in range(2):
+            try:
+                local_playlist, duration = await parallel_fetch(
+                    hls_url, seg_dir, on_progress=on_progress, cancel_event=cancel_event
+                )
+                break
+            except DownloadCancelled:
+                await _cleanup_tmp(part_path, seg_dir, keep_segments=True)
+                raise
+            except RateLimited as exc:
+                if attempt == 0:
+                    pause = float(config.HLS_LONG_PAUSE)
+                    log.warning("CDN ограничил загрузку (%s) — пауза %.0f с и докачка остатка", exc, pause)
+                    if on_progress:
+                        await on_progress(ProgressState(
+                            stage="download", duration=duration,
+                            extra=f"CDN ограничил скорость — пауза {pause:.0f} с, потом докачаю остаток",
+                        ))
+                    await asyncio.sleep(pause)
+                    continue
+                rate_limited = exc
+                local_playlist = None
+                break
+            except Exception as exc:  # noqa: BLE001 - падать не нужно, есть резервный путь
+                log.warning("Параллельная загрузка не удалась (%s) — перехожу на прямое чтение потока ffmpeg", exc)
+                local_playlist = None
+                break
 
     try:
         if local_playlist is not None:
@@ -874,10 +1053,19 @@ async def download_episode(
             duration = duration or await hls_duration(hls_url)
             mode = await run_ffmpeg(hls_url, part_path, on_progress, cancel_event, duration)
     except DownloadCancelled:
-        await _cleanup_tmp(part_path, seg_dir)
+        # mp4-недокачка удаляется, а готовые сегменты оставляем: вернёшься — докачается
+        await _cleanup_tmp(part_path, seg_dir, keep_segments=True)
         raise
-    finally:
-        # сегменты больше не нужны: mp4 уже собран (или соберётся из сети)
+    except DownloadError as exc:
+        if rate_limited is not None:
+            # сетевой резерв тоже не прошёл — оставляем главную причину (лимит CDN)
+            tail = str(exc)
+            if len(tail) > 120:
+                tail = tail[:117] + "…"
+            raise RateLimited(f"{rate_limited} · резерв: {tail}") from exc
+        raise
+    else:
+        # успех: собранный mp4 самодостаточен, сегменты больше не нужны
         await asyncio.to_thread(shutil.rmtree, seg_dir, True)
 
     if not part_path.exists() or part_path.stat().st_size == 0:
@@ -919,4 +1107,5 @@ __all__ = [
     "directory_size", "episode_paths", "cache_key", "human_size", "human_time",
     "MediaInfo", "ProgressState", "DownloadError", "DownloadCancelled", "FileTooBig",
     "parallel_fetch", "parse_playlist", "pick_variant", "HlsPlaylist",
+    "AdaptiveLimiter", "global_limiter", "RateLimited", "StreamExpired",
 ]
