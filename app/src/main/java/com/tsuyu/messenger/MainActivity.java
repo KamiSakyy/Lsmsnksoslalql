@@ -217,7 +217,7 @@ public final class MainActivity extends AppCompatActivity {
     private View searchEmptyState;
     private View chatEmptyState;
     private TextView searchEmptyText;
-    private TextInputEditText searchInput;
+    private EditText searchInput;
     private TextInputEditText composer;
     private TextView chatStatus;
     private View chatAvatarDot;
