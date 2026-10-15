@@ -40,6 +40,11 @@ services:
       EPISODES_PER_PAGE: "12"
       PROGRESS_INTERVAL: "4.0"
 
+      # --- скорость скачивания ------------------------------------------------
+      HLS_PARALLEL: "1"          # сегменты качаются параллельно (иначе одна связь ~250 КБ/с)
+      HLS_CONNECTIONS: "16"      # одновременных соединений к CDN AniLibria
+      HLS_SEGMENT_RETRIES: "4"
+
       # --- AniLibria API v1 (зеркала) ----------------------------------------
       ANILIBRIA_MIRRORS: "https://anilibria.top,https://api.anilibria.app"
       SEARCH_LIMIT: "20"

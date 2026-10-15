@@ -28,7 +28,12 @@ from __future__ import annotations
 import html
 from typing import Any, Dict, Iterable, List, Optional, Sequence
 
-from pyrogram.types import InlineKeyboardButton, InlineKeyboardMarkup
+from pyrogram.types import (
+    InlineKeyboardButton,
+    InlineKeyboardMarkup,
+    KeyboardButton,
+    ReplyKeyboardMarkup,
+)
 
 import config
 import dl_engine
@@ -103,8 +108,8 @@ def help_text(bot_username: str = "") -> str:
     return (
         "❓ <b>Как пользоваться</b>\n\n"
         f"1. <b>Инлайн-поиск:</b> в любом чате набери <code>{esc(mention)} наруто</code> — "
-        "выбери тайтл из подсказок, откроется карточка.\n"
-        "2. <b>В боте:</b> напиши название обычным сообщением или нажми «Поиск».\n"
+        "выбери тайтл из подсказок, откроется карточка (в боте по тексту поиск не работает).\n"
+        "2. <b>Кнопки внизу:</b> «⭐ Избранное», «🔍 Поиск», «▶️ Продолжить» — всегда под полем ввода.\n"
         "3. <b>Серии:</b> в карточке релиза → «📺 Серии» → выбираешь серию → качество → ждёшь MP4.\n"
         "4. <b>2 ГБ:</b> работа идёт через MTProto (как у userbot), поэтому лимит файла — 2000 МБ, "
         "а не 50 МБ, как у обычных ботов на Bot API.\n"
@@ -194,6 +199,15 @@ def release_kb(release_id: int, is_fav: bool = False, has_episodes: bool = True,
         rows.append(third)
     rows.append([InlineKeyboardButton("🏠 Меню", callback_data="M|0")])
     return InlineKeyboardMarkup(rows)
+
+
+def inline_card_text(release: Any) -> str:
+    """Карточка, которую отправляет инлайн-режим (ссылка в конце = превью постера)."""
+    text = release_text(release)
+    if len(text) > 900:
+        text = text[:900].rsplit("\n", 1)[0] + "…"
+    site = getattr(release, "site_url", "") or ""
+    return f"{text}\n\n{site}" if site else text
 
 
 def search_results_text(query: str, releases: Sequence[Any]) -> str:
@@ -353,19 +367,68 @@ def progress_kb(task_id: str) -> InlineKeyboardMarkup:
     return InlineKeyboardMarkup([[InlineKeyboardButton("❌ Отменить", callback_data=f"C|{task_id}")]])
 
 
-def video_caption(title: str, episode: int, quality: int, size_bytes: int,
-                  mode: str = "", from_cache: bool = False) -> str:
-    notes = []
-    if from_cache:
-        notes.append("⚡️ из кэша")
-    if mode:
-        notes.append(f"сборка: {mode}")
-    tail = f"\n<i>{' · '.join(notes)}</i>" if notes else ""
+def video_caption(title: str, episode: int, quality: int, size_bytes: int) -> str:
+    """Подпись под видео: только то, что полезно зрителю (без служебных деталей)."""
     return (
         f"🎬 <b>{esc(truncate(title, 80))}</b>\n"
         f"📺 Серия {episode} · 🎚 {quality}p · 💾 {dl_engine.human_size(size_bytes)}"
-        f"{tail}\n\n"
-        "Источник: AniLibria (AniLiberty) · отправлено через MTProto (до 2 ГБ)"
+    )
+
+
+def reply_keyboard() -> ReplyKeyboardMarkup:
+    """Обычная (постоянная) клавиатура Telegram — всегда видна под полем ввода."""
+    return ReplyKeyboardMarkup(
+        [
+            [KeyboardButton("⭐ Избранное"), KeyboardButton("🔍 Поиск"), KeyboardButton("▶️ Продолжить")],
+        ],
+        resize_keyboard=True,
+        is_persistent=True,
+        placeholder="⭐ Избранное · 🔍 Поиск · ▶️ Продолжить",
+    )
+
+
+def search_hint_text(bot_username: str = "") -> str:
+    mention = f"@{bot_username}" if bot_username else "@ваш_бот"
+    return (
+        "🔍 <b>Поиск работает через инлайн</b>\n\n"
+        f"В любом чате набери <code>{esc(mention)}</code> и название, например:\n"
+        f"<code>{esc(mention)} мастера меча</code>\n\n"
+        "Выбери тайтл из подсказок — откроется его карточка."
+    )
+
+
+def continue_text(title: str, last_episode: int, next_episode: int, quality: int, last_quality: int) -> str:
+    return (
+        "▶️ <b>Продолжить просмотр</b>\n\n"
+        f"🎬 <b>{esc(truncate(title, 70))}</b>\n"
+        f"Остановился на серии {last_episode} ({last_quality}p)\n"
+        f"Дальше: <b>серия {next_episode}</b> · {quality}p"
+    )
+
+
+def continue_kb(release_id: int, next_episode: int, quality: int, max_episode: int) -> InlineKeyboardMarkup:
+    return InlineKeyboardMarkup([
+        [InlineKeyboardButton(f"▶️ Продолжить с серии {next_episode}",
+                              callback_data=f"D|{release_id}|{next_episode}|{quality}")],
+        [InlineKeyboardButton("📺 Все серии", callback_data=f"E|{release_id}|{max(0, (next_episode - 1) // config.EPISODES_PER_PAGE)}"),
+         InlineKeyboardButton("🎚 Другое качество", callback_data=f"P|{release_id}|{next_episode}")],
+        [InlineKeyboardButton("🕓 История", callback_data="H|0"), InlineKeyboardButton("🏠 Меню", callback_data="M|0")],
+    ])
+
+
+def nothing_to_continue_text() -> str:
+    return (
+        "▶️ <b>Продолжить просмотр</b>\n\n"
+        "Пока нечего продолжать: ты ещё ничего не скачивал.\n"
+        "Найди аниме через инлайн-поиск — и после первой серии тут появится кнопка «Продолжить»."
+    )
+
+
+def all_episodes_watched_text(title: str, last_episode: int) -> str:
+    return (
+        "🎉 <b>Продолжить просмотр</b>\n\n"
+        f"По «{esc(truncate(title, 60))}» ты досмотрел до конца (серия {last_episode}).\n"
+        "Можно начать заново или выбрать другой тайтл через инлайн-поиск."
     )
 
 
@@ -490,6 +553,8 @@ def stats_text(data: Dict[str, Any]) -> str:
 
 __all__ = [
     "esc", "truncate", "progress_bar", "main_menu_text", "main_menu_kb", "help_text",
+    "reply_keyboard", "search_hint_text", "continue_text", "continue_kb", "inline_card_text",
+    "nothing_to_continue_text", "all_episodes_watched_text",
     "settings_text", "settings_kb", "release_text", "release_kb", "search_results_text",
     "search_results_kb", "latest_kb", "episodes_text", "episodes_kb", "quality_text",
     "quality_kb", "progress_text", "progress_kb", "video_caption", "video_kb",

@@ -124,6 +124,13 @@ DOWNLOAD_USER_AGENT: str = os.environ.get("DOWNLOAD_USER_AGENT") or (
 )
 DOWNLOAD_REFERER: str = os.environ.get("DOWNLOAD_REFERER") or (ANILIBRIA_SITE + "/")
 FFMPEG_RW_TIMEOUT_US: int = _int_env("FFMPEG_RW_TIMEOUT_US", 30_000_000)
+
+# --- скорость скачивания HLS -------------------------------------------------
+# Качаем сегменты m3u8 параллельно (одна связь к CDN AniLibria отдаёт всего
+# несколько сотен КБ/с — именно это и тормозило выдачу серий).
+HLS_PARALLEL: bool = (os.environ.get("HLS_PARALLEL", "1") not in ("0", "false", "False"))
+HLS_CONNECTIONS: int = _int_env("HLS_CONNECTIONS", 16)      # одновременных соединений к CDN
+HLS_SEGMENT_RETRIES: int = _int_env("HLS_SEGMENT_RETRIES", 4)
 THUMBNAIL_MAX_BYTES: int = 190 * 1024                           # Telegram: превью ≤ 200 КБ
 THUMBNAIL_WIDTH: int = _int_env("THUMBNAIL_WIDTH", 320)
 
@@ -174,7 +181,7 @@ __all__ = [
     "ANILIBRIA_MIRRORS", "ANILIBRIA_SITE", "HTTP_TIMEOUT", "HTTP_RETRIES",
     "SEARCH_LIMIT", "INLINE_LIMIT", "DEFAULT_QUALITY", "QUALITY_CHOICES",
     "FFMPEG", "FFPROBE", "FFMPEG_THREADS", "DOWNLOAD_USER_AGENT", "DOWNLOAD_REFERER",
-    "FFMPEG_RW_TIMEOUT_US", "THUMBNAIL_MAX_BYTES", "THUMBNAIL_WIDTH",
+    "FFMPEG_RW_TIMEOUT_US", "HLS_PARALLEL", "HLS_CONNECTIONS", "HLS_SEGMENT_RETRIES", "THUMBNAIL_MAX_BYTES", "THUMBNAIL_WIDTH",
     "PROGRESS_INTERVAL", "EPISODES_PER_PAGE", "TRY_LOWER_QUALITY_ON_TOOBIG",
     "SEND_AS_DOCUMENT", "ENABLE_FILE_INTAKE", "KEEP_INCOMING_FILES", "LOG_LEVEL",
     "TG_PROXY", "ANILIBRIA_PROXY", "pyrogram_proxy", "USER_AGENT_APP", "credentials_for",

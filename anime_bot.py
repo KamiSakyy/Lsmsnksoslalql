@@ -38,6 +38,7 @@ from pyrogram.errors import (
 )
 from pyrogram.handlers import CallbackQueryHandler, InlineQueryHandler, MessageHandler
 from pyrogram.types import (
+    BotCommand,
     CallbackQuery,
     InlineKeyboardButton,
     InlineKeyboardMarkup,
@@ -86,6 +87,11 @@ RELEASE_MEMO: Dict[int, tuple[float, Release]] = {}
 STARTED_AT = time.time()
 
 PER_PAGE = 10
+
+# Подписи постоянной клавиатуры (обычные кнопки Telegram внизу экрана)
+BUTTON_FAVORITES = "⭐ Избранное"
+BUTTON_SEARCH = "🔍 Поиск"
+BUTTON_CONTINUE = "▶️ Продолжить"
 
 
 def user_lock(user_id: int) -> asyncio.Lock:
@@ -248,8 +254,7 @@ async def send_cached(chat_id: int, key: str, release: Release, episode_number: 
     row = await storage.cache_get(key)
     if not row or not row.get("file_id"):
         return False
-    caption = ui.video_caption(release.title, episode_number, quality, int(row.get("size") or 0),
-                               mode="", from_cache=True)
+    caption = ui.video_caption(release.title, episode_number, quality, int(row.get("size") or 0))
     kb = ui.video_kb(release.id, episode_number, release.max_episode, quality)
     try:
         await APP.send_video(
@@ -272,8 +277,7 @@ async def upload_media(chat_id: int, info: dl_engine.MediaInfo, release: Release
                        quality: int, work: Dict[str, Any]) -> Optional[Message]:
     """Отправляет готовый файл (video или document) с прогрессом загрузки."""
     key = media_key(release.id, episode_number, quality)
-    caption = ui.video_caption(release.title, episode_number, quality, info.size, mode=info.mode,
-                              from_cache=info.from_cache)
+    caption = ui.video_caption(release.title, episode_number, quality, info.size)
     kb = ui.video_kb(release.id, episode_number, release.max_episode, quality)
     filename = f"{release.alias}_s{episode_number}_{quality}p.mp4"
     state: dl_engine.ProgressState = work["state"]
@@ -594,6 +598,8 @@ async def cmd_start(client: Client, message: Message) -> None:
         reply_markup=ui.main_menu_kb(is_owner(user.id)),
         disable_web_page_preview=True,
     )
+    # обычная (постоянная) клавиатура Telegram: ⭐ Избранное · 🔍 Поиск · ▶️ Продолжить
+    await message.reply_text("⌨️ Кнопки закреплены внизу ⬇️", reply_markup=ui.reply_keyboard())
 
 
 async def handle_deep_link(message: Message, payload: str) -> None:
@@ -636,6 +642,23 @@ async def cmd_search(client: Client, message: Message) -> None:
         await message.reply_text("Напиши название: <code>/search наруто</code>")
         return
     await do_search(message.chat.id, None, message.from_user.id, query)
+
+
+async def cmd_favorites(client: Client, message: Message) -> None:
+    await show_favorites(message.chat.id, None, message.from_user.id, 0)
+
+
+async def cmd_continue(client: Client, message: Message) -> None:
+    await continue_watching(message.chat.id, message.from_user.id)
+
+
+async def cmd_menu(client: Client, message: Message) -> None:
+    await message.reply_text(
+        ui.main_menu_text(message.from_user.first_name or "", is_owner(message.from_user.id)),
+        reply_markup=ui.main_menu_kb(is_owner(message.from_user.id)),
+        disable_web_page_preview=True,
+    )
+    await message.reply_text("⌨️ Обычные кнопки всегда внизу экрана", reply_markup=ui.reply_keyboard())
 
 
 async def cmd_random(client: Client, message: Message) -> None:
@@ -767,10 +790,11 @@ async def inline_query_handler(client: Client, query: InlineQuery) -> None:
             desc_parts.append(f"{release.episodes_total} серий")
         if release.name_english and release.name_english != release.title:
             desc_parts.append(release.name_english)
+        # У сообщения из инлайн-режима кнопки могут быть только ссылками,
+        # поэтому ведём сразу в карточку тайтла внутри бота (тап → выбор серии/качества).
         kb = InlineKeyboardMarkup([
-            [InlineKeyboardButton("🎬 Смотреть в боте", url=deep_link(f"rel_{release.id}"))],
-            [InlineKeyboardButton("📺 Серии", url=deep_link(f"eps_{release.id}")),
-             InlineKeyboardButton("🔗 AniLibria", url=release.site_url)],
+            [InlineKeyboardButton("▶️ Смотреть", url=deep_link(f"ep_{release.id}_1"))],
+            [InlineKeyboardButton("📺 Все серии", url=deep_link(f"eps_{release.id}"))],
         ])
         results.append(
             InlineQueryResultArticle(
@@ -780,7 +804,7 @@ async def inline_query_handler(client: Client, query: InlineQuery) -> None:
                 thumb_url=release.poster_thumbnail or release.poster_preview or release.poster or None,
                 reply_markup=kb,
                 input_message_content=InputTextMessageContent(
-                    message_text=ui.release_text(release),
+                    message_text=ui.inline_card_text(release),
                     parse_mode=ParseMode.HTML,
                     disable_web_page_preview=False,
                 ),
@@ -807,27 +831,24 @@ async def inline_query_handler(client: Client, query: InlineQuery) -> None:
 # Обработчики: текстовые сообщения и входящие файлы
 # ---------------------------------------------------------------------------
 async def text_handler(client: Client, message: Message) -> None:
+    """Обычный текст бот НЕ обрабатывает: поиск только через инлайн (@бот …).
+
+    Реагируем исключительно на кнопки постоянной клавиатуры, любой другой текст
+    остаётся без ответа — как и просили.
+    """
     user = message.from_user
     await storage.upsert_user(user.id, user.username or "", user.first_name or "")
     if not is_allowed(user.id):
         await message.reply_text("🚫 Доступ ограничен.")
         return
-    query = (message.text or message.caption or "").strip()
-    if query.startswith("/"):
-        return
-    # Похоже на ссылку на релиз? Достанем alias
-    if "anilibria" in query or "aniliberty" in query:
-        import re
-
-        match = re.search(r"/release/([A-Za-z0-9_-]+)", query)
-        if match:
-            try:
-                release = await load_release(match.group(1))
-                await show_release(message.chat.id, None, release, user.id)
-                return
-            except AniLibriaError:
-                pass
-    await do_search(message.chat.id, None, user.id, query)
+    text = (message.text or "").strip()
+    if text == BUTTON_FAVORITES:
+        await show_favorites(message.chat.id, None, user.id, 0)
+    elif text == BUTTON_SEARCH:
+        await message.reply_text(ui.search_hint_text(BOT_USERNAME), disable_web_page_preview=True)
+    elif text == BUTTON_CONTINUE:
+        await continue_watching(message.chat.id, user.id)
+    # иначе — молчание (никакого поиска по тексту)
 
 
 def extract_file(message: Message) -> Optional[Dict[str, Any]]:
@@ -1114,6 +1135,43 @@ async def callback_handler(client: Client, query: CallbackQuery) -> None:
         await answer(f"Ошибка: {exc}", alert=True)
 
 
+async def show_favorites(chat_id: int, message: Optional[Message], user_id: int, page: int) -> None:
+    items = await storage.favorites(user_id, PER_PAGE, page * PER_PAGE)
+    total = await storage.favorites_count(user_id)
+    await render(chat_id, message, ui.favorites_text(page, total), ui.favorites_kb(items, page, PER_PAGE, total))
+
+
+async def continue_watching(chat_id: int, user_id: int) -> None:
+    """Кнопка «Продолжить»: открывает следующую серию последнего просмотра."""
+    history = await storage.history(user_id, 1)
+    if not history:
+        await notify(chat_id, ui.nothing_to_continue_text())
+        return
+    row = history[0]
+    user = await storage.get_user(user_id) or {}
+    quality = int(user.get("quality") or 0) or config.DEFAULT_QUALITY
+    last_episode = int(row.get("episode") or 1)
+    last_quality = int(row.get("quality") or quality)
+    try:
+        release = await load_release(row["release_id"])
+    except (AniLibriaError, ReleaseNotFound):
+        await notify(chat_id, "⚠️ Не удалось открыть тайтл — найди его через инлайн-поиск.")
+        return
+    total = release.max_episode or last_episode
+    next_episode = last_episode + 1
+    if next_episode > total:
+        await notify(chat_id, ui.all_episodes_watched_text(release.title, last_episode))
+        return
+    episode = release.episode(next_episode)
+    chosen = (episode.best_quality(quality) if episode else None) or quality
+    await render(
+        chat_id, None,
+        ui.continue_text(release.title, last_episode, next_episode, chosen, last_quality),
+        ui.continue_kb(release.id, next_episode, chosen, total),
+        poster=release.poster or None,
+    )
+
+
 async def show_files(chat_id: int, message: Optional[Message], user_id: int, page: int) -> None:
     items = await storage.user_files(user_id, PER_PAGE, page * PER_PAGE)
     total = await storage.user_files_count(user_id)
@@ -1175,6 +1233,9 @@ def register_handlers(client: Client) -> None:
     client.add_handler(MessageHandler(cmd_help, filters.command(["help", "instruction"]) & filters.private))
     client.add_handler(MessageHandler(cmd_search, filters.command(["search", "s", "anime"]) & filters.private))
     client.add_handler(MessageHandler(cmd_random, filters.command(["random", "rand"]) & filters.private))
+    client.add_handler(MessageHandler(cmd_favorites, filters.command(["favorites", "favourite", "fav"]) & filters.private))
+    client.add_handler(MessageHandler(cmd_continue, filters.command(["continue", "resume"]) & filters.private))
+    client.add_handler(MessageHandler(cmd_menu, filters.command(["menu"]) & filters.private))
     client.add_handler(MessageHandler(cmd_files, filters.command(["files", "myfiles"]) & filters.private))
     client.add_handler(MessageHandler(cmd_settings, filters.command(["settings", "quality"]) & filters.private))
     client.add_handler(MessageHandler(cmd_stats, filters.command(["stats", "stat"]) & filters.private))
@@ -1208,6 +1269,7 @@ async def start_client() -> Client:
         try:
             await client.start()
             me = await client.get_me()
+            await _set_bot_commands(client)
             BOT_USERNAME = me.username or ""
             APP = client
             log.info("Бот запущен как @%s (api_id=%s, %s) — MTProto, лимит %s МБ",
@@ -1221,6 +1283,20 @@ async def start_client() -> Client:
             except Exception:  # noqa: BLE001
                 pass
     raise RuntimeError(f"Не удалось запустить клиент ни с одной парой api_id/api_hash: {last_error}")
+
+
+async def _set_bot_commands(client: Client) -> None:
+    """Меню команд Telegram (кнопка «Меню» слева от поля ввода)."""
+    try:
+        await client.set_bot_commands([
+            BotCommand("favorites", "⭐ Избранное"),
+            BotCommand("continue", "▶️ Продолжить"),
+            BotCommand("search", "🔍 Поиск"),
+            BotCommand("files", "📁 Мои файлы"),
+            BotCommand("help", "❓ Помощь"),
+        ])
+    except Exception as exc:  # noqa: BLE001
+        log.debug("Список команд не установился: %s", exc)
 
 
 async def check_environment() -> int:
