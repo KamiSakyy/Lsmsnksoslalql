@@ -37,6 +37,17 @@ SEGMENTS = [
     ("Привет, мяу мяу, смотрите аниме в моем боте.", "ru"),
     ("Hello, I love you.", "en"),
 ]
+# Для Chatterbox: ручные ударения "+" после ударной гласной.
+# Встроенный russian_text_stresser на раннере недоступен — без ударений русский звучит роботизированно.
+SEGMENTS_STRESSED = [
+    ("Приве+т, мя+у мя+у, смотри+те ани+ме в мо+ём бо+те.", "ru"),
+    ("Hello, I love you.", "en"),
+]
+# Два варианта настроек выразительности Chatterbox — на выбор
+CHATTERBOX_VARIANTS = [
+    ("voice-clone-chatterbox-v2.mp3", dict(exaggeration=0.5, cfg_weight=0.5)),
+    ("voice-clone-chatterbox-v2-live.mp3", dict(exaggeration=0.7, cfg_weight=0.4)),
+]
 GAP_SEC = 0.45  # пауза между сегментами
 
 
@@ -50,10 +61,11 @@ def ffmpeg_exe() -> str:
 
 
 def prepare_reference() -> None:
-    """mp3 -> моно wav 22050 Hz (стандартный вход для обеих моделей)."""
+    """mp3 -> моно wav 22050 Hz + чистка: highpass от гула, loudnorm для ровной громкости."""
     os.makedirs(WORK_DIR, exist_ok=True)
     subprocess.run(
         [ffmpeg_exe(), "-y", "-v", "error", "-i", REF_MP3,
+         "-af", "highpass=f=70,loudnorm=I=-18:TP=-1.5:LRA=11",
          "-ar", "22050", "-ac", "1", "-c:a", "pcm_s16le", REF_WAV],
         check=True,
     )
@@ -98,7 +110,7 @@ def run_xtts() -> str:
         wav = tts.tts(text=text, speaker_wav=REF_WAV, language=lang)
         chunks.append(np.array(wav, dtype=np.float32))
     audio = join_chunks(chunks, sr)
-    path = export_mp3(audio, sr, "voice-clone-xtts-v2.mp3")
+    path = export_mp3(audio, sr, "voice-clone-xtts-v2-clean.mp3")
     del tts
     gc.collect()
     return path
@@ -111,22 +123,24 @@ def run_chatterbox() -> str:
     print("[chatterbox] загружаю Chatterbox Multilingual 0.5B...", flush=True)
     model = ChatterboxMultilingualTTS.from_pretrained(device="cpu")
     sr = int(getattr(model, "sr", 24000))
-    chunks = []
-    for text, lang in SEGMENTS:
-        print(f"[chatterbox] генерирую ({lang}): {text!r}", flush=True)
-        t = model.generate(
-            text,
-            language_id=lang,
-            audio_prompt_path=REF_WAV,
-            exaggeration=0.5,
-            cfg_weight=0.5,
-        )
-        chunks.append(t.squeeze(0).cpu().numpy())
-    audio = join_chunks(chunks, sr)
-    path = export_mp3(audio, sr, "voice-clone-chatterbox.mp3")
+    last = None
+    for fname, params in CHATTERBOX_VARIANTS:
+        print(f"[chatterbox] вариант {fname} {params}", flush=True)
+        chunks = []
+        for text, lang in SEGMENTS_STRESSED:
+            print(f"[chatterbox] генерирую ({lang}): {text!r}", flush=True)
+            t = model.generate(
+                text,
+                language_id=lang,
+                audio_prompt_path=REF_WAV,
+                **params,
+            )
+            chunks.append(t.squeeze(0).cpu().numpy())
+        audio = join_chunks(chunks, sr)
+        last = export_mp3(audio, sr, fname)
     del model
     gc.collect()
-    return path
+    return last
 
 
 MODELS = {"xtts": run_xtts, "chatterbox": run_chatterbox}
