@@ -3667,14 +3667,14 @@ public final class MainActivity extends AppCompatActivity {
         chip.setTypeface(Typeface.create("sans-serif-medium", Typeface.NORMAL));
         chip.setGravity(android.view.Gravity.CENTER);
         chip.setTag(key);
-        // Строка папок как в ТГ: подпись и подчёркивание у выбранной папки.
+        // Папки — пилюли, как на макете: у выбранной светлая заливка и тёмный текст.
         LinearLayout.LayoutParams params = new LinearLayout.LayoutParams(
-                LinearLayout.LayoutParams.WRAP_CONTENT, dp(44));
-        params.setMarginEnd(dp(20));
+                LinearLayout.LayoutParams.WRAP_CONTENT, dp(36));
+        params.setMarginEnd(dp(8));
         chip.setLayoutParams(params);
-        chip.setPadding(dp(2), 0, dp(2), 0);
-        chip.setBackground(folderTabBackground(false));
-        chip.setTextColor(getColor(R.color.tsuyu_secondary));
+        chip.setPadding(dp(16), 0, dp(16), 0);
+        chip.setBackgroundResource(R.drawable.bg_filter_idle);
+        chip.setTextColor(getColor(R.color.tsuyu_white));
         if ("new".equals(key)) {
             chip.setContentDescription(getString(R.string.folder_new));
             chip.setTextSize(16f);
@@ -3893,21 +3893,9 @@ public final class MainActivity extends AppCompatActivity {
 
     private void styleFilterChip(TextView chip, boolean selected) {
         if (chip == null) return;
-        chip.setBackground(folderTabBackground(selected));
-        chip.setTextColor(getColor(selected ? R.color.tsuyu_white : R.color.tsuyu_secondary));
-    }
-
-    /** Подпись папки с подчёркиванием снизу — вкладочная строка как в ТГ. */
-    private android.graphics.drawable.Drawable folderTabBackground(boolean selected) {
-        android.graphics.drawable.GradientDrawable line = new android.graphics.drawable.GradientDrawable();
-        line.setColor(selected ? getColor(R.color.tsuyu_blue) : 0x00000000);
-        line.setCornerRadius(dp(2));
-        android.graphics.drawable.GradientDrawable empty = new android.graphics.drawable.GradientDrawable();
-        empty.setColor(0x00000000);
-        android.graphics.drawable.LayerDrawable layers = new android.graphics.drawable.LayerDrawable(
-                new android.graphics.drawable.Drawable[]{empty, line});
-        layers.setLayerInset(1, dp(2), dp(41), dp(2), 0);
-        return layers;
+        chip.setBackgroundResource(selected ? R.drawable.bg_filter_selected : R.drawable.bg_filter_idle);
+        // На светлой пилюле текст тёмный, на тёмной — светлый (как на макете).
+        chip.setTextColor(getColor(selected ? R.color.tsuyu_black : R.color.tsuyu_white));
     }
 
     private void applyEmptyStateCopy(String mode) {

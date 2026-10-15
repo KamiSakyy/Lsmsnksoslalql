@@ -24,6 +24,8 @@
     <color name="tsuyu_scrim">#99141416</color>
     <color name="tsuyu_scrim_strong">#AA141416</color>
     <color name="tsuyu_danger_surface">#2C1616</color>
+    <!-- Светлая пилюля выбранной вкладки (текст на ней тёмный, как на макете). -->
+    <color name="tsuyu_chip_active">#E9E9EC</color>
     <color name="tsuyu_ripple">#33FFFFFF</color>
 
     <!--

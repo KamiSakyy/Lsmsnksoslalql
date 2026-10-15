@@ -1,6 +1,7 @@
 <?xml version="1.0" encoding="utf-8"?>
+<!-- Вкладка папки: светлая пилюля для выбранной (текст тёмный), без обводки. -->
 <shape xmlns:android="http://schemas.android.com/apk/res/android" android:shape="rectangle">
-    <solid android:color="@color/tsuyu_border" />
-    <stroke android:width="1dp" android:color="@color/tsuyu_tab_border" />
-    <corners android:radius="@dimen/chip_radius_web" />
+    <solid android:color="@color/tsuyu_chip_active" />
+    <stroke android:width="0dp" android:color="@android:color/transparent" />
+    <corners android:radius="18dp" />
 </shape>

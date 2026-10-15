@@ -67,7 +67,7 @@
 
                 <TextView
                     android:id="@+id/chat_name"
-                    android:autoSizeMaxTextSize="15sp"
+                    android:autoSizeMaxTextSize="16sp"
                     android:autoSizeMinTextSize="12sp"
                     android:autoSizeStepGranularity="1sp"
                     android:autoSizeTextType="uniform"
@@ -78,7 +78,8 @@
                     android:fontFamily="sans-serif-medium"
                     android:maxLines="1"
                     android:textColor="@color/tsuyu_white"
-                    android:textSize="16sp" />
+                    android:textSize="16sp"
+                    android:textStyle="bold" />
 
                 <TextView
                     android:id="@+id/chat_time"

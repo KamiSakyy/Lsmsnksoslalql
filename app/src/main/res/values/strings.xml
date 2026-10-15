@@ -51,7 +51,8 @@
     <string name="settings_open">Настройки Tsuyu</string>
     <string name="channel_messages">Сообщения</string>
     <string name="channel_messages_description">Уведомления о новых сообщениях Tsuyu</string>
-    <string name="home_subtitle">Личные сообщения</string>
+    <string name="home_subtitle">Защищено Cloud E2EE</string>
+    <string name="home_header_title">VK Tsuyu</string>
     <string name="search_people">Поиск людей</string>
     <string name="search_hint">Введите @юзернейм</string>
     <string name="chat_message_hint">Сообщение</string>
@@ -123,8 +124,8 @@
     <string name="chat_marked_read">Отмечено как прочитанное</string>
     <string name="folder_rename">Переименовать</string>
     <string name="folder_rename_confirm">Сохранить</string>
-    <string name="home_search_hint">Поиск по диалогам...</string>
-    <string name="home_filter_personal">Личные</string>
+    <string name="home_search_hint">Поиск по диалогам и ВКонтакте...</string>
+    <string name="home_filter_personal">Новости</string>
     <string name="home_filter_archive">Архив</string>
     <string name="home_empty_search_title">Ничего не найдено</string>
     <string name="home_empty_search_description">Попробуйте изменить запрос.</string>
