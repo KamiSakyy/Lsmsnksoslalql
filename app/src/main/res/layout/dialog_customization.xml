@@ -4,20 +4,118 @@
     android:layout_width="match_parent"
     android:layout_height="wrap_content"
     android:orientation="vertical"
-    android:padding="20dp">
-    <TextView android:layout_width="match_parent" android:layout_height="wrap_content" android:text="Размер текста" android:textColor="@color/tsuyu_white" android:textSize="14sp" android:textStyle="bold" />
+    android:padding="@dimen/dialog_gutter">
+
+    <TextView
+        android:id="@+id/customization_text_label"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:text="@string/customization_text_size"
+        android:textAppearance="@style/TextAppearance.Tsuyu.RowItemTitle" />
+
     <com.google.android.material.slider.Slider
         android:id="@+id/customization_text_size"
         android:layout_width="match_parent"
         android:layout_height="wrap_content"
-        android:contentDescription="Размер текста сообщений"
-        android:value="14"
+        android:contentDescription="@string/customization_text_size"
         android:stepSize="1"
+        android:value="15"
+        android:valueFrom="12"
+        android:valueTo="22"
+        app:labelBehavior="floating"
         app:thumbColor="@color/tsuyu_blue"
         app:trackColorActive="@color/tsuyu_blue"
-        app:trackColorInactive="@color/tsuyu_border"
-        android:valueFrom="12"
-        android:valueTo="22" />
-    <com.google.android.material.checkbox.MaterialCheckBox android:id="@+id/customization_bold" android:layout_width="match_parent" android:layout_height="wrap_content" android:text="Жирный текст" android:textColor="@color/tsuyu_white" app:buttonTint="@color/tsuyu_blue" />
-    <com.google.android.material.checkbox.MaterialCheckBox android:id="@+id/customization_italic" android:layout_width="match_parent" android:layout_height="wrap_content" android:text="Курсив" android:textColor="@color/tsuyu_white" app:buttonTint="@color/tsuyu_blue" />
+        app:trackColorInactive="@color/tsuyu_border" />
+
+    <TextView
+        android:id="@+id/customization_icon_label"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:layout_marginTop="@dimen/space_md"
+        android:text="@string/customization_icon_size"
+        android:textAppearance="@style/TextAppearance.Tsuyu.RowItemTitle" />
+
+    <com.google.android.material.slider.Slider
+        android:id="@+id/customization_icon_size"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:contentDescription="@string/customization_icon_size"
+        android:stepSize="2"
+        android:value="54"
+        android:valueFrom="40"
+        android:valueTo="64"
+        app:labelBehavior="floating"
+        app:thumbColor="@color/tsuyu_blue"
+        app:trackColorActive="@color/tsuyu_blue"
+        app:trackColorInactive="@color/tsuyu_border" />
+
+    <TextView
+        android:id="@+id/customization_media_label"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:layout_marginTop="@dimen/space_md"
+        android:text="@string/customization_media_size"
+        android:textAppearance="@style/TextAppearance.Tsuyu.RowItemTitle" />
+
+    <com.google.android.material.slider.Slider
+        android:id="@+id/customization_media_size"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:contentDescription="@string/customization_media_size"
+        android:stepSize="5"
+        android:value="100"
+        android:valueFrom="60"
+        android:valueTo="100"
+        app:labelBehavior="floating"
+        app:thumbColor="@color/tsuyu_blue"
+        app:trackColorActive="@color/tsuyu_blue"
+        app:trackColorInactive="@color/tsuyu_border" />
+
+    <com.google.android.material.checkbox.MaterialCheckBox
+        android:id="@+id/customization_bold"
+        android:layout_width="match_parent"
+        android:layout_height="@dimen/touch_target"
+        android:text="@string/customization_bold"
+        android:textColor="@color/tsuyu_white"
+        app:buttonTint="@color/tsuyu_blue" />
+
+    <com.google.android.material.checkbox.MaterialCheckBox
+        android:id="@+id/customization_italic"
+        android:layout_width="match_parent"
+        android:layout_height="@dimen/touch_target"
+        android:text="@string/customization_italic"
+        android:textColor="@color/tsuyu_white"
+        app:buttonTint="@color/tsuyu_blue" />
+
+    <com.google.android.material.materialswitch.MaterialSwitch
+        android:id="@+id/customization_send_dark"
+        android:layout_width="match_parent"
+        android:layout_height="@dimen/touch_target"
+        android:text="@string/customization_send_dark"
+        android:textColor="@color/tsuyu_white" />
+
+    <LinearLayout
+        android:id="@+id/customization_wallpaper"
+        android:layout_width="match_parent"
+        android:layout_height="@dimen/touch_target"
+        android:background="?attr/selectableItemBackground"
+        android:clickable="true"
+        android:focusable="true"
+        android:gravity="center_vertical"
+        android:orientation="horizontal">
+
+        <TextView
+            android:layout_width="0dp"
+            android:layout_height="wrap_content"
+            android:layout_weight="1"
+            android:text="@string/customization_wallpaper"
+            android:textAppearance="@style/TextAppearance.Tsuyu.RowItemTitle" />
+
+        <ImageView
+            android:layout_width="20dp"
+            android:layout_height="20dp"
+            android:contentDescription="@string/customization_wallpaper"
+            android:src="@drawable/ic_chevron_right"
+            app:tint="@color/tsuyu_secondary" />
+    </LinearLayout>
 </LinearLayout>

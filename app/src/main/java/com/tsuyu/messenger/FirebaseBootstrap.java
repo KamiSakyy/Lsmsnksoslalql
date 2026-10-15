@@ -16,6 +16,15 @@ public final class FirebaseBootstrap {
 
     private FirebaseBootstrap() {}
 
+    /** Realtime Database URL, shared with the push sender that talks REST to it. */
+    public static String databaseUrl() {
+        return DATABASE_URL;
+    }
+
+    public static String projectId() {
+        return PROJECT_ID;
+    }
+
     public static synchronized FirebaseApp initialize(Context context) {
         Context appContext = context.getApplicationContext();
         if (!FirebaseApp.getApps(appContext).isEmpty()) {

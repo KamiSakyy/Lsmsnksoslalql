@@ -30,6 +30,8 @@ final class SecurePrefs {
     private final SharedPreferences preferences;
     private final String keyAlias;
     private final File largeFileDir;
+    /** Ключ берём из хранилища один раз: раньше это делалось на каждое чтение и запись. */
+    private SecretKey cachedKey;
 
     SecurePrefs(Context context, String accountUid) {
         String namespace = shortHash(accountUid);
@@ -45,6 +47,27 @@ final class SecurePrefs {
             return Base64.encodeToString(hash, Base64.URL_SAFE | Base64.NO_WRAP | Base64.NO_PADDING).substring(0, 22);
         } catch (GeneralSecurityException e) {
             throw new IllegalStateException(e);
+        }
+    }
+
+    /**
+     * Быстрая запись для кэша сообщений: на диск уходит без ожидания. Для состояния
+     * протокола остаётся {@link #put(String, String)} — там важна гарантия записи.
+     */
+    synchronized void putFast(String name, String value) {
+        try {
+            Cipher cipher = Cipher.getInstance("AES/GCM/NoPadding");
+            cipher.init(Cipher.ENCRYPT_MODE, getKey(true));
+            cipher.updateAAD(name.getBytes(java.nio.charset.StandardCharsets.UTF_8));
+            byte[] iv = cipher.getIV();
+            byte[] ciphertext = cipher.doFinal(value.getBytes(java.nio.charset.StandardCharsets.UTF_8));
+            ByteBuffer packed = ByteBuffer.allocate(iv.length + ciphertext.length);
+            packed.put(iv).put(ciphertext);
+            preferences.edit()
+                    .putString(name, Base64.encodeToString(packed.array(), Base64.NO_WRAP))
+                    .apply();
+        } catch (Exception e) {
+            throw new IllegalStateException("Could not encrypt local message cache", e);
         }
     }
 
@@ -168,11 +191,14 @@ final class SecurePrefs {
     }
 
     private SecretKey getKey(boolean create) throws GeneralSecurityException, IOException {
+        SecretKey ready = cachedKey;
+        if (ready != null) return ready;
         KeyStore keyStore = KeyStore.getInstance(ANDROID_KEYSTORE);
         keyStore.load(null);
         if (keyStore.containsAlias(keyAlias)) {
             KeyStore.SecretKeyEntry entry = (KeyStore.SecretKeyEntry) keyStore.getEntry(keyAlias, null);
-            return entry.getSecretKey();
+            cachedKey = entry.getSecretKey();
+            return cachedKey;
         }
         if (!create) throw new GeneralSecurityException("Android Keystore key is missing");
         KeyGenerator generator = KeyGenerator.getInstance(KeyProperties.KEY_ALGORITHM_AES, ANDROID_KEYSTORE);
@@ -183,6 +209,7 @@ final class SecurePrefs {
                 .setKeySize(256)
                 .setRandomizedEncryptionRequired(true)
                 .build());
-        return generator.generateKey();
+        cachedKey = generator.generateKey();
+        return cachedKey;
     }
 }

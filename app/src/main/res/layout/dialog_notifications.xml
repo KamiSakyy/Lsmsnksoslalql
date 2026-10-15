@@ -4,19 +4,28 @@
     android:layout_width="match_parent"
     android:layout_height="wrap_content"
     android:orientation="vertical"
-    android:padding="20dp">
+    android:padding="@dimen/dialog_gutter">
+
     <com.google.android.material.materialswitch.MaterialSwitch
         android:id="@+id/notifications_sound_switch"
         android:layout_width="match_parent"
         android:layout_height="wrap_content"
+        android:minHeight="@dimen/touch_target"
         android:text="Звук уведомлений"
         android:textColor="@color/tsuyu_white" />
+
+    <TextView
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:layout_marginTop="@dimen/space_2xs"
+        android:text="Свой звук для новых сообщений"
+        android:textAppearance="@style/TextAppearance.Tsuyu.Caption" />
+
     <com.google.android.material.button.MaterialButton
         android:id="@+id/notifications_choose_sound"
+        style="@style/Widget.Tsuyu.Button.Secondary"
         android:layout_width="match_parent"
-        android:layout_height="48dp"
-        android:layout_marginTop="12dp"
-        android:text="Выбрать звук из файлов"
-        app:backgroundTint="@color/tsuyu_input"
-        app:cornerRadius="16dp" />
+        android:layout_height="@dimen/touch_target"
+        android:layout_marginTop="@dimen/space_md"
+        android:text="Выбрать звук из файлов" />
 </LinearLayout>

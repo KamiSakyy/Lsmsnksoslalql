@@ -66,15 +66,17 @@ public final class TsuyuSyncService extends Service {
     }
 
     @Override public int onStartCommand(Intent intent, int flags, int startId) {
+        com.tsuyu.messenger.util.Settings.ensure(this);
         if (intent != null && ACTION_STOP.equals(intent.getAction())) {
-            getSharedPreferences("tsuyu_settings", MODE_PRIVATE).edit().remove("sync_uid").apply();
+            com.tsuyu.messenger.util.Settings.remove("sync_uid");
             stopSelf();
             return START_NOT_STICKY;
         }
-        android.content.SharedPreferences settings = getSharedPreferences("tsuyu_settings", MODE_PRIVATE);
-        uid = intent == null ? settings.getString("sync_uid", null) : intent.getStringExtra(EXTRA_UID);
+        android.content.SharedPreferences settings = com.tsuyu.messenger.util.Settings.raw();
+        uid = intent == null ? com.tsuyu.messenger.util.Settings.getString("sync_uid", null)
+                : intent.getStringExtra(EXTRA_UID);
         if (uid == null || uid.isEmpty()) { stopSelf(); return START_NOT_STICKY; }
-        settings.edit().putString("sync_uid", uid).apply();
+        com.tsuyu.messenger.util.Settings.putString("sync_uid", uid);
         FirebaseApp app;
         try { app = FirebaseApp.getInstance(); }
         catch (IllegalStateException e) { stopSelf(); return START_NOT_STICKY; }
@@ -134,64 +136,57 @@ public final class TsuyuSyncService extends Service {
     }
 
     private void notifyIncoming(String chatId, String messageId, ChatMessage message) {
-        String active = getSharedPreferences("tsuyu_settings", MODE_PRIVATE).getString("active_chat", "");
+        String active = com.tsuyu.messenger.util.Settings.getString("active_chat", "");
         if (chatId.equals(active)) return;
         if (!NotificationSounds.claimNotification(this, chatId, messageId)) return;
-        worker.execute(() -> renderIncoming(chatId, messageId, message));
+        worker.execute(() -> renderIncoming(chatId, messageId, message, 0));
     }
 
-    private void renderIncoming(String chatId, String messageId, ChatMessage message) {
+    private void renderIncoming(String chatId, String messageId, ChatMessage message, int attempt) {
+        String peerUid = message.senderUid;
+        String title = "Tsuyu";
+        Bitmap avatar = null;
+        String body = NotificationCenter.placeholder(this);
+        long when = message.sentAt;
         try {
-            String peerUid = message.senderUid;
             com.google.firebase.database.DatabaseReference profileRef = database.getReference("users").child(peerUid).child("profile");
             Profile profile = new Profile();
             profile.username = Tasks.await(profileRef.child("username").get(), 8, TimeUnit.SECONDS).getValue(String.class);
             profile.displayName = readOptionalProfileField(profileRef, "displayName");
             profile.avatarBase64 = readOptionalProfileField(profileRef, "avatarBase64");
-            String title = profile.username == null ? "Tsuyu" : profile.displayNameOrUsername();
-            Bitmap avatar = null;
+            if (profile.username != null || profile.displayName != null) title = profile.displayNameOrUsername();
             if (profile.avatarBase64 != null && !profile.avatarBase64.isEmpty()) {
                 byte[] bytes = Base64.decode(profile.avatarBase64, Base64.NO_WRAP);
                 avatar = BitmapFactory.decodeByteArray(bytes, 0, bytes.length);
             }
-            String body = "Новое сообщение";
             SignalE2ee crypto = new SignalE2ee(this, uid);
             byte[] plain = crypto.decrypt(peerUid, message.signalType, message.cipher);
             String payload = new String(plain, StandardCharsets.UTF_8);
             new LocalMessageCache(this, uid).put(chatId, messageId, payload);
-            JSONObject json = new JSONObject(payload);
-            String kind = json.optString("kind", "text");
-            if ("text".equals(kind)) body = json.optString("text", "Новое сообщение");
-            else if ("image".equals(kind) || "collage".equals(kind)) body = "Фото";
-            else if ("video".equals(kind)) body = "Видео";
-            else if ("voice".equals(kind)) body = "Голосовое сообщение";
-            else if ("audio".equals(kind)) body = "Аудиофайл";
-            postNotification(title, body, avatar, chatId, peerUid);
+            body = NotificationCenter.describePayload(this, payload);
         } catch (Exception e) {
-            postNotification("Tsuyu", "Новое сообщение", null, chatId, message.senderUid);
+            // Never show ciphertext: retry shortly, the session may still be syncing.
+            if (attempt < 2) {
+                final int nextAttempt = attempt + 1;
+                worker.execute(() -> {
+                    try { Thread.sleep(4000L * nextAttempt); } catch (InterruptedException ignored) { return; }
+                    renderIncoming(chatId, messageId, message, nextAttempt);
+                });
+                return;
+            }
         }
+        if (when <= 0) when = System.currentTimeMillis();
+        boolean decrypted = !body.equals(NotificationCenter.placeholder(this));
+        if (decrypted || attempt >= 2) {
+            NotificationCenter.post(this, chatId, peerUid, title, avatar, body, when, messageId, true);
+            return;
+        }
+        NotificationCenter.post(this, chatId, peerUid, title, avatar, NotificationCenter.decrypting(this), when, messageId, true);
     }
 
     private String readOptionalProfileField(com.google.firebase.database.DatabaseReference profileRef, String field) {
         try { return Tasks.await(profileRef.child(field).get(), 8, TimeUnit.SECONDS).getValue(String.class); }
         catch (Exception deniedOrUnavailable) { return null; }
-    }
-
-    private void postNotification(String title, String body, Bitmap avatar, String chatId, String peerUid) {
-        NotificationSounds.ensureChannel(this);
-        Intent intent = new Intent(this, MainActivity.class).addFlags(Intent.FLAG_ACTIVITY_CLEAR_TOP | Intent.FLAG_ACTIVITY_SINGLE_TOP)
-                .putExtra("open_chat_id", chatId).putExtra("open_peer_uid", peerUid);
-        int id = chatId.hashCode();
-        PendingIntent pending = PendingIntent.getActivity(this, id, intent,
-                PendingIntent.FLAG_UPDATE_CURRENT | (Build.VERSION.SDK_INT >= 23 ? PendingIntent.FLAG_IMMUTABLE : 0));
-        NotificationCompat.Builder builder = new NotificationCompat.Builder(this, NotificationSounds.channelId(this))
-                .setSmallIcon(R.drawable.ic_chat)
-                .setContentTitle(title).setContentText(body)
-                .setCategory(NotificationCompat.CATEGORY_MESSAGE)
-                .setPriority(NotificationCompat.PRIORITY_HIGH)
-                .setAutoCancel(true).setContentIntent(pending);
-        if (avatar != null) builder.setLargeIcon(avatar);
-        getSystemService(NotificationManager.class).notify(id, builder.build());
     }
 
     private Notification serviceNotification() {

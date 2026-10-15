@@ -1,8 +1,112 @@
 <resources>
-    <dimen name="screen_horizontal_padding">20dp</dimen>
+    <!--
+      Tsuyu geometry and spacing tokens.
+      Every layout must reference these values instead of hard-coded dp numbers so
+      that rhythm stays identical across screens. Colours are intentionally NOT
+      part of this file: the palette lives in colors.xml and is frozen.
+    -->
+
+    <!-- Spacing scale (4dp base grid) -->
+    <dimen name="space_2xs">4dp</dimen>
+    <dimen name="space_xs">6dp</dimen>
+    <dimen name="space_sm">8dp</dimen>
+    <dimen name="space_md">12dp</dimen>
+    <dimen name="space_lg">16dp</dimen>
+    <dimen name="space_xl">20dp</dimen>
+    <dimen name="space_2xl">24dp</dimen>
+    <dimen name="space_3xl">32dp</dimen>
+
+    <!-- Screen grid -->
+    <dimen name="screen_gutter">16dp</dimen>
+    <dimen name="drawer_width">296dp</dimen>
+    <dimen name="hairline">1dp</dimen>
+
+    <!-- Corner radii -->
+    <dimen name="radius_2xs">6dp</dimen>
+    <dimen name="radius_sm">14dp</dimen>
+    <dimen name="radius_md">16dp</dimen>
+    <dimen name="radius_lg">20dp</dimen>
+    <dimen name="radius_xl">24dp</dimen>
+    <dimen name="radius_pill">100dp</dimen>
+
+    <!-- Touch targets -->
+    <dimen name="touch_target">48dp</dimen>
+    <dimen name="icon_button">48dp</dimen>
+    <dimen name="icon_button_dense">44dp</dimen>
+    <dimen name="icon_button_small">36dp</dimen>
+
+    <!-- Bars -->
+    <dimen name="toolbar_height">56dp</dimen>
+
+    <!-- Avatars -->
+    <dimen name="avatar_row">54dp</dimen>
+    <dimen name="avatar_header">44dp</dimen>
+    <dimen name="avatar_profile">58dp</dimen>
+    <dimen name="avatar_hero">96dp</dimen>
+    <dimen name="avatar_editor">104dp</dimen>
+    <dimen name="online_dot">13dp</dimen>
+
+    <!-- List rows -->
+    <dimen name="row_min_height">72dp</dimen>
+    <dimen name="row_settings_height">68dp</dimen>
+    <dimen name="row_sheet_action_height">60dp</dimen>
+    <dimen name="row_icon_tile">40dp</dimen>
+    <dimen name="row_icon_size">20dp</dimen>
+    <dimen name="divider_inset">82dp</dimen>
+
+    <!-- Conversation -->
+    <dimen name="bubble_text_max_width">272dp</dimen>
+    <dimen name="bubble_gutter">36dp</dimen>
+    <dimen name="bubble_padding_horizontal">12dp</dimen>
+    <dimen name="bubble_padding_top">8dp</dimen>
+    <dimen name="bubble_padding_bottom">8dp</dimen>
+    <dimen name="message_gap_group">2dp</dimen>
+    <dimen name="message_gap_block">6dp</dimen>
+    <!-- Геометрия серии сообщений как в ТГ: соседние пузыри «поджаты», хвост у последнего. -->
+    <dimen name="bubble_group_radius">6dp</dimen>
+    <dimen name="media_width">224dp</dimen>
+    <dimen name="media_height_image">168dp</dimen>
+    <dimen name="media_height_gallery">128dp</dimen>
+    <dimen name="media_height_video">126dp</dimen>
+    <dimen name="gallery_gutter">3dp</dimen>
+    <dimen name="status_icon">15dp</dimen>
+
+    <!-- Sheets and dialogs -->
+    <dimen name="sheet_handle_width">36dp</dimen>
+    <dimen name="sheet_handle_height">4dp</dimen>
+    <dimen name="sheet_gutter">18dp</dimen>
+    <dimen name="dialog_gutter">20dp</dimen>
+    <dimen name="attachment_card_height">88dp</dimen>
+
+    <!-- Legacy aliases kept so older references keep working -->
+    <dimen name="screen_horizontal_padding">16dp</dimen>
     <dimen name="screen_vertical_padding">16dp</dimen>
     <dimen name="corner_card">20dp</dimen>
     <dimen name="corner_input">16dp</dimen>
-    <dimen name="avatar_chat">54dp</dimen>
-    <dimen name="toolbar_height">64dp</dimen>
+    <dimen name="avatar_chat">56dp</dimen>
+
+    <!-- Web-client parity metrics (values mirror the VK Tsuyu web client CSS) -->
+    <dimen name="avatar_dialog">54dp</dimen>
+    <dimen name="avatar_chat_header">38dp</dimen>
+    <dimen name="online_dot_web">14dp</dimen>
+    <dimen name="header_button">38dp</dimen>
+    <dimen name="header_menu_button">40dp</dimen>
+    <dimen name="chip_height_web">30dp</dimen>
+    <dimen name="chip_radius_web">16dp</dimen>
+    <dimen name="chip_padding_h_web">14dp</dimen>
+    <dimen name="sheet_item_radius">12dp</dimen>
+    <dimen name="sheet_padding">16dp</dimen>
+    <dimen name="sheet_gap">8dp</dimen>
+    <dimen name="sheet_item_padding_v">13dp</dimen>
+    <dimen name="sheet_item_padding_h">16dp</dimen>
+    <dimen name="bubble_radius_web">16dp</dimen>
+    <dimen name="bubble_tail_radius_web">4dp</dimen>
+    <dimen name="bubble_padding_h_web">12dp</dimen>
+    <dimen name="bubble_padding_v_web">8dp</dimen>
+    <dimen name="composer_button">38dp</dimen>
+    <dimen name="composer_radius">20dp</dimen>
+    <dimen name="sticker_size">140dp</dimen>
+    <dimen name="circle_message_size">200dp</dimen>
+    <dimen name="multi_select_button_height">34dp</dimen>
+    <dimen name="pinned_bar_height">48dp</dimen>
 </resources>

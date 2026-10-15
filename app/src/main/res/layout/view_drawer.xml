@@ -1,0 +1,311 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Navigation drawer, mirrors the Tsuyu web client .drawer markup. -->
+<LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:app="http://schemas.android.com/apk/res-auto"
+    android:id="@+id/drawer_root"
+    android:layout_width="@dimen/drawer_width"
+    android:layout_height="match_parent"
+    android:layout_gravity="start"
+    android:background="@color/tsuyu_surface"
+    android:orientation="vertical">
+
+    <!-- .drawer-header -->
+    <LinearLayout
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:background="@color/tsuyu_input"
+        android:orientation="vertical"
+        android:paddingStart="@dimen/screen_gutter"
+        android:paddingTop="18dp"
+        android:paddingEnd="@dimen/screen_gutter"
+        android:paddingBottom="18dp">
+
+        <FrameLayout
+            android:id="@+id/drawer_avatar_frame"
+            android:layout_width="64dp"
+            android:layout_height="64dp"
+            android:layout_marginBottom="6dp"
+            android:background="@drawable/bg_avatar_ring"
+            android:clickable="true"
+            android:focusable="true">
+
+            <TextView
+                android:id="@+id/drawer_avatar_initial"
+                android:layout_width="match_parent"
+                android:layout_height="match_parent"
+                android:fontFamily="sans-serif-medium"
+                android:gravity="center"
+                android:textColor="@color/tsuyu_white"
+                android:textSize="26sp" />
+
+            <com.google.android.material.imageview.ShapeableImageView
+                android:id="@+id/drawer_avatar"
+                android:layout_width="match_parent"
+                android:layout_height="match_parent"
+                android:scaleType="centerCrop"
+                android:visibility="gone"
+                app:shapeAppearanceOverlay="@style/TsuyuCircleShape" />
+
+            <ImageView
+                android:id="@+id/drawer_avatar_edit"
+                android:layout_width="24dp"
+                android:layout_height="24dp"
+                android:layout_gravity="bottom|end"
+                android:background="@drawable/bg_avatar_edit"
+                android:clickable="true"
+                android:contentDescription="@string/drawer_avatar_edit"
+                android:focusable="true"
+                android:padding="4dp"
+                android:src="@drawable/ic_camera"
+                app:tint="@color/tsuyu_black" />
+        </FrameLayout>
+
+        <TextView
+            android:id="@+id/drawer_name"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:layout_marginTop="2dp"
+            android:autoSizeMaxTextSize="18sp"
+            android:autoSizeMinTextSize="15sp"
+            android:autoSizeStepGranularity="1sp"
+            android:autoSizeTextType="uniform"
+            android:ellipsize="end"
+            android:fontFamily="sans-serif-medium"
+            android:maxLines="1"
+            android:text="@string/app_name"
+            android:textColor="@color/tsuyu_white"
+            android:textSize="18sp" />
+
+        <TextView
+            android:id="@+id/drawer_presence"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:layout_marginTop="2dp"
+            android:fontFamily="sans-serif-medium"
+            android:text="@string/drawer_online"
+            android:textColor="@color/tsuyu_green"
+            android:textSize="13sp" />
+
+        <LinearLayout
+            android:id="@+id/drawer_status_row"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:layout_marginTop="4dp"
+            android:clickable="true"
+            android:focusable="true"
+            android:gravity="center_vertical"
+            android:orientation="horizontal">
+
+            <TextView
+                android:id="@+id/drawer_status"
+                android:layout_width="0dp"
+                android:layout_height="wrap_content"
+                android:layout_weight="1"
+                android:autoSizeMaxTextSize="13sp"
+                android:autoSizeMinTextSize="11sp"
+                android:autoSizeStepGranularity="1sp"
+                android:autoSizeTextType="uniform"
+                android:ellipsize="end"
+                android:maxLines="3"
+                android:text="@string/drawer_status_hint"
+                android:textColor="@color/tsuyu_drawer_icon"
+                android:textSize="13sp" />
+
+            <ImageView
+                android:layout_width="12dp"
+                android:layout_height="12dp"
+                android:layout_marginStart="6dp"
+                android:contentDescription=""
+                android:src="@drawable/ic_edit"
+                app:tint="@color/tsuyu_drawer_icon" />
+        </LinearLayout>
+    </LinearLayout>
+
+    <View
+        android:layout_width="match_parent"
+        android:layout_height="@dimen/hairline"
+        android:background="@color/tsuyu_drawer_header_line" />
+
+    <!-- .drawer-content -->
+    <ScrollView
+        android:layout_width="match_parent"
+        android:layout_height="0dp"
+        android:layout_weight="1"
+        android:scrollbars="none">
+
+        <LinearLayout
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:orientation="vertical"
+            android:paddingStart="8dp"
+            android:paddingTop="8dp"
+            android:paddingEnd="8dp"
+            android:paddingBottom="8dp">
+
+            <LinearLayout
+                android:id="@+id/drawer_item_stealth"
+                style="@style/Widget.Tsuyu.DrawerRow">
+
+                <ImageView
+                    style="@style/Widget.Tsuyu.DrawerIcon"
+                    android:contentDescription=""
+                    android:src="@drawable/ic_eye_off" />
+
+                <TextView
+                    style="@style/Widget.Tsuyu.DrawerLabel"
+                    android:text="@string/drawer_stealth" />
+
+                <com.google.android.material.materialswitch.MaterialSwitch
+                    android:id="@+id/drawer_switch_stealth"
+                    style="@style/Widget.Tsuyu.DrawerSwitch" />
+            </LinearLayout>
+
+            <LinearLayout
+                android:id="@+id/drawer_item_sound"
+                style="@style/Widget.Tsuyu.DrawerRow"
+                android:layout_marginTop="2dp">
+
+                <ImageView
+                    style="@style/Widget.Tsuyu.DrawerIcon"
+                    android:contentDescription=""
+                    android:src="@drawable/ic_notifications" />
+
+                <TextView
+                    style="@style/Widget.Tsuyu.DrawerLabel"
+                    android:text="@string/drawer_sound" />
+
+                <com.google.android.material.materialswitch.MaterialSwitch
+                    android:id="@+id/drawer_switch_sound"
+                    style="@style/Widget.Tsuyu.DrawerSwitch" />
+            </LinearLayout>
+
+            <LinearLayout
+                android:id="@+id/drawer_item_encrypt"
+                style="@style/Widget.Tsuyu.DrawerRow"
+                android:layout_marginTop="2dp">
+
+                <ImageView
+                    style="@style/Widget.Tsuyu.DrawerIcon"
+                    android:contentDescription=""
+                    android:src="@drawable/ic_lock" />
+
+                <TextView
+                    style="@style/Widget.Tsuyu.DrawerLabel"
+                    android:text="@string/drawer_e2ee" />
+
+                <com.google.android.material.materialswitch.MaterialSwitch
+                    android:id="@+id/drawer_switch_encrypt"
+                    style="@style/Widget.Tsuyu.DrawerSwitch" />
+            </LinearLayout>
+
+            <LinearLayout
+                android:id="@+id/drawer_item_cache"
+                style="@style/Widget.Tsuyu.DrawerRow"
+                android:layout_marginTop="2dp">
+
+                <ImageView
+                    style="@style/Widget.Tsuyu.DrawerIcon"
+                    android:contentDescription=""
+                    android:src="@drawable/ic_refresh" />
+
+                <TextView
+                    android:id="@+id/drawer_cache_label"
+                    style="@style/Widget.Tsuyu.DrawerLabel"
+                    android:text="@string/drawer_cache" />
+            </LinearLayout>
+
+            <LinearLayout
+                android:id="@+id/drawer_item_profile"
+                style="@style/Widget.Tsuyu.DrawerRow"
+                android:layout_marginTop="2dp">
+
+                <ImageView
+                    style="@style/Widget.Tsuyu.DrawerIcon"
+                    android:contentDescription=""
+                    android:src="@drawable/ic_person" />
+
+                <TextView
+                    style="@style/Widget.Tsuyu.DrawerLabel"
+                    android:text="@string/drawer_edit_profile" />
+            </LinearLayout>
+
+            <LinearLayout
+                android:id="@+id/drawer_item_avatar"
+                style="@style/Widget.Tsuyu.DrawerRow"
+                android:layout_marginTop="2dp">
+
+                <ImageView
+                    style="@style/Widget.Tsuyu.DrawerIcon"
+                    android:contentDescription=""
+                    android:src="@drawable/ic_gallery" />
+
+                <TextView
+                    style="@style/Widget.Tsuyu.DrawerLabel"
+                    android:text="@string/drawer_change_avatar" />
+            </LinearLayout>
+
+            <LinearLayout
+                android:id="@+id/drawer_item_pin"
+                style="@style/Widget.Tsuyu.DrawerRow"
+                android:layout_marginTop="2dp">
+
+                <ImageView
+                    style="@style/Widget.Tsuyu.DrawerIcon"
+                    android:contentDescription=""
+                    android:src="@drawable/ic_lock" />
+
+                <TextView
+                    android:id="@+id/drawer_pin_label"
+                    style="@style/Widget.Tsuyu.DrawerLabel"
+                    android:text="@string/drawer_pin" />
+            </LinearLayout>
+
+            <LinearLayout
+                android:id="@+id/drawer_item_cloud"
+                style="@style/Widget.Tsuyu.DrawerRow"
+                android:layout_marginTop="2dp">
+
+                <ImageView
+                    style="@style/Widget.Tsuyu.DrawerIcon"
+                    android:contentDescription=""
+                    android:src="@drawable/ic_cloud" />
+
+                <TextView
+                    style="@style/Widget.Tsuyu.DrawerLabel"
+                    android:text="@string/drawer_cloud" />
+            </LinearLayout>
+
+            <LinearLayout
+                android:id="@+id/drawer_item_settings"
+                style="@style/Widget.Tsuyu.DrawerRow"
+                android:layout_marginTop="2dp">
+
+                <ImageView
+                    style="@style/Widget.Tsuyu.DrawerIcon"
+                    android:contentDescription=""
+                    android:src="@drawable/ic_settings" />
+
+                <TextView
+                    style="@style/Widget.Tsuyu.DrawerLabel"
+                    android:text="@string/drawer_settings" />
+            </LinearLayout>
+
+            <LinearLayout
+                android:id="@+id/drawer_item_logout"
+                style="@style/Widget.Tsuyu.DrawerRow"
+                android:layout_marginTop="10dp">
+
+                <ImageView
+                    style="@style/Widget.Tsuyu.DrawerIcon"
+                    android:contentDescription=""
+                    android:src="@drawable/ic_logout"
+                    app:tint="@color/tsuyu_danger" />
+
+                <TextView
+                    style="@style/Widget.Tsuyu.DrawerLabel"
+                    android:text="@string/drawer_logout"
+                    android:textColor="@color/tsuyu_danger" />
+            </LinearLayout>
+        </LinearLayout>
+    </ScrollView>
+</LinearLayout>

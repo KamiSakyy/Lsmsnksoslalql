@@ -2,8 +2,9 @@
 <com.google.android.material.textview.MaterialTextView xmlns:android="http://schemas.android.com/apk/res/android"
     android:layout_width="match_parent"
     android:layout_height="48dp"
+    android:fontFamily="sans-serif"
     android:gravity="center_vertical"
-    android:paddingStart="12dp"
-    android:paddingEnd="12dp"
+    android:paddingStart="@dimen/space_md"
+    android:paddingEnd="@dimen/space_md"
     android:textColor="@color/tsuyu_white"
     android:textSize="14sp" />

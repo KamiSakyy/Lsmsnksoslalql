@@ -13,6 +13,7 @@ public class ChatMessage {
     // These fields are transient: never serialize optimistic plaintext or UI state to RTDB.
     public transient boolean pending;
     public transient boolean failed;
+    public transient boolean read;
     public transient String localChatId;
     public transient String localPayload;
 
