@@ -1,14 +1,41 @@
+[ref] 16.1s, 22050Hz, mono -> /home/runner/work/Lsmsnksoslalql/Lsmsnksoslalql/voice-clone/reference.wav
+[xtts] загружаю XTTS-v2 (~2 GB при первом запуске)...
+ > Downloading model to /home/runner/.local/share/tts/tts_models--multilingual--multi-dataset--xtts_v2
+  0%|          | 0.00/1.87G [00:00<?, ?iB/s]  0%|          | 17.4k/1.87G [00:00<3:07:52, 166kiB/s]  0%|          | 431k/1.87G [00:00<12:44, 2.44MiB/s]    0%|          | 2.15M/1.87G [00:00<03:25, 9.07MiB/s]  1%|          | 9.52M/1.87G [00:00<00:54, 34.3MiB/s]  1%|▏         | 27.8M/1.87G [00:00<00:21, 87.5MiB/s]  3%|▎         | 48.8M/1.87G [00:00<00:14, 129MiB/s]   4%|▎         | 69.6M/1.87G [00:00<00:11, 155MiB/s]  5%|▍         | 90.4M/1.87G [00:00<00:10, 172MiB/s]  6%|▌         | 111M/1.87G [00:00<00:09, 183MiB/s]   7%|▋         | 132M/1.87G [00:01<00:09, 191MiB/s]  8%|▊         | 153M/1.87G [00:01<00:08, 197MiB/s]  9%|▉         | 174M/1.87G [00:01<00:08, 201MiB/s] 10%|█         | 196M/1.87G [00:01<00:08, 205MiB/s] 12%|█▏        | 217M/1.87G [00:01<00:07, 208MiB/s] 13%|█▎        | 238M/1.87G [00:01<00:07, 208MiB/s] 14%|█▍        | 259M/1.87G [00:01<00:07, 209MiB/s] 15%|█▍        | 280M/1.87G [00:01<00:07, 209MiB/s] 16%|█▌        | 301M/1.87G [00:01<00:07, 208MiB/s] 17%|█▋        | 322M/1.87G [00:01<00:07, 205MiB/s] 18%|█▊        | 342M/1.87G [00:02<00:07, 203MiB/s] 19%|█▉        | 363M/1.87G [00:02<00:07, 205MiB/s] 21%|██        | 384M/1.87G [00:02<00:07, 205MiB/s] 22%|██▏       | 405M/1.87G [00:02<00:07, 206MiB/s] 23%|██▎       | 426M/1.87G [00:02<00:06, 207MiB/s] 24%|██▍       | 447M/1.87G [00:02<00:06, 208MiB/s] 25%|██▌       | 467M/1.87G [00:02<00:06, 206MiB/s] 26%|██▌       | 488M/1.87G [00:02<00:06, 204MiB/s] 27%|██▋       | 509M/1.87G [00:02<00:06, 205MiB/s] 28%|██▊       | 529M/1.87G [00:02<00:06, 205MiB/s] 29%|██▉       | 550M/1.87G [00:03<00:06, 206MiB/s] 31%|███       | 571M/1.87G [00:03<00:06, 207MiB/s] 32%|███▏      | 592M/1.87G [00:03<00:06, 209MiB/s] 33%|███▎      | 613M/1.87G [00:03<00:06, 208MiB/s] 34%|███▍      | 634M/1.87G [00:03<00:05, 208MiB/s] 35%|███▌      | 656M/1.87G [00:03<00:05, 210MiB/s] 36%|███▌      | 677M/1.87G [00:03<00:05, 209MiB/s] 37%|███▋      | 698M/1.87G [00:03<00:05, 206MiB/s] 38%|███▊      | 718M/1.87G [00:03<00:05, 205MiB/s] 40%|███▉      | 739M/1.87G [00:03<00:05, 206MiB/s] 41%|████      | 760M/1.87G [00:04<00:05, 207MiB/s] 42%|████▏     | 781M/1.87G [00:04<00:05, 209MiB/s] 43%|████▎     | 803M/1.87G [00:04<00:05, 210MiB/s] 44%|████▍     | 824M/1.87G [00:04<00:04, 211MiB/s] 45%|████▌     | 845M/1.87G [00:04<00:04, 211MiB/s] 46%|████▋     | 866M/1.87G [00:04<00:04, 209MiB/s] 47%|████▋     | 887M/1.87G [00:04<00:04, 209MiB/s] 49%|████▊     | 908M/1.87G [00:04<00:04, 209MiB/s] 50%|████▉     | 929M/1.87G [00:04<00:04, 209MiB/s] 51%|█████     | 950M/1.87G [00:04<00:04, 209MiB/s] 52%|█████▏    | 971M/1.87G [00:05<00:04, 209MiB/s] 53%|█████▎    | 993M/1.87G [00:05<00:04, 211MiB/s] 54%|█████▍    | 1.01G/1.87G [00:05<00:04, 213MiB/s] 55%|█████▌    | 1.04G/1.87G [00:05<00:03, 213MiB/s] 57%|█████▋    | 1.06G/1.87G [00:05<00:03, 212MiB/s] 58%|█████▊    | 1.08G/1.87G [00:05<00:03, 213MiB/s] 59%|█████▉    | 1.10G/1.87G [00:05<00:03, 212MiB/s] 60%|█████▉    | 1.12G/1.87G [00:05<00:03, 211MiB/s] 61%|██████    | 1.14G/1.87G [00:05<00:03, 210MiB/s] 62%|██████▏   | 1.16G/1.87G [00:05<00:03, 209MiB/s] 63%|██████▎   | 1.18G/1.87G [00:06<00:03, 211MiB/s] 65%|██████▍   | 1.21G/1.87G [00:06<00:03, 211MiB/s] 66%|██████▌   | 1.23G/1.87G [00:06<00:03, 211MiB/s] 67%|██████▋   | 1.25G/1.87G [00:06<00:02, 211MiB/s] 68%|██████▊   | 1.27G/1.87G [00:06<00:02, 212MiB/s] 69%|██████▉   | 1.29G/1.87G [00:06<00:02, 211MiB/s] 70%|███████   | 1.31G/1.87G [00:06<00:02, 212MiB/s] 71%|███████▏  | 1.33G/1.87G [00:06<00:02, 214MiB/s] 73%|███████▎  | 1.35G/1.87G [00:06<00:02, 212MiB/s] 74%|███████▎  | 1.38G/1.87G [00:06<00:02, 212MiB/s] 75%|███████▍  | 1.40G/1.87G [00:07<00:02, 213MiB/s] 76%|███████▌  | 1.42G/1.87G [00:07<00:02, 215MiB/s] 77%|███████▋  | 1.44G/1.87G [00:07<00:02, 213MiB/s] 78%|███████▊  | 1.46G/1.87G [00:07<00:01, 212MiB/s] 79%|███████▉  | 1.48G/1.87G [00:07<00:01, 210MiB/s] 81%|████████  | 1.50G/1.87G [00:07<00:01, 210MiB/s] 82%|████████▏ | 1.53G/1.87G [00:07<00:01, 210MiB/s] 83%|████████▎ | 1.55G/1.87G [00:07<00:01, 210MiB/s] 84%|████████▍ | 1.57G/1.87G [00:07<00:01, 212MiB/s] 85%|████████▌ | 1.59G/1.87G [00:07<00:01, 214MiB/s] 86%|████████▋ | 1.61G/1.87G [00:08<00:01, 212MiB/s] 87%|████████▋ | 1.63G/1.87G [00:08<00:01, 209MiB/s] 89%|████████▊ | 1.65G/1.87G [00:08<00:01, 212MiB/s] 90%|████████▉ | 1.68G/1.87G [00:08<00:00, 213MiB/s] 91%|█████████ | 1.70G/1.87G [00:08<00:00, 200MiB/s] 92%|█████████▏| 1.72G/1.87G [00:08<00:00, 196MiB/s] 93%|█████████▎| 1.74G/1.87G [00:08<00:00, 200MiB/s] 94%|█████████▍| 1.76G/1.87G [00:08<00:00, 204MiB/s] 95%|█████████▌| 1.78G/1.87G [00:08<00:00, 207MiB/s] 97%|█████████▋| 1.80G/1.87G [00:08<00:00, 210MiB/s] 98%|█████████▊| 1.82G/1.87G [00:09<00:00, 212MiB/s] 99%|█████████▉| 1.85G/1.87G [00:09<00:00, 213MiB/s]100%|█████████▉| 1.87G/1.87G [00:09<00:00, 213MiB/s]
+0.00iB [00:00, ?iB/s][A100%|██████████| 1.87G/1.87G [00:09<00:00, 192MiB/s]
+0.00iB [00:00, ?iB/s]4.37kiB [00:00, 11.0kiB/s]
+
+  0%|          | 0.00/32.0 [00:00<?, ?iB/s][A361kiB [00:00, 1.04MiB/s]
+  0%|          | 0.00/7.75M [00:00<?, ?iB/s]100%|██████████| 32.0/32.0 [00:00<00:00, 51.4iB/s]
+  1%|▏         | 100k/7.75M [00:00<00:07, 963kiB/s]  6%|▌         | 482k/7.75M [00:00<00:02, 2.51MiB/s] 19%|█▉        | 1.48M/7.75M [00:00<00:01, 5.82MiB/s] 48%|████▊     | 3.74M/7.75M [00:00<00:00, 12.3MiB/s] > Model's license - CPML
+ > Check https://coqui.ai/cpml.txt for more info.
+[transformers] Disabling PyTorch because PyTorch >= 2.5 is required but found 2.4.1+cpu
+[transformers] PyTorch was not found. Models won't be available and only tokenizers, configuration and file/data utilities can be used.
 Traceback (most recent call last):
-  File "/home/runner/work/Lsmsnksoslalql/Lsmsnksoslalql/voice-clone/clone.py", line 148, in <module>
-    sys.exit(main())
-  File "/home/runner/work/Lsmsnksoslalql/Lsmsnksoslalql/voice-clone/clone.py", line 130, in main
-    prepare_reference()
-  File "/home/runner/work/Lsmsnksoslalql/Lsmsnksoslalql/voice-clone/clone.py", line 45, in prepare_reference
-    subprocess.run(
-  File "/opt/hostedtoolcache/Python/3.10.22/x64/lib/python3.10/subprocess.py", line 503, in run
-    with Popen(*popenargs, **kwargs) as process:
-  File "/opt/hostedtoolcache/Python/3.10.22/x64/lib/python3.10/subprocess.py", line 971, in __init__
-    self._execute_child(args, executable, preexec_fn, close_fds,
-  File "/opt/hostedtoolcache/Python/3.10.22/x64/lib/python3.10/subprocess.py", line 1863, in _execute_child
-    raise child_exception_type(errno_num, err_msg, err_filename)
-FileNotFoundError: [Errno 2] No such file or directory: 'ffmpeg'
+  File "/home/runner/work/Lsmsnksoslalql/Lsmsnksoslalql/voice-clone/clone.py", line 146, in main
+    results[name] = MODELS[name]()
+  File "/home/runner/work/Lsmsnksoslalql/Lsmsnksoslalql/voice-clone/clone.py", line 93, in run_xtts
+    tts = TTS("tts_models/multilingual/multi-dataset/xtts_v2").to("cpu")
+  File "/opt/hostedtoolcache/Python/3.10.22/x64/lib/python3.10/site-packages/TTS/api.py", line 74, in __init__
+    self.load_tts_model_by_name(model_name, gpu)
+  File "/opt/hostedtoolcache/Python/3.10.22/x64/lib/python3.10/site-packages/TTS/api.py", line 177, in load_tts_model_by_name
+    self.synthesizer = Synthesizer(
+  File "/opt/hostedtoolcache/Python/3.10.22/x64/lib/python3.10/site-packages/TTS/utils/synthesizer.py", line 109, in __init__
+    self._load_tts_from_dir(model_dir, use_cuda)
+  File "/opt/hostedtoolcache/Python/3.10.22/x64/lib/python3.10/site-packages/TTS/utils/synthesizer.py", line 161, in _load_tts_from_dir
+    config = load_config(os.path.join(model_dir, "config.json"))
+  File "/opt/hostedtoolcache/Python/3.10.22/x64/lib/python3.10/site-packages/TTS/config/__init__.py", line 97, in load_config
+    config_class = register_config(model_name.lower())
+  File "/opt/hostedtoolcache/Python/3.10.22/x64/lib/python3.10/site-packages/TTS/config/__init__.py", line 40, in register_config
+    from TTS.tts.configs.xtts_config import XttsConfig
+  File "/opt/hostedtoolcache/Python/3.10.22/x64/lib/python3.10/site-packages/TTS/tts/configs/xtts_config.py", line 5, in <module>
+    from TTS.tts.models.xtts import XttsArgs, XttsAudioConfig
+  File "/opt/hostedtoolcache/Python/3.10.22/x64/lib/python3.10/site-packages/TTS/tts/models/xtts.py", line 12, in <module>
+    from TTS.tts.layers.xtts.stream_generator import init_stream_support
+  File "/opt/hostedtoolcache/Python/3.10.22/x64/lib/python3.10/site-packages/TTS/tts/layers/xtts/stream_generator.py", line 13, in <module>
+    from transformers import (
+ImportError: cannot import name 'BeamSearchScorer' from 'transformers' (/opt/hostedtoolcache/Python/3.10.22/x64/lib/python3.10/site-packages/transformers/__init__.py)
+
+===== ИТОГ =====
+xtts: FAIL
+100%|██████████| 7.75M/7.75M [00:02<00:00, 3.61MiB/s]
