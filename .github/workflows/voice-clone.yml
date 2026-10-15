@@ -42,30 +42,34 @@ jobs:
           pip install imageio-ffmpeg
           ffmpeg -version 2>/dev/null | head -1 || echo "используем статичный imageio-ffmpeg"
 
-      - name: Установка PyTorch CPU + XTTS-v2
+      - name: Окружение XTTS-v2 (отдельный venv, transformers<5)
         shell: bash
         run: |
           mkdir -p voice-clone/_work
-          python -m pip install --upgrade pip
-          pip install torch==2.4.1 torchaudio==2.4.1 --index-url https://download.pytorch.org/whl/cpu
-          pip install "numpy<2" soundfile TTS==0.22.0
+          python -m venv .venv-xtts
+          .venv-xtts/bin/pip install --upgrade pip -q
+          .venv-xtts/bin/pip install -q torch==2.4.1 torchaudio==2.4.1 --index-url https://download.pytorch.org/whl/cpu
+          .venv-xtts/bin/pip install -q "numpy<2" soundfile imageio-ffmpeg TTS==0.22.0
+          # TTS тянет transformers 5.x, а XTTS-v2 требует BeamSearchScorer (есть только в 4.x)
+          .venv-xtts/bin/pip install -q "transformers==4.46.3"
 
       - name: Клонирование — XTTS-v2
         continue-on-error: true
         shell: bash
         run: |
           set -o pipefail
-          python -u voice-clone/clone.py --model xtts 2>&1 | tee voice-clone/_work/xtts.log
+          .venv-xtts/bin/python -u voice-clone/clone.py --model xtts 2>&1 | tee voice-clone/_work/xtts.log
 
-      - name: Установка Chatterbox Multilingual 0.5B
+      - name: Окружение Chatterbox 0.5B (отдельный venv)
         continue-on-error: true
         shell: bash
         run: |
           set -o pipefail
           {
-            pip install chatterbox-tts
-            # chatterbox тянет CUDA-torch с PyPI — заменяем на CPU-сборку (быстрее и легче)
-            pip install --force-reinstall --no-deps torch==2.6.0 torchaudio==2.6.0 --index-url https://download.pytorch.org/whl/cpu
+            python -m venv .venv-cb
+            .venv-cb/bin/pip install --upgrade pip -q
+            .venv-cb/bin/pip install -q torch==2.6.0 torchaudio==2.6.0 --index-url https://download.pytorch.org/whl/cpu
+            .venv-cb/bin/pip install -q chatterbox-tts soundfile imageio-ffmpeg "numpy<2"
           } 2>&1 | tee voice-clone/_work/chatterbox-install.log
 
       - name: Клонирование — Chatterbox 0.5B
@@ -73,7 +77,7 @@ jobs:
         shell: bash
         run: |
           set -o pipefail
-          python -u voice-clone/clone.py --model chatterbox 2>&1 | tee voice-clone/_work/chatterbox.log
+          .venv-cb/bin/python -u voice-clone/clone.py --model chatterbox 2>&1 | tee voice-clone/_work/chatterbox.log
 
       - name: Сохранить mp3 + логи в репозиторий (handoff/)
         if: always()
