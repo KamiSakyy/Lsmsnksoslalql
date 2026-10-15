@@ -60,6 +60,23 @@
             android:textColor="@color/tsuyu_secondary"
             android:textSize="14sp" />
 
+        <!-- Поле ввода Сервера / Домена -->
+        <com.google.android.material.textfield.TextInputLayout
+            style="@style/Widget.Tsuyu.Input"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:layout_marginBottom="16dp">
+
+            <com.google.android.material.textfield.TextInputEditText
+                android:id="@+id/auth_server_url"
+                style="@style/Widget.Tsuyu.Input.EditText"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:hint="Адрес сервера (например: my-app.up.railway.app)"
+                android:inputType="textUri"
+                android:singleLine="true" />
+        </com.google.android.material.textfield.TextInputLayout>
+
         <!-- Поле ввода Email -->
         <com.google.android.material.textfield.TextInputLayout
             style="@style/Widget.Tsuyu.Input"
