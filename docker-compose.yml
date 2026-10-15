@@ -1,0 +1,11 @@
+services:
+  anilibria-bot:
+    build: .
+    container_name: anilibria-mtproto-userbot
+    restart: unless-stopped
+    volumes:
+      - ./data:/data
+    environment:
+      - DATA_DIR=/data
+      # Полноценный userbot (StringSession пользователя) — необязательно:
+      # - USER_SESSION=1BVtsOHwBu...
