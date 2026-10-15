@@ -150,8 +150,4 @@ public final class SettingsController {
     public void setVersionText(String text) {
         if (versionText != null) versionText.setText(text);
     }
-
-    public void setMobilePriorityStatusText(String text) {
-        if (mobilePriorityStatus != null) mobilePriorityStatus.setText(text);
-    }
 }

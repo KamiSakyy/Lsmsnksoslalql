@@ -1,7 +1,8 @@
 package com.tsuyu.messenger;
 
 import android.Manifest;
-import android.app.AlertDialog;
+import com.google.android.material.dialog.MaterialAlertDialogBuilder;
+import androidx.appcompat.app.AlertDialog;
 import android.content.ClipData;
 import android.content.ClipboardManager;
 import android.content.SharedPreferences;
@@ -2070,7 +2071,7 @@ public final class MainActivity extends AppCompatActivity {
         View editor = getLayoutInflater().inflate(R.layout.dialog_edit_message, null, false);
         TextInputEditText edit = editor.findViewById(R.id.edit_message_input);
         edit.setText(old);
-        new AlertDialog.Builder(this).setTitle("Редактировать сообщение").setView(editor)
+        new MaterialAlertDialogBuilder(this).setTitle("Редактировать сообщение").setView(editor)
                 .setNegativeButton("Отмена", null).setPositiveButton("Сохранить", (dialog, which) -> {
                     String text = edit.getText().toString().trim(); if (text.isEmpty()) return;
                     chatRepository.editText(activeChatId, message.id, uid, activePeerUid, crypto, text, new ChatRepository.Result<Void>() {
@@ -2084,7 +2085,7 @@ public final class MainActivity extends AppCompatActivity {
     }
 
     private void confirmDelete(ChatMessage message) {
-        new AlertDialog.Builder(this).setTitle("Удалить сообщение?")
+        new MaterialAlertDialogBuilder(this).setTitle("Удалить сообщение?")
                 .setMessage("Сообщение будет удалено у обоих участников.")
                 .setNegativeButton("Отмена", null)
                 .setPositiveButton("Удалить", (dialog, which) -> chatRepository.deleteMessage(activeChatId, message.id, new ChatRepository.Result<Void>() {
@@ -2437,7 +2438,7 @@ public final class MainActivity extends AppCompatActivity {
     }
 
     private void confirmClearHistory(final String chatId) {
-        new AlertDialog.Builder(this)
+        new MaterialAlertDialogBuilder(this)
                 .setTitle(R.string.chat_clear_title)
                 .setMessage(R.string.chat_clear_message)
                 .setNegativeButton("Отмена", null)
@@ -2494,7 +2495,7 @@ public final class MainActivity extends AppCompatActivity {
             String shownFingerprint;
             try { shownFingerprint = SignalE2ee.identityFingerprint(peerBundle[0]); }
             catch (Throwable error) { toast("Не удалось проверить код безопасности."); return; }
-            new AlertDialog.Builder(this).setTitle("Проверка кода безопасности")
+            new MaterialAlertDialogBuilder(this).setTitle("Проверка кода безопасности")
                     .setMessage("Сравните этот код с собеседником лично или по телефону:\n\n" + shownFingerprint + "\n\nПодтвердите только в том случае, если коды совпадают.")
                     .setNegativeButton("Отмена", null).setPositiveButton("Совпадает", (dialog, which) -> cryptoQueue.execute(() -> {
                         try {
@@ -2526,7 +2527,7 @@ public final class MainActivity extends AppCompatActivity {
                     isAllowed[0] = !isAllowed[0];
                     accessButton.setText(isAllowed[0] ? "Отозвать доступ по списку" : "Разрешить доступ по списку");
                 }).addOnFailureListener(error -> toast("Не удалось обновить список доступа.")));
-        new AlertDialog.Builder(this).setView(content).setPositiveButton("Закрыть", null).show();
+        new MaterialAlertDialogBuilder(this).setView(content).setPositiveButton("Закрыть", null).show();
     }
 
 
@@ -2778,7 +2779,7 @@ public final class MainActivity extends AppCompatActivity {
         root.findViewById(R.id.setting_customization).setOnClickListener(v -> showCustomization());
         root.findViewById(R.id.setting_notifications).setOnClickListener(v -> showNotificationSettings());
         root.findViewById(R.id.setting_keys).setOnClickListener(v -> showKeySettings());
-        root.findViewById(R.id.settings_logout).setOnClickListener(v -> new AlertDialog.Builder(this)
+        root.findViewById(R.id.settings_logout).setOnClickListener(v -> new MaterialAlertDialogBuilder(this)
                 .setTitle("Выйти?")
                 .setMessage("Вы сможете войти снова в любое время.")
                 .setNegativeButton("Отмена", null)
@@ -2833,7 +2834,7 @@ public final class MainActivity extends AppCompatActivity {
                 @Override public void onNothingSelected(android.widget.AdapterView<?> parent) { }
             });
         }
-        new AlertDialog.Builder(this).setTitle("Конфиденциальность").setView(body)
+        new MaterialAlertDialogBuilder(this).setTitle("Конфиденциальность").setView(body)
                 .setNegativeButton("Закрыть", null)
                 .setPositiveButton("Сохранить", (dialog, which) -> {
                     Map<String, Object> publicSettings = new HashMap<>();
@@ -2884,7 +2885,7 @@ public final class MainActivity extends AppCompatActivity {
         textLabel.setText(getString(R.string.customization_text_size) + ": " + Math.round(size.getValue()));
         iconLabel.setText(getString(R.string.customization_icon_size) + ": " + Math.round(iconSize.getValue()) + " dp");
         mediaLabel.setText(getString(R.string.customization_media_size) + ": " + Math.round(mediaSize.getValue()) + "%");
-        AlertDialog customizationDialog = new AlertDialog.Builder(this)
+        AlertDialog customizationDialog = new MaterialAlertDialogBuilder(this)
                 .setTitle("Кастомизация")
                 .setView(body)
                 .setNegativeButton("Отмена", null)
@@ -2922,7 +2923,7 @@ public final class MainActivity extends AppCompatActivity {
             try { pendingMediaKind = "sound"; documentPicker.launch(new String[]{"audio/mpeg", "audio/*"}); }
             catch (Throwable error) { toast("Не удалось открыть выбор файла."); }
         });
-        new AlertDialog.Builder(this).setTitle("Уведомления").setView(body).setNegativeButton("Закрыть", null).show();
+        new MaterialAlertDialogBuilder(this).setTitle("Уведомления").setView(body).setNegativeButton("Закрыть", null).show();
     }
 
     private void showKeySettings() {
@@ -2943,11 +2944,11 @@ public final class MainActivity extends AppCompatActivity {
             fingerprint.setText("Не удалось загрузить код безопасности.");
             copyPublic.setEnabled(false);
         }
-        rotate.setOnClickListener(v -> new AlertDialog.Builder(this).setTitle("Обновить код безопасности?")
+        rotate.setOnClickListener(v -> new MaterialAlertDialogBuilder(this).setTitle("Обновить код безопасности?")
                 .setMessage("После обновления попросите собеседников сверить новый код. Старые сообщения могут стать недоступны. Продолжить?")
                 .setNegativeButton("Отмена", null)
                 .setPositiveButton("Обновить", (dialog, which) -> rotateIdentity()).show());
-        new AlertDialog.Builder(this).setTitle("Защита сообщений").setView(body)
+        new MaterialAlertDialogBuilder(this).setTitle("Защита сообщений").setView(body)
                 .setPositiveButton("Закрыть", null).show();
     }
 
@@ -3222,7 +3223,7 @@ public final class MainActivity extends AppCompatActivity {
             View content = getLayoutInflater().inflate(R.layout.dialog_logs, null);
             TextView body = content.findViewById(R.id.dialog_logs_text);
             if (body != null) body.setText(com.tsuyu.messenger.TsuyuLogs.read(this));
-            final AlertDialog dialog = new AlertDialog.Builder(this)
+            final AlertDialog dialog = new MaterialAlertDialogBuilder(this)
                     .setTitle(title == null ? getString(R.string.logs_title) : title)
                     .setView(content)
                     .setNegativeButton(R.string.crash_close, null)
@@ -3698,7 +3699,7 @@ public final class MainActivity extends AppCompatActivity {
         View content = getLayoutInflater().inflate(R.layout.dialog_folder_name, null, false);
         final TextInputEditText input = content.findViewById(R.id.folder_name_input);
         if (currentName != null) input.setText(currentName);
-        new AlertDialog.Builder(this)
+        new MaterialAlertDialogBuilder(this)
                 .setTitle(folderId == null ? R.string.folder_new : R.string.folder_rename)
                 .setView(content)
                 .setNegativeButton("Отмена", null)
@@ -3721,13 +3722,13 @@ public final class MainActivity extends AppCompatActivity {
     private void openFolderActions(final String folderId) {
         final String name = folderNames.get(folderId);
         if (name == null) return;
-        new AlertDialog.Builder(this)
+        new MaterialAlertDialogBuilder(this)
                 .setTitle(name)
                 .setItems(new String[]{"Переименовать", "Удалить"}, (dialog, which) -> {
                     if (which == 0) {
                         openFolderNameDialog(folderId, name);
                     } else {
-                        new AlertDialog.Builder(this)
+                        new MaterialAlertDialogBuilder(this)
                                 .setTitle(R.string.folder_delete_title)
                                 .setMessage(R.string.folder_delete_message)
                                 .setNegativeButton("Отмена", null)
@@ -3772,7 +3773,7 @@ public final class MainActivity extends AppCompatActivity {
         create.setPadding(0, dp(10), 0, dp(4));
         create.setOnClickListener(v -> createFolderDialog());
         list.addView(create);
-        new AlertDialog.Builder(this)
+        new MaterialAlertDialogBuilder(this)
                 .setTitle(R.string.folder_pick_title)
                 .setView(content)
                 .setNegativeButton("Отмена", null)
@@ -4104,7 +4105,7 @@ public final class MainActivity extends AppCompatActivity {
         }
         exitSelectionMode();
         if (ids.isEmpty()) { toast("Можно удалить только отправленные сообщения."); return; }
-        new AlertDialog.Builder(this)
+        new MaterialAlertDialogBuilder(this)
                 .setTitle("Удалить сообщений: " + ids.size() + "?")
                 .setMessage("Сообщения будут удалены у обоих участников.")
                 .setNegativeButton("Отмена", null)
@@ -4160,7 +4161,7 @@ public final class MainActivity extends AppCompatActivity {
         });
         click(drawerRoot, R.id.drawer_item_logout, v -> {
             closeDrawer();
-            new AlertDialog.Builder(this)
+            new MaterialAlertDialogBuilder(this)
                     .setTitle(R.string.drawer_logout)
                     .setMessage(getString(R.string.drawer_logout_confirm))
                     .setNegativeButton(R.string.circle_cancel, null)
@@ -4271,7 +4272,7 @@ public final class MainActivity extends AppCompatActivity {
         input.setInputType(android.text.InputType.TYPE_CLASS_NUMBER | android.text.InputType.TYPE_NUMBER_VARIATION_PASSWORD);
         input.setHint(R.string.pin_enter_hint);
         input.setMaxLines(1);
-        new AlertDialog.Builder(this)
+        new MaterialAlertDialogBuilder(this)
                 .setTitle(enabled ? R.string.drawer_pin_on : R.string.drawer_pin)
                 .setMessage(enabled ? R.string.pin_remove_hint : R.string.pin_set_hint)
                 .setView(input)
@@ -4349,7 +4350,7 @@ public final class MainActivity extends AppCompatActivity {
             extra.setHintTextColor(getResources().getColor(R.color.tsuyu_secondary, getTheme()));
             container.addView(extra);
         });
-        new AlertDialog.Builder(this)
+        new MaterialAlertDialogBuilder(this)
                 .setTitle(R.string.poll_title)
                 .setView(body)
                 .setNegativeButton("Отмена", null)
@@ -4440,7 +4441,7 @@ public final class MainActivity extends AppCompatActivity {
             for (int i = 0; i < options.length(); i++) items[i] = options.optString(i, "");
             final String chatId = activeChatId;
             final String messageId = message.id;
-            new AlertDialog.Builder(this)
+            new MaterialAlertDialogBuilder(this)
                     .setTitle(object.optString("question", getString(R.string.poll_title)))
                     .setItems(items, (dialog, which) -> {
                         if (chatId == null) return;
@@ -4458,7 +4459,7 @@ public final class MainActivity extends AppCompatActivity {
                 getString(R.string.burn_off), getString(R.string.burn_5s), getString(R.string.burn_30s),
                 getString(R.string.burn_1m), getString(R.string.burn_5m), getString(R.string.burn_1h),
                 getString(R.string.burn_1d)};
-        new AlertDialog.Builder(this)
+        new MaterialAlertDialogBuilder(this)
                 .setTitle(R.string.burn_title)
                 .setItems(labels, (dialog, which) -> {
                     pendingBurnSeconds = seconds[which];
@@ -4521,7 +4522,7 @@ public final class MainActivity extends AppCompatActivity {
                 getString(R.string.schedule_1h), getString(R.string.schedule_morning)};
         final String payload = text;
         final int burn = pendingBurnSeconds;
-        new AlertDialog.Builder(this)
+        new MaterialAlertDialogBuilder(this)
                 .setTitle(R.string.schedule_title)
                 .setItems(labels, (dialog, which) -> {
                     long at = delays[which] > 0 ? System.currentTimeMillis() + delays[which] : tomorrowMorning();
@@ -4580,7 +4581,7 @@ public final class MainActivity extends AppCompatActivity {
                             names.add(id);
                         }
                     }
-                    new AlertDialog.Builder(this)
+                    new MaterialAlertDialogBuilder(this)
                             .setTitle(R.string.contact_title)
                             .setItems(names.toArray(new String[0]),
                                     (dialog, which) -> sendContact(profiles.get(which)))
@@ -4606,7 +4607,7 @@ public final class MainActivity extends AppCompatActivity {
 
     private void showWallpaperDialog(final String chatId, final boolean global) {
         String[] items = {getString(R.string.wallpaper_hint), getString(R.string.wallpaper_reset)};
-        new AlertDialog.Builder(this)
+        new MaterialAlertDialogBuilder(this)
                 .setTitle(global ? R.string.wallpaper_global_title : R.string.wallpaper_title)
                 .setItems(items, (dialog, which) -> {
                     if (which == 0) {
@@ -4703,7 +4704,7 @@ public final class MainActivity extends AppCompatActivity {
                     final int color = colors[i];
                     body.findViewById(ids[i]).setOnClickListener(v -> canvas.setBrushColor(color));
                 }
-                new AlertDialog.Builder(this)
+                new MaterialAlertDialogBuilder(this)
                         .setTitle(R.string.sticker_editor_title)
                         .setView(body)
                         .setNegativeButton("Отмена", null)

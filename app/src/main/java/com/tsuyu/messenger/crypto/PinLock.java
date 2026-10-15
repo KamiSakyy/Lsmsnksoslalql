@@ -1,7 +1,8 @@
 package com.tsuyu.messenger.crypto;
 
 import android.app.Activity;
-import android.app.AlertDialog;
+import com.google.android.material.dialog.MaterialAlertDialogBuilder;
+import androidx.appcompat.app.AlertDialog;
 import android.content.Context;
 import android.text.InputType;
 import android.util.Base64;
@@ -98,7 +99,7 @@ public final class PinLock {
         final View content = activity.getLayoutInflater().inflate(R.layout.dialog_pin, null, false);
         final EditText input = content.findViewById(R.id.pin_input);
         final TextView error = content.findViewById(R.id.pin_error);
-        final AlertDialog dialog = new AlertDialog.Builder(activity)
+        final AlertDialog dialog = new MaterialAlertDialogBuilder(activity)
                 .setView(content)
                 .setCancelable(false)
                 .create();

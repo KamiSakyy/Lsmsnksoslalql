@@ -18,7 +18,36 @@
         <item name="materialButtonStyle">@style/Widget.Tsuyu.Button.Primary</item>
         <item name="materialCardViewStyle">@style/Widget.Tsuyu.Card</item>
         <item name="bottomSheetDialogTheme">@style/Theme.Tsuyu.BottomSheet</item>
+        <item name="alertDialogTheme">@style/Theme.Tsuyu.Dialog</item>
+        <item name="materialAlertDialogTheme">@style/Theme.Tsuyu.Dialog</item>
         <item name="toolbarStyle">@style/Widget.Tsuyu.Toolbar</item>
+    </style>
+
+    <!-- Стиль современных диалогов Tsuyu 2026 -->
+    <style name="Theme.Tsuyu.Dialog" parent="Theme.Material3.Dark.Dialog.Alert">
+        <item name="android:background">@color/tsuyu_surface</item>
+        <item name="android:windowBackground">@drawable/bg_dialog_modern</item>
+        <item name="colorSurface">@color/tsuyu_surface</item>
+        <item name="colorOnSurface">@color/tsuyu_white</item>
+        <item name="colorPrimary">@color/tsuyu_green</item>
+        <item name="colorOnPrimary">@color/tsuyu_black</item>
+        <item name="buttonBarPositiveButtonStyle">@style/Widget.Tsuyu.DialogButton.Positive</item>
+        <item name="buttonBarNegativeButtonStyle">@style/Widget.Tsuyu.DialogButton.Negative</item>
+        <item name="buttonBarNeutralButtonStyle">@style/Widget.Tsuyu.DialogButton.Negative</item>
+        <item name="shapeAppearanceOverlay">@style/TsuyuDialogShape</item>
+        <item name="dialogCornerRadius">24dp</item>
+    </style>
+
+    <style name="Widget.Tsuyu.DialogButton.Positive" parent="Widget.Material3.Button.TextButton.Dialog">
+        <item name="android:textColor">@color/tsuyu_green</item>
+        <item name="android:fontFamily">sans-serif-medium</item>
+        <item name="android:textSize">14sp</item>
+    </style>
+
+    <style name="Widget.Tsuyu.DialogButton.Negative" parent="Widget.Material3.Button.TextButton.Dialog">
+        <item name="android:textColor">@color/tsuyu_secondary</item>
+        <item name="android:fontFamily">sans-serif</item>
+        <item name="android:textSize">14sp</item>
     </style>
 
     <!-- Shared smooth corner shapes -->

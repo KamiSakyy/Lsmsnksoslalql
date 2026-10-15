@@ -59,7 +59,7 @@
             android:layout_height="48dp"
             android:layout_marginTop="18dp"
             android:text="Скопировать код безопасности"
-            android:textColor="@color/tsuyu_blue" />
+            android:textColor="@color/tsuyu_green" />
 
         <com.google.android.material.button.MaterialButton
             android:id="@+id/key_rotate"

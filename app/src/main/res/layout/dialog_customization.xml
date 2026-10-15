@@ -29,8 +29,8 @@
         android:valueFrom="12"
         android:valueTo="22"
         app:labelBehavior="floating"
-        app:thumbColor="@color/tsuyu_blue"
-        app:trackColorActive="@color/tsuyu_blue"
+        app:thumbColor="@color/tsuyu_green"
+        app:trackColorActive="@color/tsuyu_green"
         app:trackColorInactive="@color/tsuyu_border" />
 
     <!-- Размер иконок и аватаров -->
@@ -54,8 +54,8 @@
         android:valueFrom="40"
         android:valueTo="64"
         app:labelBehavior="floating"
-        app:thumbColor="@color/tsuyu_blue"
-        app:trackColorActive="@color/tsuyu_blue"
+        app:thumbColor="@color/tsuyu_green"
+        app:trackColorActive="@color/tsuyu_green"
         app:trackColorInactive="@color/tsuyu_border" />
 
     <!-- Размер медиа в чате -->
@@ -79,8 +79,8 @@
         android:valueFrom="60"
         android:valueTo="100"
         app:labelBehavior="floating"
-        app:thumbColor="@color/tsuyu_blue"
-        app:trackColorActive="@color/tsuyu_blue"
+        app:thumbColor="@color/tsuyu_green"
+        app:trackColorActive="@color/tsuyu_green"
         app:trackColorInactive="@color/tsuyu_border" />
 
     <View
@@ -98,7 +98,7 @@
         android:fontFamily="sans-serif-medium"
         android:text="@string/customization_bold"
         android:textColor="@color/tsuyu_white"
-        app:buttonTint="@color/tsuyu_blue" />
+        app:buttonTint="@color/tsuyu_green" />
 
     <com.google.android.material.checkbox.MaterialCheckBox
         android:id="@+id/customization_italic"
@@ -107,10 +107,11 @@
         android:fontFamily="sans-serif"
         android:text="@string/customization_italic"
         android:textColor="@color/tsuyu_white"
-        app:buttonTint="@color/tsuyu_blue" />
+        app:buttonTint="@color/tsuyu_green" />
 
     <com.google.android.material.materialswitch.MaterialSwitch
         android:id="@+id/customization_send_dark"
+        style="@style/Widget.Tsuyu.DrawerSwitch"
         android:layout_width="match_parent"
         android:layout_height="48dp"
         android:fontFamily="sans-serif"
@@ -136,7 +137,7 @@
             android:layout_height="22dp"
             android:contentDescription=""
             android:src="@drawable/ic_photo"
-            app:tint="@color/tsuyu_blue" />
+            app:tint="@color/tsuyu_green" />
 
         <TextView
             android:layout_width="0dp"

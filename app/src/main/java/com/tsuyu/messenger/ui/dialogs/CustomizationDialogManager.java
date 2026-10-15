@@ -1,6 +1,7 @@
 package com.tsuyu.messenger.ui.dialogs;
 
-import android.app.AlertDialog;
+import com.google.android.material.dialog.MaterialAlertDialogBuilder;
+import androidx.appcompat.app.AlertDialog;
 import android.content.Context;
 import android.view.LayoutInflater;
 import android.view.View;
@@ -56,7 +57,7 @@ public final class CustomizationDialogManager {
         iconLabel.setText(context.getString(R.string.customization_icon_size) + ": " + Math.round(iconSize.getValue()) + " dp");
         mediaLabel.setText(context.getString(R.string.customization_media_size) + ": " + Math.round(mediaSize.getValue()) + "%");
 
-        AlertDialog dialog = new AlertDialog.Builder(context)
+        AlertDialog dialog = new MaterialAlertDialogBuilder(context)
                 .setTitle("Кастомизация")
                 .setView(body)
                 .setNegativeButton("Отмена", null)

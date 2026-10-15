@@ -1,6 +1,7 @@
 package com.tsuyu.messenger.ui.dialogs;
 
-import android.app.AlertDialog;
+import com.google.android.material.dialog.MaterialAlertDialogBuilder;
+import androidx.appcompat.app.AlertDialog;
 import android.content.Context;
 import android.view.LayoutInflater;
 import android.view.View;
@@ -33,7 +34,7 @@ public final class PrivacyDialogManager {
         Spinner spAbout = setupSpinner(context, body, R.id.privacy_about, options, curAbout);
         Spinner spName = setupSpinner(context, body, R.id.privacy_display_name, options, curName);
 
-        new AlertDialog.Builder(context)
+        new MaterialAlertDialogBuilder(context)
                 .setTitle("Конфиденциальность")
                 .setView(body)
                 .setNegativeButton("Отмена", null)
