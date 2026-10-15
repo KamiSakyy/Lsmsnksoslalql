@@ -541,10 +541,7 @@ def create_app():
     return app
 
 if __name__ == "__main__":
-    print(f"Tsuyu Modern 2026 Core starting on port {PORT}...", flush=True)
+    print(f"Tsuyu Modern 2026 Core listening on 0.0.0.0:{PORT}", flush=True)
     web_app = create_app()
-    # Railway private and public networking requires binding to all interfaces (:: or 0.0.0.0)
-    try:
-        web.run_app(web_app, host="::", port=PORT, access_log=None)
-    except Exception:
-        web.run_app(web_app, host="0.0.0.0", port=PORT, access_log=None)
+    # Чистый биндинг на 0.0.0.0 — официальный стандарт Railway для контейнеров
+    web.run_app(web_app, host="0.0.0.0", port=PORT, access_log=None, handle_signals=True)
