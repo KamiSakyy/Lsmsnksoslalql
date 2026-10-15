@@ -149,6 +149,45 @@ def episode_paths(release_id: int | str, episode: int, quality: int) -> Dict[str
     }
 
 
+def purge_episode_files(release_id: int | str, episode: int, quality: int) -> int:
+    """Удаляет с диска всё по серии (mp4, превью, сегменты) после успешной отправки.
+
+    Возвращает, сколько байт освободилось; пустая папка релиза тоже удаляется.
+    file_id при этом остаётся в SQLite, поэтому повторная выдача серии мгновенная
+    и диск для неё больше не нужен.
+    """
+    paths = episode_paths(release_id, episode, quality)
+    freed = 0
+    for path in (paths["video"], paths["thumb"], paths["part"]):
+        try:
+            if path.exists():
+                freed += path.stat().st_size
+                path.unlink()
+        except OSError:
+            continue
+    seg_dir = paths["dir"] / (paths["video"].stem + ".segments")
+    if seg_dir.exists():
+        freed += directory_size(seg_dir)
+        shutil.rmtree(seg_dir, ignore_errors=True)
+    # остатки от прерванных задач: недокачанные куски и папки сегментов
+    for leftover in list(paths["dir"].glob("*.part*")) + list(paths["dir"].glob("*.segments")):
+        try:
+            if leftover.is_dir():
+                freed += directory_size(leftover)
+                shutil.rmtree(leftover, ignore_errors=True)
+            else:
+                freed += leftover.stat().st_size
+                leftover.unlink()
+        except OSError:
+            continue
+    try:
+        if not any(paths["dir"].iterdir()):
+            paths["dir"].rmdir()
+    except OSError:
+        pass
+    return freed
+
+
 def directory_size(path: Path) -> int:
     total = 0
     for root, _dirs, files in os.walk(path):
@@ -1106,6 +1145,7 @@ __all__ = [
     "download_episode", "make_thumbnail", "probe", "hls_duration", "cleanup_cache",
     "directory_size", "episode_paths", "cache_key", "human_size", "human_time",
     "MediaInfo", "ProgressState", "DownloadError", "DownloadCancelled", "FileTooBig",
+    "purge_episode_files",
     "parallel_fetch", "parse_playlist", "pick_variant", "HlsPlaylist",
     "AdaptiveLimiter", "global_limiter", "RateLimited", "StreamExpired",
 ]

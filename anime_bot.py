@@ -44,6 +44,7 @@ from pyrogram.types import (
     InlineKeyboardMarkup,
     InlineQuery,
     InlineQueryResultArticle,
+    InlineQueryResultPhoto,
     InputMediaPhoto,
     InputTextMessageContent,
     Message,
@@ -411,6 +412,12 @@ async def process_episode(work: Dict[str, Any], release: Release, episode_number
                     ui.progress_kb(work["task_id"]))
 
     await upload_media(chat_id, info, release, episode_number, chosen, work)
+    # Файл уже в Telegram (и file_id сохранён) — освобождаем диск сервера
+    if config.DELETE_AFTER_SEND:
+        freed = await asyncio.to_thread(dl_engine.purge_episode_files, release.id, episode_number, chosen)
+        if freed:
+            log.info("Серия %s (%sp): диск очищен, освобождено %s",
+                     episode_number, chosen, dl_engine.human_size(freed))
     await storage.add_history(user_id, release.id, release.alias, release.title, episode_number, chosen)
     await storage.bump_downloads(user_id)
     await storage.bump_stat("sent_files")
@@ -813,26 +820,42 @@ async def inline_query_handler(client: Client, query: InlineQuery) -> None:
             desc_parts.append(f"{release.episodes_total} серий")
         if release.name_english and release.name_english != release.title:
             desc_parts.append(release.name_english)
-        # У сообщения из инлайн-режима кнопки могут быть только ссылками,
-        # поэтому ведём сразу в карточку тайтла внутри бота (тап → выбор серии/качества).
+        # одна кнопка: сразу карточка тайтла внутри бота (выбор серии и качества)
         kb = InlineKeyboardMarkup([
             [InlineKeyboardButton("▶️ Смотреть", url=deep_link(f"ep_{release.id}_1"))],
-            [InlineKeyboardButton("📺 Все серии", url=deep_link(f"eps_{release.id}"))],
         ])
-        results.append(
-            InlineQueryResultArticle(
-                id=f"r{release.id}",
-                title=ui.truncate(release.title, 64),
-                description=ui.truncate(" · ".join(desc_parts), 120),
-                thumb_url=release.poster_thumbnail or release.poster_preview or release.poster or None,
-                reply_markup=kb,
-                input_message_content=InputTextMessageContent(
-                    message_text=ui.inline_card_text(release),
+        caption = ui.inline_card_text(release)
+        original = release.poster or release.poster_preview or release.poster_thumbnail
+        small_thumb = release.poster_thumbnail or release.poster_preview
+        if original:
+            # Фото-результат: в списке подсказок миниатюра, а в отправленном сообщении —
+            # полноразмерный постер (то самое «без сжатия», что просили).
+            results.append(
+                InlineQueryResultPhoto(
+                    id=f"r{release.id}",
+                    photo_url=original,
+                    thumb_url=small_thumb or original,
+                    title=ui.truncate(release.title, 64),
+                    description=ui.truncate(" · ".join(desc_parts), 120),
+                    caption=caption,
                     parse_mode=ParseMode.HTML,
-                    disable_web_page_preview=False,
-                ),
+                    reply_markup=kb,
+                )
             )
-        )
+        else:
+            results.append(
+                InlineQueryResultArticle(
+                    id=f"r{release.id}",
+                    title=ui.truncate(release.title, 64),
+                    description=ui.truncate(" · ".join(desc_parts), 120),
+                    reply_markup=kb,
+                    input_message_content=InputTextMessageContent(
+                        message_text=caption,
+                        parse_mode=ParseMode.HTML,
+                        disable_web_page_preview=False,
+                    ),
+                )
+            )
 
     if not results:
         results.append(
@@ -868,7 +891,9 @@ async def text_handler(client: Client, message: Message) -> None:
     if text == BUTTON_FAVORITES:
         await show_favorites(message.chat.id, None, user.id, 0)
     elif text == BUTTON_SEARCH:
-        await message.reply_text(ui.search_hint_text(BOT_USERNAME), disable_web_page_preview=True)
+        await message.reply_text(
+            ui.search_prompt_text(), reply_markup=ui.search_prompt_kb(), disable_web_page_preview=True
+        )
     elif text == BUTTON_CONTINUE:
         await continue_watching(message.chat.id, user.id)
     # иначе — молчание (никакого поиска по тексту)
@@ -1285,7 +1310,7 @@ async def start_client() -> Client:
             workers=8,
             parse_mode=ParseMode.HTML,
             sleep_threshold=30,
-            max_concurrent_transmissions=4,
+            max_concurrent_transmissions=4,   # штатное значение Pyrogram: отправку не трогаем
             proxy=config.pyrogram_proxy(),
         )
         register_handlers(client)

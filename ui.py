@@ -180,23 +180,14 @@ def release_text(release: Any, is_fav: bool = False) -> str:
 
 def release_kb(release_id: int, is_fav: bool = False, has_episodes: bool = True,
                site_url: Optional[str] = None, deep_link: Optional[str] = None) -> InlineKeyboardMarkup:
+    """Карточка тайтла: только «Смотреть», избранное, поделиться и меню."""
     rows: List[List[InlineKeyboardButton]] = []
     if has_episodes:
-        rows.append([
-            InlineKeyboardButton("▶️ Смотреть", callback_data=f"E|{release_id}|0"),
-            InlineKeyboardButton("📺 Все серии", callback_data=f"A|{release_id}|1|0"),
-        ])
-    else:
-        rows.append([InlineKeyboardButton("🔗 Открыть на сайте", url=site_url or "https://anilibria.top")])
+        rows.append([InlineKeyboardButton("▶️ Смотреть", callback_data=f"E|{release_id}|0")])
     fav_text = "💔 Убрать из избранного" if is_fav else "⭐ В избранное"
     rows.append([InlineKeyboardButton(fav_text, callback_data=f"F|{release_id}")])
-    third: List[InlineKeyboardButton] = []
-    if site_url:
-        third.append(InlineKeyboardButton("🔗 AniLibria", url=site_url))
     if deep_link:
-        third.append(InlineKeyboardButton("📤 Поделиться", url=deep_link))
-    if third:
-        rows.append(third)
+        rows.append([InlineKeyboardButton("📤 Поделиться", url=deep_link)])
     rows.append([InlineKeyboardButton("🏠 Меню", callback_data="M|0")])
     return InlineKeyboardMarkup(rows)
 
@@ -388,14 +379,16 @@ def reply_keyboard() -> ReplyKeyboardMarkup:
     )
 
 
-def search_hint_text(bot_username: str = "") -> str:
-    mention = f"@{bot_username}" if bot_username else "@ваш_бот"
-    return (
-        "🔍 <b>Поиск работает через инлайн</b>\n\n"
-        f"В любом чате набери <code>{esc(mention)}</code> и название, например:\n"
-        f"<code>{esc(mention)} мастера меча</code>\n\n"
-        "Выбери тайтл из подсказок — откроется его карточка."
-    )
+def search_prompt_text() -> str:
+    """Короткая подсказка при нажатии обычной кнопки «🔍 Поиск»."""
+    return "🔍 <b>Поиск аниме</b>\n\nНажми кнопку ниже — откроется поиск."
+
+
+def search_prompt_kb() -> InlineKeyboardMarkup:
+    """Инлайн-кнопка, открывающая поиск в текущем чате (то же, что @бот + запрос)."""
+    return InlineKeyboardMarkup([
+        [InlineKeyboardButton("🔍 Открыть поиск", switch_inline_query_current_chat="")],
+    ])
 
 
 def continue_text(title: str, last_episode: int, next_episode: int, quality: int, last_quality: int) -> str:
@@ -411,8 +404,7 @@ def continue_kb(release_id: int, next_episode: int, quality: int, max_episode: i
     return InlineKeyboardMarkup([
         [InlineKeyboardButton(f"▶️ Продолжить с серии {next_episode}",
                               callback_data=f"D|{release_id}|{next_episode}|{quality}")],
-        [InlineKeyboardButton("📺 Все серии", callback_data=f"E|{release_id}|{max(0, (next_episode - 1) // config.EPISODES_PER_PAGE)}"),
-         InlineKeyboardButton("🎚 Другое качество", callback_data=f"P|{release_id}|{next_episode}")],
+        [InlineKeyboardButton("🎚 Другое качество", callback_data=f"P|{release_id}|{next_episode}")],
         [InlineKeyboardButton("🕓 История", callback_data="H|0"), InlineKeyboardButton("🏠 Меню", callback_data="M|0")],
     ])
 
@@ -442,10 +434,7 @@ def video_kb(release_id: int, episode: int, max_episode: int, quality: int) -> I
         nav.append(InlineKeyboardButton("➡️ След. серия", callback_data=f"D|{release_id}|{episode + 1}|{quality}"))
     if nav:
         rows.append(nav)
-    rows.append([
-        InlineKeyboardButton("🎚 Другое качество", callback_data=f"P|{release_id}|{episode}"),
-        InlineKeyboardButton("📺 Все серии", callback_data=f"E|{release_id}|{max(0, (episode - 1) // config.EPISODES_PER_PAGE)}"),
-    ])
+    rows.append([InlineKeyboardButton("🎚 Другое качество", callback_data=f"P|{release_id}|{episode}")])
     rows.append([InlineKeyboardButton("🗑 Удалить сообщение", callback_data="X|0")])
     return InlineKeyboardMarkup(rows)
 
@@ -554,7 +543,8 @@ def stats_text(data: Dict[str, Any]) -> str:
 
 __all__ = [
     "esc", "truncate", "progress_bar", "main_menu_text", "main_menu_kb", "help_text",
-    "reply_keyboard", "search_hint_text", "continue_text", "continue_kb", "inline_card_text",
+    "reply_keyboard", "search_prompt_text", "search_prompt_kb", "continue_text", "continue_kb",
+    "inline_card_text",
     "nothing_to_continue_text", "all_episodes_watched_text",
     "settings_text", "settings_kb", "release_text", "release_kb", "search_results_text",
     "search_results_kb", "latest_kb", "episodes_text", "episodes_kb", "quality_text",

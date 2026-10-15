@@ -43,13 +43,16 @@ services:
       # --- скорость скачивания ------------------------------------------------
       HLS_PARALLEL: "1"          # сегменты качаются параллельно и адаптивно
       HLS_CONNECTIONS: "8"       # потолок соединений (16+ = риск 429 от CDN)
-      HLS_START_CONNECTIONS: "3" # старт с трёх, дальше плавный разгон
-      HLS_RAMP_AFTER: "12"
+      HLS_START_CONNECTIONS: "6" # старт с шести потоков, дальше плавный разгон
+      HLS_RAMP_AFTER: "10"
       HLS_JITTER: "0.35"
       HLS_SEGMENT_RETRIES: "4"
       HLS_MAX_RATE_HITS: "40"
       HLS_MAX_FORBIDDEN: "6"
       HLS_LONG_PAUSE: "20.0"
+
+      # --- диск: чистим файлы серии сразу после отправки ----------------------
+      DELETE_AFTER_SEND: "1"
 
       # --- AniLibria API v1 (зеркала) ----------------------------------------
       ANILIBRIA_MIRRORS: "https://anilibria.top,https://api.anilibria.app"
