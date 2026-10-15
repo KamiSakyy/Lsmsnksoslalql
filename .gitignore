@@ -21,3 +21,13 @@ service-account*.json
 # IDE / OS
 .DS_Store
 Thumbs.db
+
+# Python-бот (anime_bot)
+__pycache__/
+*.py[cod]
+*.session
+*.session-journal
+data/
+*.sqlite3
+*.sqlite3-journal
+.pytest_cache/
