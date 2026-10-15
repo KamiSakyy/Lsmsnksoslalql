@@ -17,6 +17,7 @@
 import argparse
 import gc
 import os
+import shutil
 import subprocess
 import sys
 import traceback
@@ -39,11 +40,20 @@ SEGMENTS = [
 GAP_SEC = 0.45  # пауза между сегментами
 
 
+def ffmpeg_exe() -> str:
+    """ffmpeg из PATH или статичный бинарник imageio-ffmpeg (на новых раннерах ffmpeg нет)."""
+    exe = shutil.which("ffmpeg")
+    if exe:
+        return exe
+    import imageio_ffmpeg
+    return imageio_ffmpeg.get_ffmpeg_exe()
+
+
 def prepare_reference() -> None:
     """mp3 -> моно wav 22050 Hz (стандартный вход для обеих моделей)."""
     os.makedirs(WORK_DIR, exist_ok=True)
     subprocess.run(
-        ["ffmpeg", "-y", "-v", "error", "-i", REF_MP3,
+        [ffmpeg_exe(), "-y", "-v", "error", "-i", REF_MP3,
          "-ar", "22050", "-ac", "1", "-c:a", "pcm_s16le", REF_WAV],
         check=True,
     )
@@ -67,7 +77,7 @@ def export_mp3(audio: np.ndarray, sr: int, name: str) -> str:
     mp3_path = os.path.join(OUT_DIR, name)
     sf.write(wav_path, audio, sr)
     subprocess.run(
-        ["ffmpeg", "-y", "-v", "error", "-i", wav_path,
+        [ffmpeg_exe(), "-y", "-v", "error", "-i", wav_path,
          "-codec:a", "libmp3lame", "-qscale:a", "2", mp3_path],
         check=True,
     )
