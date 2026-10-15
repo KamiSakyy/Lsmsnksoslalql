@@ -3,29 +3,36 @@
     xmlns:app="http://schemas.android.com/apk/res-auto"
     android:layout_width="match_parent"
     android:layout_height="wrap_content"
+    android:background="@color/tsuyu_surface"
     android:orientation="vertical"
-    android:padding="@dimen/dialog_gutter">
+    android:paddingStart="20dp"
+    android:paddingTop="20dp"
+    android:paddingEnd="20dp"
+    android:paddingBottom="24dp">
 
     <com.google.android.material.materialswitch.MaterialSwitch
         android:id="@+id/notifications_sound_switch"
         android:layout_width="match_parent"
         android:layout_height="wrap_content"
-        android:minHeight="@dimen/touch_target"
+        android:minHeight="48dp"
+        android:fontFamily="sans-serif-medium"
         android:text="Звук уведомлений"
         android:textColor="@color/tsuyu_white" />
 
     <TextView
         android:layout_width="match_parent"
         android:layout_height="wrap_content"
-        android:layout_marginTop="@dimen/space_2xs"
-        android:text="Свой звук для новых сообщений"
-        android:textAppearance="@style/TextAppearance.Tsuyu.Caption" />
+        android:layout_marginTop="4dp"
+        android:fontFamily="sans-serif"
+        android:text="Свой персональный звук для новых входящих сообщений"
+        android:textColor="@color/tsuyu_secondary"
+        android:textSize="13sp" />
 
     <com.google.android.material.button.MaterialButton
         android:id="@+id/notifications_choose_sound"
         style="@style/Widget.Tsuyu.Button.Secondary"
         android:layout_width="match_parent"
-        android:layout_height="@dimen/touch_target"
-        android:layout_marginTop="@dimen/space_md"
+        android:layout_height="48dp"
+        android:layout_marginTop="18dp"
         android:text="Выбрать звук из файлов" />
 </LinearLayout>

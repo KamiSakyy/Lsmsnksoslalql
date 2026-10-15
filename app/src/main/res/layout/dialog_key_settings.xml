@@ -3,42 +3,52 @@
     xmlns:app="http://schemas.android.com/apk/res-auto"
     android:layout_width="match_parent"
     android:layout_height="wrap_content"
+    android:background="@color/tsuyu_surface"
     android:fillViewport="false">
 
     <LinearLayout
         android:layout_width="match_parent"
         android:layout_height="wrap_content"
         android:orientation="vertical"
-        android:padding="@dimen/dialog_gutter">
+        android:paddingStart="20dp"
+        android:paddingTop="20dp"
+        android:paddingEnd="20dp"
+        android:paddingBottom="24dp">
 
         <TextView
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
+            android:fontFamily="sans-serif"
             android:lineSpacingMultiplier="1.2"
             android:text="Секретные данные хранятся на этом устройстве. Сверьте код безопасности с собеседником, чтобы убедиться, что вы общаетесь именно с ним."
-            android:textAppearance="@style/TextAppearance.Tsuyu.RowSubtitle" />
+            android:textColor="@color/tsuyu_secondary"
+            android:textSize="13sp" />
 
         <TextView
             android:layout_width="wrap_content"
             android:layout_height="wrap_content"
-            android:layout_marginTop="@dimen/space_lg"
+            android:layout_marginTop="20dp"
+            android:fontFamily="sans-serif-medium"
             android:text="Мой код безопасности"
-            android:textAppearance="@style/TextAppearance.Tsuyu.SectionLabel" />
+            android:textColor="@color/tsuyu_white"
+            android:textSize="15sp" />
 
         <com.google.android.material.card.MaterialCardView
             style="@style/Widget.Tsuyu.Card"
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
-            android:layout_marginTop="@dimen/space_sm"
+            android:layout_marginTop="10dp"
             app:cardBackgroundColor="@color/tsuyu_header"
-            app:cardCornerRadius="@dimen/radius_md">
+            app:cardCornerRadius="14dp">
 
             <TextView
                 android:id="@+id/key_fingerprint"
                 android:layout_width="match_parent"
                 android:layout_height="wrap_content"
-                android:padding="@dimen/space_md"
-                android:textAppearance="@style/TextAppearance.Tsuyu.Mono"
+                android:fontFamily="monospace"
+                android:padding="16dp"
+                android:textColor="@color/tsuyu_white"
+                android:textSize="13sp"
                 android:textIsSelectable="true" />
         </com.google.android.material.card.MaterialCardView>
 
@@ -46,16 +56,17 @@
             android:id="@+id/key_copy_bundle"
             style="@style/Widget.Tsuyu.Button.Secondary"
             android:layout_width="match_parent"
-            android:layout_height="@dimen/touch_target"
-            android:layout_marginTop="@dimen/space_md"
-            android:text="Скопировать код безопасности" />
+            android:layout_height="48dp"
+            android:layout_marginTop="18dp"
+            android:text="Скопировать код безопасности"
+            android:textColor="@color/tsuyu_blue" />
 
         <com.google.android.material.button.MaterialButton
             android:id="@+id/key_rotate"
             style="@style/Widget.Tsuyu.Button.Secondary"
             android:layout_width="match_parent"
-            android:layout_height="@dimen/touch_target"
-            android:layout_marginTop="@dimen/space_sm"
+            android:layout_height="48dp"
+            android:layout_marginTop="10dp"
             android:text="Обновить код безопасности" />
     </LinearLayout>
 </androidx.core.widget.NestedScrollView>

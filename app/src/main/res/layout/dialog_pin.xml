@@ -5,35 +5,43 @@
     android:layout_height="wrap_content"
     android:background="@drawable/bg_sheet_surface"
     android:orientation="vertical"
-    android:paddingStart="@dimen/space_xl"
-    android:paddingTop="@dimen/space_xl"
-    android:paddingEnd="@dimen/space_xl"
-    android:paddingBottom="@dimen/space_lg">
+    android:paddingStart="24dp"
+    android:paddingTop="28dp"
+    android:paddingEnd="24dp"
+    android:paddingBottom="24dp">
 
-    <ImageView
-        android:layout_width="40dp"
-        android:layout_height="40dp"
+    <FrameLayout
+        android:layout_width="64dp"
+        android:layout_height="64dp"
         android:layout_gravity="center_horizontal"
-        android:contentDescription="@string/drawer_pin"
-        android:src="@drawable/ic_lock"
-        app:tint="@color/tsuyu_white" />
+        android:background="@drawable/bg_menu_icon">
+
+        <ImageView
+            android:layout_width="28dp"
+            android:layout_height="28dp"
+            android:layout_gravity="center"
+            android:contentDescription="@string/drawer_pin"
+            android:src="@drawable/ic_lock"
+            app:tint="@color/tsuyu_blue" />
+    </FrameLayout>
 
     <TextView
         android:id="@+id/pin_title"
         android:layout_width="match_parent"
         android:layout_height="wrap_content"
-        android:layout_marginTop="@dimen/space_md"
+        android:layout_marginTop="16dp"
         android:fontFamily="sans-serif-medium"
         android:gravity="center"
         android:text="@string/pin_enter_title"
         android:textColor="@color/tsuyu_white"
-        android:textSize="18sp" />
+        android:textSize="19sp" />
 
     <TextView
         android:id="@+id/pin_subtitle"
         android:layout_width="match_parent"
         android:layout_height="wrap_content"
         android:layout_marginTop="6dp"
+        android:fontFamily="sans-serif"
         android:gravity="center"
         android:text="@string/pin_enter_subtitle"
         android:textColor="@color/tsuyu_secondary"
@@ -42,9 +50,10 @@
     <EditText
         android:id="@+id/pin_input"
         android:layout_width="match_parent"
-        android:layout_height="52dp"
-        android:layout_marginTop="@dimen/space_lg"
+        android:layout_height="54dp"
+        android:layout_marginTop="20dp"
         android:background="@drawable/bg_pin_input"
+        android:fontFamily="monospace"
         android:gravity="center"
         android:hint="@string/pin_enter_hint"
         android:importantForAutofill="no"
@@ -53,13 +62,14 @@
         android:maxLength="6"
         android:textColor="@color/tsuyu_white"
         android:textColorHint="@color/tsuyu_secondary"
-        android:textSize="22sp" />
+        android:textSize="24sp" />
 
     <TextView
         android:id="@+id/pin_error"
         android:layout_width="match_parent"
         android:layout_height="wrap_content"
         android:layout_marginTop="8dp"
+        android:fontFamily="sans-serif"
         android:gravity="center"
         android:text="@string/pin_wrong"
         android:textColor="@color/tsuyu_danger"
@@ -69,15 +79,16 @@
     <LinearLayout
         android:layout_width="match_parent"
         android:layout_height="wrap_content"
-        android:layout_marginTop="@dimen/space_lg"
+        android:layout_marginTop="24dp"
         android:orientation="horizontal">
 
         <Button
             android:id="@+id/pin_cancel"
             style="@style/Widget.Tsuyu.MultiSelectButton"
             android:layout_width="0dp"
-            android:layout_height="46dp"
+            android:layout_height="48dp"
             android:layout_weight="1"
+            android:fontFamily="sans-serif-medium"
             android:text="@string/circle_cancel"
             android:textColor="@color/tsuyu_white" />
 
@@ -85,10 +96,11 @@
             android:id="@+id/pin_confirm"
             style="@style/Widget.Tsuyu.MultiSelectButton"
             android:layout_width="0dp"
-            android:layout_height="46dp"
-            android:layout_marginStart="@dimen/space_md"
+            android:layout_height="48dp"
+            android:layout_marginStart="12dp"
             android:layout_weight="1"
             android:background="@drawable/bg_send_enabled"
+            android:fontFamily="sans-serif-medium"
             android:text="@string/pin_confirm"
             android:textColor="@color/tsuyu_white" />
     </LinearLayout>

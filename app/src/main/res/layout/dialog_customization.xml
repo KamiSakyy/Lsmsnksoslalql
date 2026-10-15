@@ -4,14 +4,20 @@
     android:layout_width="match_parent"
     android:layout_height="wrap_content"
     android:orientation="vertical"
-    android:padding="@dimen/dialog_gutter">
+    android:paddingStart="20dp"
+    android:paddingTop="20dp"
+    android:paddingEnd="20dp"
+    android:paddingBottom="24dp">
 
+    <!-- Размер текста сообщений -->
     <TextView
         android:id="@+id/customization_text_label"
         android:layout_width="match_parent"
         android:layout_height="wrap_content"
+        android:fontFamily="sans-serif-medium"
         android:text="@string/customization_text_size"
-        android:textAppearance="@style/TextAppearance.Tsuyu.RowItemTitle" />
+        android:textColor="@color/tsuyu_white"
+        android:textSize="15sp" />
 
     <com.google.android.material.slider.Slider
         android:id="@+id/customization_text_size"
@@ -27,13 +33,16 @@
         app:trackColorActive="@color/tsuyu_blue"
         app:trackColorInactive="@color/tsuyu_border" />
 
+    <!-- Размер иконок и аватаров -->
     <TextView
         android:id="@+id/customization_icon_label"
         android:layout_width="match_parent"
         android:layout_height="wrap_content"
-        android:layout_marginTop="@dimen/space_md"
+        android:layout_marginTop="14dp"
+        android:fontFamily="sans-serif-medium"
         android:text="@string/customization_icon_size"
-        android:textAppearance="@style/TextAppearance.Tsuyu.RowItemTitle" />
+        android:textColor="@color/tsuyu_white"
+        android:textSize="15sp" />
 
     <com.google.android.material.slider.Slider
         android:id="@+id/customization_icon_size"
@@ -49,13 +58,16 @@
         app:trackColorActive="@color/tsuyu_blue"
         app:trackColorInactive="@color/tsuyu_border" />
 
+    <!-- Размер медиа в чате -->
     <TextView
         android:id="@+id/customization_media_label"
         android:layout_width="match_parent"
         android:layout_height="wrap_content"
-        android:layout_marginTop="@dimen/space_md"
+        android:layout_marginTop="14dp"
+        android:fontFamily="sans-serif-medium"
         android:text="@string/customization_media_size"
-        android:textAppearance="@style/TextAppearance.Tsuyu.RowItemTitle" />
+        android:textColor="@color/tsuyu_white"
+        android:textSize="15sp" />
 
     <com.google.android.material.slider.Slider
         android:id="@+id/customization_media_size"
@@ -71,10 +83,19 @@
         app:trackColorActive="@color/tsuyu_blue"
         app:trackColorInactive="@color/tsuyu_border" />
 
+    <View
+        android:layout_width="match_parent"
+        android:layout_height="@dimen/hairline"
+        android:layout_marginTop="12dp"
+        android:layout_marginBottom="8dp"
+        android:background="@color/tsuyu_border" />
+
+    <!-- Переключатели шрифта -->
     <com.google.android.material.checkbox.MaterialCheckBox
         android:id="@+id/customization_bold"
         android:layout_width="match_parent"
-        android:layout_height="@dimen/touch_target"
+        android:layout_height="48dp"
+        android:fontFamily="sans-serif-medium"
         android:text="@string/customization_bold"
         android:textColor="@color/tsuyu_white"
         app:buttonTint="@color/tsuyu_blue" />
@@ -82,7 +103,8 @@
     <com.google.android.material.checkbox.MaterialCheckBox
         android:id="@+id/customization_italic"
         android:layout_width="match_parent"
-        android:layout_height="@dimen/touch_target"
+        android:layout_height="48dp"
+        android:fontFamily="sans-serif"
         android:text="@string/customization_italic"
         android:textColor="@color/tsuyu_white"
         app:buttonTint="@color/tsuyu_blue" />
@@ -90,31 +112,46 @@
     <com.google.android.material.materialswitch.MaterialSwitch
         android:id="@+id/customization_send_dark"
         android:layout_width="match_parent"
-        android:layout_height="@dimen/touch_target"
+        android:layout_height="48dp"
+        android:fontFamily="sans-serif"
         android:text="@string/customization_send_dark"
         android:textColor="@color/tsuyu_white" />
 
+    <!-- Кнопка обоев -->
     <LinearLayout
         android:id="@+id/customization_wallpaper"
         android:layout_width="match_parent"
-        android:layout_height="@dimen/touch_target"
-        android:background="?attr/selectableItemBackground"
+        android:layout_height="52dp"
+        android:layout_marginTop="6dp"
+        android:background="@drawable/bg_sheet_item"
         android:clickable="true"
         android:focusable="true"
         android:gravity="center_vertical"
-        android:orientation="horizontal">
+        android:orientation="horizontal"
+        android:paddingStart="14dp"
+        android:paddingEnd="14dp">
+
+        <ImageView
+            android:layout_width="22dp"
+            android:layout_height="22dp"
+            android:contentDescription=""
+            android:src="@drawable/ic_photo"
+            app:tint="@color/tsuyu_blue" />
 
         <TextView
             android:layout_width="0dp"
             android:layout_height="wrap_content"
+            android:layout_marginStart="14dp"
             android:layout_weight="1"
+            android:fontFamily="sans-serif-medium"
             android:text="@string/customization_wallpaper"
-            android:textAppearance="@style/TextAppearance.Tsuyu.RowItemTitle" />
+            android:textColor="@color/tsuyu_white"
+            android:textSize="15sp" />
 
         <ImageView
             android:layout_width="20dp"
             android:layout_height="20dp"
-            android:contentDescription="@string/customization_wallpaper"
+            android:contentDescription=""
             android:src="@drawable/ic_chevron_right"
             app:tint="@color/tsuyu_secondary" />
     </LinearLayout>
