@@ -152,19 +152,12 @@
                     android:minLines="1" />
             </com.google.android.material.textfield.TextInputLayout>
 
-            <TextView
-                android:layout_width="match_parent"
-                android:layout_height="wrap_content"
-                android:layout_marginBottom="@dimen/space_xl"
-                android:layout_marginStart="@dimen/space_2xs"
-                android:text="@string/profile_username_hint_text"
-                android:textAppearance="@style/TextAppearance.Tsuyu.Caption" />
-
             <com.google.android.material.button.MaterialButton
                 android:id="@+id/profile_save"
                 style="@style/Widget.Tsuyu.Button.Primary"
                 android:layout_width="match_parent"
                 android:layout_height="54dp"
+                android:layout_marginTop="@dimen/space_md"
                 android:text="Сохранить профиль" />
         </LinearLayout>
     </androidx.core.widget.NestedScrollView>

@@ -2755,23 +2755,6 @@ public final class MainActivity extends AppCompatActivity {
         View wallpaperRow = root.findViewById(R.id.settings_wallpaper);
         if (wallpaperRow != null) wallpaperRow.setOnClickListener(v -> showWallpaperDialog(null, true));
 
-        // Приоритет мобильного трафика: приложение и звонки через сотовую сеть, не через Wi-Fi.
-        com.google.android.material.materialswitch.MaterialSwitch priority =
-                root.findViewById(R.id.mobile_priority_switch);
-        TextView priorityStatus = root.findViewById(R.id.mobile_priority_status);
-        if (priority != null) {
-            priority.setChecked(com.tsuyu.messenger.call.NetworkPriority.enabled(this));
-            if (priorityStatus != null) {
-                priorityStatus.setText(com.tsuyu.messenger.call.NetworkPriority.status(this));
-            }
-            priority.setOnCheckedChangeListener((button, checked) -> {
-                com.tsuyu.messenger.call.NetworkPriority.setEnabled(this, checked);
-                toast(getString(checked ? R.string.mobile_priority_on : R.string.mobile_priority_off));
-                if (priorityStatus != null) {
-                    priorityStatus.setText(com.tsuyu.messenger.call.NetworkPriority.status(this));
-                }
-            });
-        }
         MaterialToolbar toolbar = root.findViewById(R.id.settings_toolbar);
         toolbar.setNavigationOnClickListener(v -> showHome());
         View profileCard = root.findViewById(R.id.settings_profile_card);
@@ -4171,7 +4154,6 @@ public final class MainActivity extends AppCompatActivity {
         });
         click(drawerRoot, R.id.drawer_status_row, v -> { closeDrawer(); showProfileEditor(false); });
         click(drawerRoot, R.id.drawer_item_settings, v -> { closeDrawer(); showSettings(); });
-        click(drawerRoot, R.id.drawer_item_cloud, v -> { closeDrawer(); showKeySettings(); });
         click(drawerRoot, R.id.drawer_item_cache, v -> {
             clearLocalCache();
             bindDrawerHeader();

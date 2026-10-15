@@ -116,13 +116,13 @@
                 </LinearLayout>
             </com.google.android.material.card.MaterialCardView>
 
-            <!-- Группа 1: Связь и оформление -->
+            <!-- Группа 1: Оформление -->
             <TextView
                 style="@style/Widget.Tsuyu.SectionLabel"
                 android:layout_width="wrap_content"
                 android:layout_height="wrap_content"
-                android:layout_marginTop="20dp"
-                android:text="Интерфейс и связь" />
+                android:layout_marginTop="16dp"
+                android:text="Интерфейс" />
 
             <com.google.android.material.card.MaterialCardView
                 style="@style/Widget.Tsuyu.Card"
@@ -134,60 +134,6 @@
                     android:layout_width="match_parent"
                     android:layout_height="wrap_content"
                     android:orientation="vertical">
-
-                    <LinearLayout
-                        android:layout_width="match_parent"
-                        android:layout_height="wrap_content"
-                        android:gravity="center_vertical"
-                        android:orientation="horizontal"
-                        android:paddingStart="16dp"
-                        android:paddingTop="12dp"
-                        android:paddingEnd="16dp"
-                        android:paddingBottom="12dp">
-
-                        <ImageView
-                            android:layout_width="22dp"
-                            android:layout_height="22dp"
-                            android:contentDescription=""
-                            android:src="@drawable/ic_refresh"
-                            app:tint="@color/tsuyu_white" />
-
-                        <LinearLayout
-                            android:layout_width="0dp"
-                            android:layout_height="wrap_content"
-                            android:layout_marginStart="14dp"
-                            android:layout_weight="1"
-                            android:orientation="vertical">
-
-                            <TextView
-                                android:layout_width="match_parent"
-                                android:layout_height="wrap_content"
-                                android:fontFamily="sans-serif-medium"
-                                android:text="Мобильный приоритет"
-                                android:textColor="@color/tsuyu_white"
-                                android:textSize="15sp" />
-
-                            <TextView
-                                android:id="@+id/mobile_priority_status"
-                                android:layout_width="match_parent"
-                                android:layout_height="wrap_content"
-                                android:layout_marginTop="2dp"
-                                android:text="Оптимизация трафика"
-                                android:textColor="@color/tsuyu_secondary"
-                                android:textSize="12sp" />
-                        </LinearLayout>
-
-                        <com.google.android.material.materialswitch.MaterialSwitch
-                            android:id="@+id/mobile_priority_switch"
-                            android:layout_width="wrap_content"
-                            android:layout_height="wrap_content" />
-                    </LinearLayout>
-
-                    <View
-                        android:layout_width="match_parent"
-                        android:layout_height="@dimen/hairline"
-                        android:layout_marginStart="52dp"
-                        android:background="@color/tsuyu_border" />
 
                     <LinearLayout
                         android:id="@+id/settings_wallpaper"
@@ -280,7 +226,7 @@
                 style="@style/Widget.Tsuyu.SectionLabel"
                 android:layout_width="wrap_content"
                 android:layout_height="wrap_content"
-                android:layout_marginTop="20dp"
+                android:layout_marginTop="12dp"
                 android:text="Безопасность и ключи" />
 
             <com.google.android.material.card.MaterialCardView
@@ -337,6 +283,7 @@
 
                         <com.google.android.material.materialswitch.MaterialSwitch
                             android:id="@+id/screen_guard_switch"
+                            style="@style/Widget.Tsuyu.DrawerSwitch"
                             android:layout_width="wrap_content"
                             android:layout_height="wrap_content" />
                     </LinearLayout>
@@ -483,7 +430,7 @@
                 style="@style/Widget.Tsuyu.SectionLabel"
                 android:layout_width="wrap_content"
                 android:layout_height="wrap_content"
-                android:layout_marginTop="20dp"
+                android:layout_marginTop="12dp"
                 android:text="Система и диагностика" />
 
             <com.google.android.material.card.MaterialCardView
@@ -526,6 +473,7 @@
 
                         <com.google.android.material.materialswitch.MaterialSwitch
                             android:id="@+id/background_sync_switch"
+                            style="@style/Widget.Tsuyu.DrawerSwitch"
                             android:layout_width="wrap_content"
                             android:layout_height="wrap_content" />
                     </LinearLayout>
@@ -565,6 +513,7 @@
 
                         <com.google.android.material.materialswitch.MaterialSwitch
                             android:id="@+id/dynamic_colors_switch"
+                            style="@style/Widget.Tsuyu.DrawerSwitch"
                             android:layout_width="wrap_content"
                             android:layout_height="wrap_content" />
                     </LinearLayout>

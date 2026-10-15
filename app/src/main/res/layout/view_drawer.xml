@@ -1,4 +1,5 @@
 <?xml version="1.0" encoding="utf-8"?>
+<!-- Navigation drawer, mirrors the Tsuyu web client .drawer markup. -->
 <LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
     xmlns:app="http://schemas.android.com/apk/res-auto"
     android:id="@+id/drawer_root"
@@ -8,22 +9,22 @@
     android:background="@color/tsuyu_surface"
     android:orientation="vertical">
 
-    <!-- Шапка профиля Telegram-style -->
+    <!-- .drawer-header -->
     <LinearLayout
         android:layout_width="match_parent"
         android:layout_height="wrap_content"
-        android:background="@color/tsuyu_header"
+        android:background="@color/tsuyu_input"
         android:orientation="vertical"
-        android:paddingStart="16dp"
-        android:paddingTop="24dp"
-        android:paddingEnd="16dp"
-        android:paddingBottom="16dp">
+        android:paddingStart="@dimen/screen_gutter"
+        android:paddingTop="18dp"
+        android:paddingEnd="@dimen/screen_gutter"
+        android:paddingBottom="18dp">
 
         <FrameLayout
             android:id="@+id/drawer_avatar_frame"
-            android:layout_width="60dp"
-            android:layout_height="60dp"
-            android:layout_marginBottom="12dp"
+            android:layout_width="64dp"
+            android:layout_height="64dp"
+            android:layout_marginBottom="6dp"
             android:background="@drawable/bg_avatar_ring"
             android:clickable="true"
             android:focusable="true">
@@ -35,7 +36,7 @@
                 android:fontFamily="sans-serif-medium"
                 android:gravity="center"
                 android:textColor="@color/tsuyu_white"
-                android:textSize="24sp" />
+                android:textSize="26sp" />
 
             <com.google.android.material.imageview.ShapeableImageView
                 android:id="@+id/drawer_avatar"
@@ -47,8 +48,8 @@
 
             <ImageView
                 android:id="@+id/drawer_avatar_edit"
-                android:layout_width="22dp"
-                android:layout_height="22dp"
+                android:layout_width="24dp"
+                android:layout_height="24dp"
                 android:layout_gravity="bottom|end"
                 android:background="@drawable/bg_avatar_edit"
                 android:clickable="true"
@@ -63,18 +64,24 @@
             android:id="@+id/drawer_name"
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
+            android:layout_marginTop="2dp"
+            android:autoSizeMaxTextSize="18sp"
+            android:autoSizeMinTextSize="15sp"
+            android:autoSizeStepGranularity="1sp"
+            android:autoSizeTextType="uniform"
             android:ellipsize="end"
             android:fontFamily="sans-serif-medium"
             android:maxLines="1"
+            android:text="@string/app_name"
             android:textColor="@color/tsuyu_white"
-            android:textSize="17sp" />
+            android:textSize="18sp" />
 
         <TextView
             android:id="@+id/drawer_presence"
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
             android:layout_marginTop="2dp"
-            android:fontFamily="sans-serif"
+            android:fontFamily="sans-serif-medium"
             android:text="@string/drawer_online"
             android:textColor="@color/tsuyu_green"
             android:textSize="13sp" />
@@ -83,7 +90,7 @@
             android:id="@+id/drawer_status_row"
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
-            android:layout_marginTop="6dp"
+            android:layout_marginTop="4dp"
             android:clickable="true"
             android:focusable="true"
             android:gravity="center_vertical"
@@ -94,29 +101,32 @@
                 android:layout_width="0dp"
                 android:layout_height="wrap_content"
                 android:layout_weight="1"
+                android:autoSizeMaxTextSize="13sp"
+                android:autoSizeMinTextSize="11sp"
+                android:autoSizeStepGranularity="1sp"
+                android:autoSizeTextType="uniform"
                 android:ellipsize="end"
-                android:fontFamily="sans-serif"
-                android:maxLines="2"
+                android:maxLines="3"
                 android:text="@string/drawer_status_hint"
-                android:textColor="@color/tsuyu_secondary"
-                android:textSize="12sp" />
+                android:textColor="@color/tsuyu_drawer_icon"
+                android:textSize="13sp" />
 
             <ImageView
-                android:layout_width="14dp"
-                android:layout_height="14dp"
+                android:layout_width="12dp"
+                android:layout_height="12dp"
                 android:layout_marginStart="6dp"
                 android:contentDescription=""
                 android:src="@drawable/ic_edit"
-                app:tint="@color/tsuyu_secondary" />
+                app:tint="@color/tsuyu_drawer_icon" />
         </LinearLayout>
     </LinearLayout>
 
     <View
         android:layout_width="match_parent"
         android:layout_height="@dimen/hairline"
-        android:background="@color/tsuyu_border" />
+        android:background="@color/tsuyu_drawer_header_line" />
 
-    <!-- Список разделов -->
+    <!-- .drawer-content -->
     <ScrollView
         android:layout_width="match_parent"
         android:layout_height="0dp"
@@ -130,67 +140,8 @@
             android:paddingStart="8dp"
             android:paddingTop="8dp"
             android:paddingEnd="8dp"
-            android:paddingBottom="16dp">
+            android:paddingBottom="8dp">
 
-            <!-- Избранное / Облако -->
-            <LinearLayout
-                android:id="@+id/drawer_item_cloud"
-                style="@style/Widget.Tsuyu.DrawerRow">
-
-                <ImageView
-                    style="@style/Widget.Tsuyu.DrawerIcon"
-                    android:contentDescription=""
-                    android:src="@drawable/ic_cloud"
-                    app:tint="@color/tsuyu_white" />
-
-                <TextView
-                    style="@style/Widget.Tsuyu.DrawerLabel"
-                    android:text="@string/drawer_cloud" />
-            </LinearLayout>
-
-            <!-- Редактировать профиль -->
-            <LinearLayout
-                android:id="@+id/drawer_item_profile"
-                style="@style/Widget.Tsuyu.DrawerRow"
-                android:layout_marginTop="2dp">
-
-                <ImageView
-                    style="@style/Widget.Tsuyu.DrawerIcon"
-                    android:contentDescription=""
-                    android:src="@drawable/ic_person"
-                    app:tint="@color/tsuyu_white" />
-
-                <TextView
-                    style="@style/Widget.Tsuyu.DrawerLabel"
-                    android:text="@string/drawer_edit_profile" />
-            </LinearLayout>
-
-            <!-- Сменить фото -->
-            <LinearLayout
-                android:id="@+id/drawer_item_avatar"
-                style="@style/Widget.Tsuyu.DrawerRow"
-                android:layout_marginTop="2dp">
-
-                <ImageView
-                    style="@style/Widget.Tsuyu.DrawerIcon"
-                    android:contentDescription=""
-                    android:src="@drawable/ic_gallery"
-                    app:tint="@color/tsuyu_white" />
-
-                <TextView
-                    style="@style/Widget.Tsuyu.DrawerLabel"
-                    android:text="@string/drawer_change_avatar" />
-            </LinearLayout>
-
-            <!-- Разделитель -->
-            <View
-                android:layout_width="match_parent"
-                android:layout_height="@dimen/hairline"
-                android:layout_marginTop="8dp"
-                android:layout_marginBottom="8dp"
-                android:background="@color/tsuyu_border" />
-
-            <!-- Режим невидимки -->
             <LinearLayout
                 android:id="@+id/drawer_item_stealth"
                 style="@style/Widget.Tsuyu.DrawerRow">
@@ -198,8 +149,7 @@
                 <ImageView
                     style="@style/Widget.Tsuyu.DrawerIcon"
                     android:contentDescription=""
-                    android:src="@drawable/ic_eye_off"
-                    app:tint="@color/tsuyu_white" />
+                    android:src="@drawable/ic_eye_off" />
 
                 <TextView
                     style="@style/Widget.Tsuyu.DrawerLabel"
@@ -210,7 +160,6 @@
                     style="@style/Widget.Tsuyu.DrawerSwitch" />
             </LinearLayout>
 
-            <!-- Звуки -->
             <LinearLayout
                 android:id="@+id/drawer_item_sound"
                 style="@style/Widget.Tsuyu.DrawerRow"
@@ -219,8 +168,7 @@
                 <ImageView
                     style="@style/Widget.Tsuyu.DrawerIcon"
                     android:contentDescription=""
-                    android:src="@drawable/ic_notifications"
-                    app:tint="@color/tsuyu_white" />
+                    android:src="@drawable/ic_notifications" />
 
                 <TextView
                     style="@style/Widget.Tsuyu.DrawerLabel"
@@ -231,7 +179,6 @@
                     style="@style/Widget.Tsuyu.DrawerSwitch" />
             </LinearLayout>
 
-            <!-- Сквозное шифрование -->
             <LinearLayout
                 android:id="@+id/drawer_item_encrypt"
                 style="@style/Widget.Tsuyu.DrawerRow"
@@ -240,8 +187,7 @@
                 <ImageView
                     style="@style/Widget.Tsuyu.DrawerIcon"
                     android:contentDescription=""
-                    android:src="@drawable/ic_lock"
-                    app:tint="@color/tsuyu_white" />
+                    android:src="@drawable/ic_lock" />
 
                 <TextView
                     style="@style/Widget.Tsuyu.DrawerLabel"
@@ -252,25 +198,6 @@
                     style="@style/Widget.Tsuyu.DrawerSwitch" />
             </LinearLayout>
 
-            <!-- PIN-код -->
-            <LinearLayout
-                android:id="@+id/drawer_item_pin"
-                style="@style/Widget.Tsuyu.DrawerRow"
-                android:layout_marginTop="2dp">
-
-                <ImageView
-                    style="@style/Widget.Tsuyu.DrawerIcon"
-                    android:contentDescription=""
-                    android:src="@drawable/ic_lock"
-                    app:tint="@color/tsuyu_white" />
-
-                <TextView
-                    android:id="@+id/drawer_pin_label"
-                    style="@style/Widget.Tsuyu.DrawerLabel"
-                    android:text="@string/drawer_pin" />
-            </LinearLayout>
-
-            <!-- Кэш памяти -->
             <LinearLayout
                 android:id="@+id/drawer_item_cache"
                 style="@style/Widget.Tsuyu.DrawerRow"
@@ -279,8 +206,7 @@
                 <ImageView
                     style="@style/Widget.Tsuyu.DrawerIcon"
                     android:contentDescription=""
-                    android:src="@drawable/ic_refresh"
-                    app:tint="@color/tsuyu_white" />
+                    android:src="@drawable/ic_refresh" />
 
                 <TextView
                     android:id="@+id/drawer_cache_label"
@@ -288,46 +214,82 @@
                     android:text="@string/drawer_cache" />
             </LinearLayout>
 
-            <!-- Разделитель -->
-            <View
-                android:layout_width="match_parent"
-                android:layout_height="@dimen/hairline"
-                android:layout_marginTop="8dp"
-                android:layout_marginBottom="8dp"
-                android:background="@color/tsuyu_border" />
-
-            <!-- Настройки -->
             <LinearLayout
-                android:id="@+id/drawer_item_settings"
-                style="@style/Widget.Tsuyu.DrawerRow">
+                android:id="@+id/drawer_item_profile"
+                style="@style/Widget.Tsuyu.DrawerRow"
+                android:layout_marginTop="2dp">
 
                 <ImageView
                     style="@style/Widget.Tsuyu.DrawerIcon"
                     android:contentDescription=""
-                    android:src="@drawable/ic_settings"
-                    app:tint="@color/tsuyu_white" />
+                    android:src="@drawable/ic_person" />
+
+                <TextView
+                    style="@style/Widget.Tsuyu.DrawerLabel"
+                    android:text="@string/drawer_edit_profile" />
+            </LinearLayout>
+
+            <LinearLayout
+                android:id="@+id/drawer_item_avatar"
+                style="@style/Widget.Tsuyu.DrawerRow"
+                android:layout_marginTop="2dp">
+
+                <ImageView
+                    style="@style/Widget.Tsuyu.DrawerIcon"
+                    android:contentDescription=""
+                    android:src="@drawable/ic_gallery" />
+
+                <TextView
+                    style="@style/Widget.Tsuyu.DrawerLabel"
+                    android:text="@string/drawer_change_avatar" />
+            </LinearLayout>
+
+            <LinearLayout
+                android:id="@+id/drawer_item_pin"
+                style="@style/Widget.Tsuyu.DrawerRow"
+                android:layout_marginTop="2dp">
+
+                <ImageView
+                    style="@style/Widget.Tsuyu.DrawerIcon"
+                    android:contentDescription=""
+                    android:src="@drawable/ic_lock" />
+
+                <TextView
+                    android:id="@+id/drawer_pin_label"
+                    style="@style/Widget.Tsuyu.DrawerLabel"
+                    android:text="@string/drawer_pin" />
+            </LinearLayout>
+
+            <LinearLayout
+                android:id="@+id/drawer_item_settings"
+                style="@style/Widget.Tsuyu.DrawerRow"
+                android:layout_marginTop="2dp">
+
+                <ImageView
+                    style="@style/Widget.Tsuyu.DrawerIcon"
+                    android:contentDescription=""
+                    android:src="@drawable/ic_settings" />
 
                 <TextView
                     style="@style/Widget.Tsuyu.DrawerLabel"
                     android:text="@string/drawer_settings" />
             </LinearLayout>
 
-            <!-- Выход -->
             <LinearLayout
                 android:id="@+id/drawer_item_logout"
                 style="@style/Widget.Tsuyu.DrawerRow"
-                android:layout_marginTop="4dp">
+                android:layout_marginTop="10dp">
 
                 <ImageView
                     style="@style/Widget.Tsuyu.DrawerIcon"
                     android:contentDescription=""
                     android:src="@drawable/ic_logout"
-                    app:tint="@color/tsuyu_red" />
+                    app:tint="@color/tsuyu_danger" />
 
                 <TextView
                     style="@style/Widget.Tsuyu.DrawerLabel"
                     android:text="@string/drawer_logout"
-                    android:textColor="@color/tsuyu_red" />
+                    android:textColor="@color/tsuyu_danger" />
             </LinearLayout>
         </LinearLayout>
     </ScrollView>

@@ -15,7 +15,6 @@ public final class SettingsController {
     public interface SettingsEventListener {
         void onBackClicked();
         void onProfileCardClicked();
-        void onMobilePriorityChanged(boolean enabled);
         void onWallpaperClicked();
         void onCustomizationClicked();
         void onScreenGuardChanged(boolean enabled);
@@ -37,8 +36,6 @@ public final class SettingsController {
     private ShapeableImageView avatarImage;
     private TextView profileNameText;
     private TextView profileHandleText;
-    private MaterialSwitch mobilePrioritySwitch;
-    private TextView mobilePriorityStatus;
     private View wallpaperRow;
     private View customizationRow;
     private MaterialSwitch screenGuardSwitch;
@@ -64,8 +61,6 @@ public final class SettingsController {
         avatarImage = root.findViewById(R.id.settings_avatar);
         profileNameText = root.findViewById(R.id.settings_profile_name);
         profileHandleText = root.findViewById(R.id.settings_profile_handle);
-        mobilePrioritySwitch = root.findViewById(R.id.mobile_priority_switch);
-        mobilePriorityStatus = root.findViewById(R.id.mobile_priority_status);
         wallpaperRow = root.findViewById(R.id.settings_wallpaper);
         customizationRow = root.findViewById(R.id.setting_customization);
         screenGuardSwitch = root.findViewById(R.id.screen_guard_switch);
@@ -86,11 +81,6 @@ public final class SettingsController {
         if (profileCard != null) {
             profileCard.setOnClickListener(v -> {
                 if (listener != null) listener.onProfileCardClicked();
-            });
-        }
-        if (mobilePrioritySwitch != null) {
-            mobilePrioritySwitch.setOnCheckedChangeListener((btn, isChecked) -> {
-                if (listener != null) listener.onMobilePriorityChanged(isChecked);
             });
         }
         if (wallpaperRow != null) {
@@ -151,8 +141,7 @@ public final class SettingsController {
         if (avatarInitial != null) avatarInitial.setText(initial);
     }
 
-    public void setSwitches(boolean mobilePriority, boolean screenGuard, boolean bgSync, boolean dynamicColors) {
-        if (mobilePrioritySwitch != null) mobilePrioritySwitch.setChecked(mobilePriority);
+    public void setSwitches(boolean screenGuard, boolean bgSync, boolean dynamicColors) {
         if (screenGuardSwitch != null) screenGuardSwitch.setChecked(screenGuard);
         if (backgroundSyncSwitch != null) backgroundSyncSwitch.setChecked(bgSync);
         if (dynamicColorsSwitch != null) dynamicColorsSwitch.setChecked(dynamicColors);
