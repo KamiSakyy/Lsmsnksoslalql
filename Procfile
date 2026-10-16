@@ -1,1 +1,1 @@
-web: python server.py
+web: node --max-old-space-size=256 server.js

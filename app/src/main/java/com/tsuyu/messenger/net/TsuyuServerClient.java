@@ -93,19 +93,24 @@ public final class TsuyuServerClient {
         });
     }
 
-    public static void saveProfile(String displayName, String username, String about, Callback<Void> callback) {
+    public static void saveProfile(String displayName, String username, String about, String avatarUrl, Callback<Void> callback) {
         executor.execute(() -> {
             try {
                 JSONObject body = new JSONObject();
                 body.put("display_name", displayName);
                 body.put("username", username);
                 body.put("about", about);
+                if (avatarUrl != null) body.put("avatar_url", avatarUrl);
                 postJson("/api/profile", body);
                 mainHandler.post(() -> callback.onSuccess(null));
             } catch (Exception e) {
                 mainHandler.post(() -> callback.onError(e.getMessage()));
             }
         });
+    }
+
+    public static void saveProfile(String displayName, String username, String about, Callback<Void> callback) {
+        saveProfile(displayName, username, about, null, callback);
     }
 
     public static void searchUsers(String query, Callback<JSONArray> callback) {

@@ -94,6 +94,14 @@ public final class ProfileRepository {
             result.error("Имя должно быть длиной от 1 до 48 символов.");
             return;
         }
+        // 1. Сохраняем в память сервера Tsuyu
+        com.tsuyu.messenger.net.TsuyuServerClient.saveProfile(name, normalized, about, avatarBase64, new com.tsuyu.messenger.net.TsuyuServerClient.Callback<Void>() {
+            @Override public void onSuccess(Void unused) {
+                // Сервер сохранил успешно
+            }
+            @Override public void onError(String error) { }
+        });
+
         getProfile(uid, old -> {
             if (old == null) old = new Profile();
             final String previous = normalizeUsername(old.username);
@@ -152,6 +160,39 @@ public final class ProfileRepository {
             result.success(Collections.emptyList());
             return;
         }
+
+        // Сначала ищем на автономном сервере Tsuyu
+        com.tsuyu.messenger.net.TsuyuServerClient.searchUsers(normalized, new com.tsuyu.messenger.net.TsuyuServerClient.Callback<org.json.JSONArray>() {
+            @Override public void onSuccess(org.json.JSONArray array) {
+                if (array != null && array.length() > 0) {
+                    List<Profile> serverList = new ArrayList<>();
+                    for (int i = 0; i < array.length(); i++) {
+                        org.json.JSONObject obj = array.optJSONObject(i);
+                        if (obj == null) continue;
+                        String uUid = obj.optString("uid");
+                        if (uUid.equals(ownUid)) continue;
+                        Profile p = new Profile();
+                        p.uid = uUid;
+                        p.username = obj.optString("username");
+                        p.displayName = obj.optString("display_name");
+                        p.about = obj.optString("about");
+                        p.avatarBase64 = obj.optString("avatar_url");
+                        serverList.add(p);
+                    }
+                    if (!serverList.isEmpty()) {
+                        result.success(serverList);
+                        return;
+                    }
+                }
+                fallbackFirebaseSearch(normalized, ownUid, result);
+            }
+            @Override public void onError(String error) {
+                fallbackFirebaseSearch(normalized, ownUid, result);
+            }
+        });
+    }
+
+    private void fallbackFirebaseSearch(String normalized, String ownUid, Result<List<Profile>> result) {
         Query query = root.child("usernames").orderByKey()
                 .startAt(normalized).endAt(normalized + "\uf8ff").limitToFirst(16);
         query.get().addOnSuccessListener(snapshot -> {

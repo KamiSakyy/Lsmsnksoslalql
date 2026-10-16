@@ -1,21 +1,15 @@
-FROM python:3.11-slim
+FROM node:20-alpine
 
 WORKDIR /app
 
-ENV PYTHONDONTWRITEBYTECODE=1 \
-    PYTHONUNBUFFERED=1 \
+ENV NODE_ENV=production \
     PORT=8080
 
-RUN apt-get update && apt-get install -y --no-install-recommends \
-    curl \
-    ca-certificates \
-    && rm -rf /var/lib/apt/lists/*
-
-COPY requirements.txt ./
-RUN pip install --no-cache-dir -r requirements.txt
+COPY package.json ./
+RUN npm install --omit=dev || true
 
 COPY . .
 
 EXPOSE 8080
 
-CMD ["python", "server.py"]
+CMD ["node", "--max-old-space-size=256", "server.js"]

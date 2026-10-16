@@ -1,0 +1,10 @@
+{
+  "name": "tsuyu-server",
+  "version": "1.0.0",
+  "description": "Ultra lightweight Node.js server for Tsuyu messenger",
+  "main": "server.js",
+  "scripts": {
+    "start": "node --max-old-space-size=256 server.js"
+  },
+  "dependencies": {}
+}
