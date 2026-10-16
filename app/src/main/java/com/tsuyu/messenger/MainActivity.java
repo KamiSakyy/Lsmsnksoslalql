@@ -579,17 +579,40 @@ public final class MainActivity extends AppCompatActivity {
             }
             primary.setEnabled(false);
             if (authFormIsRegister) {
-                auth.createUserWithEmailAndPassword(mail, pass)
-                        .addOnSuccessListener(result -> {
-                            primary.setEnabled(true);
-                            toast("Аккаунт создан. Настройте профиль.");
-                            handleSignedIn(result.getUser().getUid());
-                        })
-                        .addOnFailureListener(e -> { primary.setEnabled(true); toast(authError(e)); });
+                // Автономная регистрация на сервере Tsuyu
+                com.tsuyu.messenger.net.TsuyuServerClient.register(mail, pass, new com.tsuyu.messenger.net.TsuyuServerClient.Callback<org.json.JSONObject>() {
+                    @Override public void onSuccess(org.json.JSONObject result) {
+                        primary.setEnabled(true);
+                        toast("Аккаунт создан на сервере Tsuyu!");
+                        org.json.JSONObject user = result.optJSONObject("user");
+                        String newUid = user != null ? user.optString("uid") : "u_" + System.currentTimeMillis();
+                        handleSignedIn(newUid);
+                    }
+                    @Override public void onError(String error) {
+                        auth.createUserWithEmailAndPassword(mail, pass)
+                                .addOnSuccessListener(res -> {
+                                    primary.setEnabled(true);
+                                    toast("Аккаунт создан. Настройте профиль.");
+                                    handleSignedIn(res.getUser().getUid());
+                                })
+                                .addOnFailureListener(e -> { primary.setEnabled(true); toast(error != null ? error : authError(e)); });
+                    }
+                });
             } else {
-                auth.signInWithEmailAndPassword(mail, pass)
-                        .addOnSuccessListener(result -> primary.setEnabled(true))
-                        .addOnFailureListener(e -> { primary.setEnabled(true); toast(authError(e)); });
+                com.tsuyu.messenger.net.TsuyuServerClient.login(mail, pass, new com.tsuyu.messenger.net.TsuyuServerClient.Callback<org.json.JSONObject>() {
+                    @Override public void onSuccess(org.json.JSONObject result) {
+                        primary.setEnabled(true);
+                        toast("Вход на сервер выполнен успешно!");
+                        org.json.JSONObject user = result.optJSONObject("user");
+                        String loginUid = user != null ? user.optString("uid") : "u_" + System.currentTimeMillis();
+                        handleSignedIn(loginUid);
+                    }
+                    @Override public void onError(String error) {
+                        auth.signInWithEmailAndPassword(mail, pass)
+                                .addOnSuccessListener(res -> primary.setEnabled(true))
+                                .addOnFailureListener(e -> { primary.setEnabled(true); toast(error != null ? error : authError(e)); });
+                    }
+                });
             }
         });
         switchMode.setOnClickListener(v -> { authFormIsRegister = !authFormIsRegister; showAuth(); });

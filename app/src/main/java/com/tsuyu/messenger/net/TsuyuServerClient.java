@@ -47,6 +47,79 @@ public final class TsuyuServerClient {
         Log.i(TAG, "Установлен адрес сервера: " + serverBaseUrl);
     }
 
+    public static void register(String email, String password, Callback<JSONObject> callback) {
+        executor.execute(() -> {
+            try {
+                JSONObject body = new JSONObject();
+                body.put("email", email);
+                body.put("password", password);
+                JSONObject resp = postJson("/api/auth/register", body);
+                String token = resp.optString("token");
+                if (!token.isEmpty()) setAuthToken(token);
+                mainHandler.post(() -> callback.onSuccess(resp));
+            } catch (Exception e) {
+                Log.e(TAG, "Ошибка регистрации на сервере", e);
+                mainHandler.post(() -> callback.onError(e.getMessage()));
+            }
+        });
+    }
+
+    public static void login(String email, String password, Callback<JSONObject> callback) {
+        executor.execute(() -> {
+            try {
+                JSONObject body = new JSONObject();
+                body.put("email", email);
+                body.put("password", password);
+                JSONObject resp = postJson("/api/auth/login", body);
+                String token = resp.optString("token");
+                if (!token.isEmpty()) setAuthToken(token);
+                mainHandler.post(() -> callback.onSuccess(resp));
+            } catch (Exception e) {
+                Log.e(TAG, "Ошибка входа на сервере", e);
+                mainHandler.post(() -> callback.onError(e.getMessage()));
+            }
+        });
+    }
+
+    public static void getProfile(String uid, Callback<JSONObject> callback) {
+        executor.execute(() -> {
+            try {
+                JSONObject resp = getJson("/api/profile?uid=" + uid);
+                JSONObject user = resp.optJSONObject("user");
+                mainHandler.post(() -> callback.onSuccess(user != null ? user : new JSONObject()));
+            } catch (Exception e) {
+                mainHandler.post(() -> callback.onError(e.getMessage()));
+            }
+        });
+    }
+
+    public static void saveProfile(String displayName, String username, String about, Callback<Void> callback) {
+        executor.execute(() -> {
+            try {
+                JSONObject body = new JSONObject();
+                body.put("display_name", displayName);
+                body.put("username", username);
+                body.put("about", about);
+                postJson("/api/profile", body);
+                mainHandler.post(() -> callback.onSuccess(null));
+            } catch (Exception e) {
+                mainHandler.post(() -> callback.onError(e.getMessage()));
+            }
+        });
+    }
+
+    public static void searchUsers(String query, Callback<JSONArray> callback) {
+        executor.execute(() -> {
+            try {
+                JSONObject resp = getJson("/api/search?q=" + java.net.URLEncoder.encode(query, "UTF-8"));
+                JSONArray arr = resp.optJSONArray("users");
+                mainHandler.post(() -> callback.onSuccess(arr != null ? arr : new JSONArray()));
+            } catch (Exception e) {
+                mainHandler.post(() -> callback.onError(e.getMessage()));
+            }
+        });
+    }
+
     public static String getServerUrl() {
         return serverBaseUrl;
     }

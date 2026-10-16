@@ -40,6 +40,28 @@ public final class ProfileRepository {
     }
 
     public void getProfile(String uid, Result<Profile> result) {
+        // 1. Проверяем собственный сервер
+        com.tsuyu.messenger.net.TsuyuServerClient.getProfile(uid, new com.tsuyu.messenger.net.TsuyuServerClient.Callback<org.json.JSONObject>() {
+            @Override public void onSuccess(org.json.JSONObject user) {
+                if (user != null && user.length() > 0) {
+                    Profile p = new Profile();
+                    p.uid = user.optString("uid", uid);
+                    p.username = user.optString("username");
+                    p.displayName = user.optString("display_name");
+                    p.about = user.optString("about");
+                    p.avatarBase64 = user.optString("avatar_url");
+                    result.success(p);
+                    return;
+                }
+                fallbackFirebaseGetProfile(uid, result);
+            }
+            @Override public void onError(String error) {
+                fallbackFirebaseGetProfile(uid, result);
+            }
+        });
+    }
+
+    private void fallbackFirebaseGetProfile(String uid, Result<Profile> result) {
         String[] fields = {"username", "displayName", "about", "avatarBase64"};
         Profile profile = new Profile();
         profile.uid = uid;
@@ -55,7 +77,6 @@ public final class ProfileRepository {
                         if (remaining.decrementAndGet() == 0) result.success(profile.username == null ? null : profile);
                     })
                     .addOnFailureListener(e -> {
-                        // Privacy rules can deny optional fields; the profile stays safely partial.
                         if (remaining.decrementAndGet() == 0) result.success(profile.username == null ? null : profile);
                     });
         }
