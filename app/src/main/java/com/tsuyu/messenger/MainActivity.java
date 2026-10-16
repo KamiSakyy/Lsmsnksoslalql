@@ -418,8 +418,13 @@ public final class MainActivity extends AppCompatActivity {
             requestPermissions(new String[]{Manifest.permission.POST_NOTIFICATIONS}, 203);
         }
         applyScreenGuard();
-        FirebaseUser current = auth.getCurrentUser();
-        if (current == null) showAuth(); else handleSignedIn(current.getUid());
+        String savedToken = com.tsuyu.messenger.net.TsuyuServerClient.getAuthToken();
+        String savedUid = com.tsuyu.messenger.util.Settings.getString("auth_uid", "");
+        if (savedToken.isEmpty() || savedUid.isEmpty()) {
+            showAuth();
+        } else {
+            handleSignedIn(savedUid);
+        }
         handleNotificationIntent(getIntent());
     }
 
@@ -514,13 +519,14 @@ public final class MainActivity extends AppCompatActivity {
             } catch (Throwable ignored) { }
         });
         FirebaseMessaging.getInstance().getToken().addOnSuccessListener(token -> FirebaseMessagingSetup.saveToken(FirebaseApp.getInstance(), token));
+        // Регистрация E2EE ключа на сервере Tsuyu
         cryptoQueue.execute(() -> {
             try {
                 Map<String, Object> bundle = crypto.publicKeyBundle();
-                database.getReference("users").child(uid).child("keys").child("1").setValue(bundle);
-            } catch (Throwable e) {
-                ui.post(() -> toast("Не удалось подключиться. Проверьте интернет и попробуйте снова."));
-            }
+                if (bundle != null) {
+                    com.tsuyu.messenger.net.TsuyuServerClient.postJson("/api/keys/" + uid, new JSONObject(bundle));
+                }
+            } catch (Throwable ignored) { }
         });
         // Локальная копия читается в фоне: список чатов показывается мгновенно,
         // диск не тормозит экран.
@@ -579,23 +585,19 @@ public final class MainActivity extends AppCompatActivity {
             }
             primary.setEnabled(false);
             if (authFormIsRegister) {
-                // Автономная регистрация на сервере Tsuyu
+                // Автономная регистрация строго на сервере Tsuyu
                 com.tsuyu.messenger.net.TsuyuServerClient.register(mail, pass, new com.tsuyu.messenger.net.TsuyuServerClient.Callback<org.json.JSONObject>() {
                     @Override public void onSuccess(org.json.JSONObject result) {
                         primary.setEnabled(true);
                         toast("Аккаунт создан на сервере Tsuyu!");
                         org.json.JSONObject user = result.optJSONObject("user");
                         String newUid = user != null ? user.optString("uid") : "u_" + System.currentTimeMillis();
+                        com.tsuyu.messenger.util.Settings.putString("auth_uid", newUid);
                         handleSignedIn(newUid);
                     }
                     @Override public void onError(String error) {
-                        auth.createUserWithEmailAndPassword(mail, pass)
-                                .addOnSuccessListener(res -> {
-                                    primary.setEnabled(true);
-                                    toast("Аккаунт создан. Настройте профиль.");
-                                    handleSignedIn(res.getUser().getUid());
-                                })
-                                .addOnFailureListener(e -> { primary.setEnabled(true); toast(error != null ? error : authError(e)); });
+                        primary.setEnabled(true);
+                        toast(error != null ? error : "Ошибка регистрации на сервере");
                     }
                 });
             } else {
@@ -605,12 +607,12 @@ public final class MainActivity extends AppCompatActivity {
                         toast("Вход на сервер выполнен успешно!");
                         org.json.JSONObject user = result.optJSONObject("user");
                         String loginUid = user != null ? user.optString("uid") : "u_" + System.currentTimeMillis();
+                        com.tsuyu.messenger.util.Settings.putString("auth_uid", loginUid);
                         handleSignedIn(loginUid);
                     }
                     @Override public void onError(String error) {
-                        auth.signInWithEmailAndPassword(mail, pass)
-                                .addOnSuccessListener(res -> primary.setEnabled(true))
-                                .addOnFailureListener(e -> { primary.setEnabled(true); toast(error != null ? error : authError(e)); });
+                        primary.setEnabled(true);
+                        toast(error != null ? error : "Ошибка входа на сервер");
                     }
                 });
             }
@@ -815,19 +817,36 @@ public final class MainActivity extends AppCompatActivity {
     private void loadOneSummary(String chatId) {
         String expectedUid = uid;
         try {
-            DataSnapshot members = Tasks.await(chatRepository.root().child("chats").child(chatId).child("members").get(), 10, TimeUnit.SECONDS);
             String peerUid = null;
-            for (DataSnapshot child : members.getChildren()) {
-                if (child.getKey() != null && !child.getKey().equals(expectedUid)) { peerUid = child.getKey(); break; }
+            if (chatId.contains("_")) {
+                String[] parts = chatId.split("_");
+                for (String p : parts) {
+                    if (!p.equals(expectedUid)) { peerUid = p; break; }
+                }
+            }
+            if (peerUid == null) {
+                DataSnapshot members = Tasks.await(chatRepository.root().child("chats").child(chatId).child("members").get(), 2, TimeUnit.SECONDS);
+                if (members != null) {
+                    for (DataSnapshot child : members.getChildren()) {
+                        if (child.getKey() != null && !child.getKey().equals(expectedUid)) { peerUid = child.getKey(); break; }
+                    }
+                }
             }
             if (peerUid == null || !expectedUid.equals(uid)) return;
-            DatabaseReference profileRef = chatRepository.root().child("users").child(peerUid).child("profile");
+
             Profile profile = new Profile();
             profile.uid = peerUid;
-            profile.username = readOptionalProfileField(profileRef, "username");
-            profile.displayName = readOptionalProfileField(profileRef, "displayName");
-            profile.avatarBase64 = readOptionalProfileField(profileRef, "avatarBase64");
-            profile.about = readOptionalProfileField(profileRef, "about");
+            profile.displayName = "Собеседник";
+            try {
+                org.json.JSONObject uJson = com.tsuyu.messenger.net.TsuyuServerClient.getJson("/api/profile?uid=" + peerUid);
+                org.json.JSONObject u = uJson.optJSONObject("user");
+                if (u != null) {
+                    profile.username = u.optString("username");
+                    profile.displayName = u.optString("display_name", "Собеседник");
+                    profile.avatarBase64 = u.optString("avatar_url");
+                    profile.about = u.optString("about");
+                }
+            } catch (Throwable ignored) { }
             if ((profile.displayName == null || profile.displayName.trim().isEmpty())
                     && (profile.username == null || profile.username.trim().isEmpty())) profile.displayName = "Собеседник";
 

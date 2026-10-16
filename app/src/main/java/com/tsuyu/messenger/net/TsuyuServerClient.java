@@ -27,7 +27,7 @@ public final class TsuyuServerClient {
     private static final Handler mainHandler = new Handler(Looper.getMainLooper());
 
     private static String serverBaseUrl = "http://10.0.2.2:8080";
-    private static String authToken = "";
+    private static String authToken = com.tsuyu.messenger.util.Settings.getString("server_auth_token", "");
 
     public interface Callback<T> {
         void onSuccess(T result);
@@ -93,7 +93,7 @@ public final class TsuyuServerClient {
         });
     }
 
-    public static void saveProfile(String displayName, String username, String about, String avatarUrl, Callback<Void> callback) {
+    public static void saveProfile(String uid, String displayName, String username, String about, String avatarUrl, Callback<Void> callback) {
         executor.execute(() -> {
             try {
                 JSONObject body = new JSONObject();
@@ -101,12 +101,20 @@ public final class TsuyuServerClient {
                 body.put("username", username);
                 body.put("about", about);
                 if (avatarUrl != null) body.put("avatar_url", avatarUrl);
-                postJson("/api/profile", body);
+                String path = "/api/profile";
+                if (uid != null && !uid.isEmpty()) {
+                    path += "?uid=" + uid;
+                }
+                postJson(path, body);
                 mainHandler.post(() -> callback.onSuccess(null));
             } catch (Exception e) {
                 mainHandler.post(() -> callback.onError(e.getMessage()));
             }
         });
+    }
+
+    public static void saveProfile(String displayName, String username, String about, String avatarUrl, Callback<Void> callback) {
+        saveProfile(null, displayName, username, about, avatarUrl, callback);
     }
 
     public static void saveProfile(String displayName, String username, String about, Callback<Void> callback) {
@@ -131,6 +139,7 @@ public final class TsuyuServerClient {
 
     public static void setAuthToken(String token) {
         authToken = token == null ? "" : token;
+        com.tsuyu.messenger.util.Settings.putString("server_auth_token", authToken);
     }
 
     public static String getAuthToken() {

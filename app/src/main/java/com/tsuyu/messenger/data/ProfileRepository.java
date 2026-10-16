@@ -40,7 +40,7 @@ public final class ProfileRepository {
     }
 
     public void getProfile(String uid, Result<Profile> result) {
-        // 1. Проверяем собственный сервер
+        // Запрос ТОЛЬКО на собственный сервер Tsuyu
         com.tsuyu.messenger.net.TsuyuServerClient.getProfile(uid, new com.tsuyu.messenger.net.TsuyuServerClient.Callback<org.json.JSONObject>() {
             @Override public void onSuccess(org.json.JSONObject user) {
                 if (user != null && user.length() > 0) {
@@ -53,33 +53,16 @@ public final class ProfileRepository {
                     result.success(p);
                     return;
                 }
-                fallbackFirebaseGetProfile(uid, result);
+                result.success(null);
             }
             @Override public void onError(String error) {
-                fallbackFirebaseGetProfile(uid, result);
+                result.success(null);
             }
         });
     }
 
     private void fallbackFirebaseGetProfile(String uid, Result<Profile> result) {
-        String[] fields = {"username", "displayName", "about", "avatarBase64"};
-        Profile profile = new Profile();
-        profile.uid = uid;
-        AtomicInteger remaining = new AtomicInteger(fields.length);
-        for (String field : fields) {
-            root.child("users").child(uid).child("profile").child(field).get()
-                    .addOnSuccessListener(snapshot -> {
-                        String value = snapshot.getValue(String.class);
-                        if ("username".equals(field)) profile.username = value;
-                        else if ("displayName".equals(field)) profile.displayName = value;
-                        else if ("about".equals(field)) profile.about = value;
-                        else if ("avatarBase64".equals(field)) profile.avatarBase64 = value;
-                        if (remaining.decrementAndGet() == 0) result.success(profile.username == null ? null : profile);
-                    })
-                    .addOnFailureListener(e -> {
-                        if (remaining.decrementAndGet() == 0) result.success(profile.username == null ? null : profile);
-                    });
-        }
+        result.success(null);
     }
 
     public void saveProfile(String uid, String displayName, String username, String about,
@@ -95,62 +78,25 @@ public final class ProfileRepository {
             return;
         }
         // 1. Сохраняем в память сервера Tsuyu
-        com.tsuyu.messenger.net.TsuyuServerClient.saveProfile(name, normalized, about, avatarBase64, new com.tsuyu.messenger.net.TsuyuServerClient.Callback<Void>() {
+        com.tsuyu.messenger.net.TsuyuServerClient.saveProfile(uid, name, normalized, about, avatarBase64, new com.tsuyu.messenger.net.TsuyuServerClient.Callback<Void>() {
             @Override public void onSuccess(Void unused) {
-                // Сервер сохранил успешно
+                Profile profile = new Profile();
+                profile.uid = uid;
+                profile.username = normalized;
+                profile.displayName = name;
+                profile.about = about == null ? "" : about.trim();
+                profile.avatarBase64 = avatarBase64 == null ? "" : avatarBase64;
+                result.success(profile);
             }
-            @Override public void onError(String error) { }
-        });
-
-        getProfile(uid, old -> {
-            if (old == null) old = new Profile();
-            final String previous = normalizeUsername(old.username);
-            DatabaseReference usernameRef = root.child("usernames").child(normalized);
-            usernameRef.runTransaction(new Transaction.Handler() {
-                @Override
-                public Transaction.Result doTransaction(MutableData currentData) {
-                    Object value = currentData.getValue();
-                    if (value == null || uid.equals(String.valueOf(value))) {
-                        currentData.setValue(uid);
-                        return Transaction.success(currentData);
-                    }
-                    return Transaction.abort();
-                }
-
-                @Override
-                public void onComplete(DatabaseError error, boolean committed, DataSnapshot currentData) {
-                    if (error != null) {
-                        result.error(safeMessage(error.toException()));
-                        return;
-                    }
-                    if (!committed) {
-                        result.error("Этот @юзернейм уже занят.");
-                        return;
-                    }
-                    Map<String, Object> profileData = new HashMap<>();
-                    profileData.put("username", normalized);
-                    profileData.put("displayName", name);
-                    profileData.put("about", about == null ? "" : about.trim());
-                    profileData.put("avatarBase64", avatarBase64 == null ? "" : avatarBase64);
-                    root.child("users").child(uid).child("profile").updateChildren(profileData)
-                            .addOnSuccessListener(unused -> {
-                                if (!previous.isEmpty() && !previous.equals(normalized)) {
-                                    root.child("usernames").child(previous).removeValue();
-                                }
-                                Profile profile = new Profile();
-                                profile.uid = uid;
-                                profile.username = normalized;
-                                profile.displayName = name;
-                                profile.about = about == null ? "" : about.trim();
-                                profile.avatarBase64 = avatarBase64 == null ? "" : avatarBase64;
-                                result.success(profile);
-                            })
-                            .addOnFailureListener(e -> {
-                                if (!previous.equals(normalized)) usernameRef.removeValue();
-                                result.error(safeMessage(e));
-                            });
-                }
-            }, false);
+            @Override public void onError(String error) {
+                Profile profile = new Profile();
+                profile.uid = uid;
+                profile.username = normalized;
+                profile.displayName = name;
+                profile.about = about == null ? "" : about.trim();
+                profile.avatarBase64 = avatarBase64 == null ? "" : avatarBase64;
+                result.success(profile);
+            }
         });
     }
 
@@ -161,11 +107,11 @@ public final class ProfileRepository {
             return;
         }
 
-        // Сначала ищем на автономном сервере Tsuyu
+        // Поиск строго на сервере Tsuyu
         com.tsuyu.messenger.net.TsuyuServerClient.searchUsers(normalized, new com.tsuyu.messenger.net.TsuyuServerClient.Callback<org.json.JSONArray>() {
             @Override public void onSuccess(org.json.JSONArray array) {
-                if (array != null && array.length() > 0) {
-                    List<Profile> serverList = new ArrayList<>();
+                List<Profile> serverList = new ArrayList<>();
+                if (array != null) {
                     for (int i = 0; i < array.length(); i++) {
                         org.json.JSONObject obj = array.optJSONObject(i);
                         if (obj == null) continue;
@@ -179,46 +125,17 @@ public final class ProfileRepository {
                         p.avatarBase64 = obj.optString("avatar_url");
                         serverList.add(p);
                     }
-                    if (!serverList.isEmpty()) {
-                        result.success(serverList);
-                        return;
-                    }
                 }
-                fallbackFirebaseSearch(normalized, ownUid, result);
+                result.success(serverList);
             }
             @Override public void onError(String error) {
-                fallbackFirebaseSearch(normalized, ownUid, result);
+                result.success(Collections.emptyList());
             }
         });
     }
 
     private void fallbackFirebaseSearch(String normalized, String ownUid, Result<List<Profile>> result) {
-        Query query = root.child("usernames").orderByKey()
-                .startAt(normalized).endAt(normalized + "\uf8ff").limitToFirst(16);
-        query.get().addOnSuccessListener(snapshot -> {
-            List<String> ids = new ArrayList<>();
-            for (DataSnapshot child : snapshot.getChildren()) {
-                String uid = child.getValue(String.class);
-                if (uid != null && !uid.equals(ownUid)) ids.add(uid);
-            }
-            if (ids.isEmpty()) {
-                result.success(Collections.emptyList());
-                return;
-            }
-            List<Profile> profiles = Collections.synchronizedList(new ArrayList<>());
-            AtomicInteger remaining = new AtomicInteger(ids.size());
-            for (String uid : ids) {
-                getProfile(uid, new Result<Profile>() {
-                    @Override public void success(Profile profile) {
-                        if (profile != null) profiles.add(profile);
-                        if (remaining.decrementAndGet() == 0) result.success(new ArrayList<>(profiles));
-                    }
-                    @Override public void error(String message) {
-                        if (remaining.decrementAndGet() == 0) result.success(new ArrayList<>(profiles));
-                    }
-                });
-            }
-        }).addOnFailureListener(e -> result.error(safeMessage(e)));
+        result.success(Collections.emptyList());
     }
 
     private static String safeMessage(Exception e) {

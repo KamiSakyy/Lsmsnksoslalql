@@ -236,12 +236,13 @@ const server = http.createServer(async (req, res) => {
 
     // 5. Сохранение профиля
     if (pathname === '/api/profile' && req.method === 'POST') {
+      const data = await parseJsonBody(req);
       const authUid = getAuthUid(req);
-      if (!authUid || !users.has(authUid)) {
+      const targetUid = authUid || parsedUrl.query.uid;
+      if (!targetUid || !users.has(targetUid)) {
         return sendJson(res, 401, { error: 'Требуется авторизация' });
       }
-      const data = await parseJsonBody(req);
-      const u = users.get(authUid);
+      const u = users.get(targetUid);
       if (data.display_name) u.displayName = data.display_name.trim();
       if (data.username) {
         const newUname = data.username.trim().replace(/^@/, '').toLowerCase();
@@ -251,7 +252,7 @@ const server = http.createServer(async (req, res) => {
           }
           userByName.delete(u.username);
           u.username = newUname;
-          userByName.set(newUname, authUid);
+          userByName.set(newUname, targetUid);
         }
       }
       if (data.about !== undefined) u.about = data.about;
