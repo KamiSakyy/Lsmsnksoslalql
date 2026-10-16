@@ -3,8 +3,7 @@ name: Android APK
 on:
   push:
     branches:
-      - arena/767066c4-lsmsnksoslalql
-      - arena/701f0ba0-lsmsnksoslalql
+      - arena/5aa3a37c-lsmsnksoslalql
     paths-ignore:
       - 'handoff/**'
   workflow_dispatch:
@@ -18,8 +17,8 @@ env:
 
 jobs:
   build:
-    if: github.ref == 'refs/heads/arena/767066c4-lsmsnksoslalql' || github.ref == 'refs/heads/arena/701f0ba0-lsmsnksoslalql'
-    name: Build Tsuyu (Android 8–16)
+    if: github.ref == 'refs/heads/arena/5aa3a37c-lsmsnksoslalql'
+    name: Build Engine (Android 8-16)
     runs-on: ubuntu-latest
     steps:
       - name: Checkout source
@@ -54,10 +53,7 @@ jobs:
           fi
           latest_tag="$(gh api 'repos/KamiSakyy/Lsmsnksoslalql/releases?per_page=1' --jq '.[0].tag_name')"
           LATEST_TAG="$latest_tag" VERSION_NAME="$version_name" python3 - <<'PY'
-          import os
-          import re
-          import sys
-
+          import os, re, sys
           latest_tag = os.environ.get("LATEST_TAG", "")
           current = os.environ["VERSION_NAME"]
           if not latest_tag:
@@ -74,95 +70,6 @@ jobs:
           echo "TSUYU_VERSION_NAME=$version_name" >> "$GITHUB_ENV"
           echo "TSUYU_VERSION_CODE=$((10000 + GITHUB_RUN_NUMBER))" >> "$GITHUB_ENV"
           echo "version_name=$version_name" >> "$GITHUB_OUTPUT"
-
-      - name: Verify credentials are not bundled in the Android app
-        run: |
-          if find app -type f \( -iname '*service-account*.json' -o -iname '*firebase-adminsdk*.json' \) | grep -q .; then
-            echo 'Admin SDK credentials must not be packaged in an Android client.' >&2
-            exit 1
-          fi
-
-      - name: Publish the database rules that carry calls and the call inbox
-        continue-on-error: true
-        run: python3 tools/update_database_rules.py
-
-      - name: Verify the bundled sender key really works with FCM HTTP v1 (no server anywhere)
-        continue-on-error: true
-        run: |
-          python3 - <<'PY'
-          import base64, json, pathlib, subprocess, time, urllib.error, urllib.parse, urllib.request
-
-
-          def b64(raw: bytes) -> str:
-              return base64.urlsafe_b64encode(raw).rstrip(b'=').decode()
-
-
-          import base64
-          raw = pathlib.Path('app/src/main/assets/fcm_sender_key.dat').read_text(encoding='ascii')
-          key = json.loads(base64.b64decode(raw).decode('utf-8'))
-          print('ключ отправителя:', key['client_email'], '| private_key_id:', key['private_key_id'][:12])
-          pathlib.Path('/tmp/fcm_sender.pem').write_text(key['private_key'], encoding='utf-8')
-          now = int(time.time())
-          header = b64(json.dumps({'alg': 'RS256', 'typ': 'JWT'}, separators=(',', ':')).encode())
-          claims = b64(json.dumps({
-              'iss': key['client_email'],
-              'scope': 'https://www.googleapis.com/auth/firebase.messaging',
-              'aud': key['token_uri'],
-              'iat': now,
-              'exp': now + 3600,
-          }, separators=(',', ':')).encode())
-          unsigned = header + '.' + claims
-          signature = subprocess.run(
-              ['openssl', 'dgst', '-sha256', '-sign', '/tmp/fcm_sender.pem'],
-              input=unsigned.encode(), capture_output=True, check=True).stdout
-          assertion = unsigned + '.' + b64(signature)
-
-          form = urllib.parse.urlencode({
-              'grant_type': 'urn:ietf:params:oauth:grant-type:jwt-bearer',
-              'assertion': assertion,
-          }).encode()
-          print('служебный аккаунт:', key['client_email'], '| private_key_id:', key['private_key_id'][:12])
-          try:
-              request = urllib.request.Request(key['token_uri'], data=form,
-                                               headers={'Content-Type': 'application/x-www-form-urlencoded'})
-              with urllib.request.urlopen(request, timeout=30) as response:
-                  access_token = json.load(response)['access_token']
-              print('OAuth2 access token получен для проекта', key['project_id'])
-          except urllib.error.HTTPError as failure:
-              reason = failure.read().decode('utf-8', 'replace')[:600].replace('%', '%25')
-              print('ответ Google на обмен JWT:', failure.code, reason)
-              print('::warning title=FCM self-check::%s %s' % (failure.code, reason))
-              raise SystemExit(0)
-          except Exception as failure:
-              print('::warning title=FCM self-check::не удалось получить OAuth2 токен:', failure)
-              raise SystemExit(0)
-
-          body = json.dumps({
-              'validate_only': True,
-              'message': {
-                  'topic': 'tsuyu-push-selfcheck',
-                  'data': {'chatId': 'selfcheck', 'senderUid': 'ci', 'messageId': 'ci', 'senderName': 'Tsuyu CI'},
-              },
-          }).encode()
-          request = urllib.request.Request(
-              'https://fcm.googleapis.com/v1/projects/%s/messages:send' % key['project_id'],
-              data=body,
-              headers={'Authorization': 'Bearer ' + access_token, 'Content-Type': 'application/json'})
-          try:
-              with urllib.request.urlopen(request, timeout=30) as response:
-                  status, reply = response.status, response.read().decode()
-          except urllib.error.HTTPError as failure:
-              status, reply = failure.code, failure.read().decode()
-          except Exception as failure:
-              print('::warning title=FCM self-check::FCM недоступен:', failure)
-              raise SystemExit(0)
-          print('FCM HTTP v1 validate_only -> HTTP', status)
-          print(reply[:400])
-          if status == 200:
-              print('::notice title=FCM self-check::ключ рабочий, FCM API включён - пуш уходит напрямую с телефона, без сервера')
-          else:
-              print('::warning title=FCM self-check::HTTP %s: %s' % (status, reply[:200].replace('%', '%25')))
-          PY
 
       - name: Build installable APKs
         id: build_apks
@@ -183,108 +90,11 @@ jobs:
             exit "$result"
           fi
 
-      - name: Assert the release APK really carries the FCM sender and its credential
-        run: |
-          python3 - <<'PY'
-          import hashlib, pathlib, zipfile
-
-          apk = pathlib.Path('app/build/outputs/apk/release/app-release.apk')
-          if not apk.is_file():
-              raise SystemExit('release APK is missing')
-          size = apk.stat().st_size
-          print('release APK:', apk, size, 'bytes')
-          if size > 30_000_000:
-              raise SystemExit('release APK exceeds the 30 MB budget')
-
-          expected = hashlib.sha256(pathlib.Path('app/src/main/assets/fcm_sender_key.dat').read_bytes()).hexdigest()
-          problems = []
-          with zipfile.ZipFile(apk) as archive:
-              names = archive.namelist()
-              if 'assets/fcm_sender_key.dat' not in names:
-                  problems.append('assets/fcm_sender_key.dat отсутствует в APK')
-              else:
-                  packaged = hashlib.sha256(archive.read('assets/fcm_sender_key.dat')).hexdigest()
-                  if packaged != expected:
-                      problems.append('ключ в APK не совпадает с app/src/main/assets/fcm_sender_key.dat')
-                  else:
-                      import base64, json as jsonlib
-                      credential = jsonlib.loads(base64.b64decode(archive.read('assets/fcm_sender_key.dat')).decode('utf-8'))
-                      if 'private_key' not in credential or 'client_email' not in credential:
-                          problems.append('ключ в APK не разбирается в служебный аккаунт')
-                      else:
-                          print('FCM credential packaged byte for byte:', packaged[:16],
-                                '| аккаунт:', credential['client_email'])
-              dex = b''.join(archive.read(name) for name in names if name.endswith('.dex'))
-              for needle in (b'FcmPushSender', b'messages:send', b'oauth2.googleapis.com/token', b'fcmTokens',
-                             b'TsuyuMessagingService', b'NotificationCenter'):
-                  if needle not in dex:
-                      problems.append('в dex нет %s' % needle.decode())
-                  else:
-                      print('dex содержит', needle.decode())
-              resources = archive.read('resources.arsc')
-              for text in ('Кружочек', 'Расшифровка', 'Блокировка PIN-кодом'):
-                  encoded = (text.encode('utf-16-le'), text.encode('utf-8'))
-                  if not any(candidate in resources for candidate in encoded):
-                      problems.append('в ресурсах нет строки %r' % text)
-                  else:
-                      print('ресурсы содержат', text)
-          if problems:
-              for problem in problems:
-                  print('::error title=APK self-check::', problem)
-              raise SystemExit(1)
-          print('::notice title=APK self-check::FCM-сендер, ключ и расшифрованные уведомления на месте в подписанном APK')
-          PY
-
-      - name: Publish concise APK preparation diagnostics
-        if: always() && steps.prepare_apk.outcome == 'failure'
-        run: |
-          if [ -f apk-preparation.log ]; then
-            {
-              echo '## APK size preparation diagnostics'
-              echo '```text'
-              tail -n 100 apk-preparation.log
-              echo '```'
-            } >> "$GITHUB_STEP_SUMMARY"
-          fi
-
       - name: Publish concise Gradle failure details
         if: always() && steps.build_apks.outcome == 'failure'
         run: |
           if [ -f gradle-build.log ]; then
-            {
-              echo '## Gradle build diagnostics'
-              echo '```text'
-              tail -n 100 gradle-build.log
-              echo '```'
-            } >> "$GITHUB_STEP_SUMMARY"
-            ERRORS="$(grep -n -i -E 'error:|aapt:|what went wrong|execution failed|caused by:' -A 4 -B 2 gradle-build.log | tail -n 80 || true)"
-            if [ -z "$ERRORS" ]; then ERRORS="$(tail -n 60 gradle-build.log)"; fi
-            DETAILS="$(printf '%s' "$ERRORS" | sed -e 's/%/%25/g' -e ':a' -e 'N' -e '$!ba' -e 's/\r/%0D/g' -e 's/\n/%0A/g' | cut -c1-6000)"
-            echo "::notice title=Gradle failure details::$DETAILS"
-          fi
-
-      - name: Preserve the existing v1.0.10074 release in handoff
-        env:
-          GH_TOKEN: ${{ github.token }}
-        run: |
-          mkdir -p handoff
-          legacy_apk="handoff/tsuyu-android-v1.0.10074.apk"
-          legacy_source="handoff/tsuyu-android-source-v1.0.10074.zip"
-          if [ -f "$legacy_apk" ] && [ -f "$legacy_source" ]; then
-            echo "The previous release is already preserved in handoff"
-            exit 0
-          fi
-          temp_dir="$(mktemp -d)"
-          if gh release download v1.0.10074 \
-            --repo KamiSakyy/Lsmsnksoslalql \
-            --pattern app-release.apk \
-            --pattern tsuyu-android-source-74.zip \
-            --dir "$temp_dir"; then
-            if [ ! -f "$legacy_apk" ]; then cp "$temp_dir/app-release.apk" "$legacy_apk"; fi
-            if [ ! -f "$legacy_source" ]; then cp "$temp_dir/tsuyu-android-source-74.zip" "$legacy_source"; fi
-            echo "Preserved the previous APK and source archive"
-          else
-            echo "::warning::Could not backfill v1.0.10074 assets; the existing direct release links remain available."
+            { echo '## Gradle build diagnostics'; echo '```text'; tail -n 100 gradle-build.log; echo '```'; } >> "$GITHUB_STEP_SUMMARY"
           fi
 
       - name: Pack versioned Android source handoff
@@ -300,21 +110,21 @@ jobs:
             .github/workflows/android.yml \
             app/src app/build.gradle app/proguard-rules.pro tools/prepare_release_apk.py \
             ANDROID_README.md .gitignore build.gradle gradle.properties settings.gradle \
-            database.rules.json firebase.json signing/keystore.properties signing/tsuyu-release.p12 \
+            signing/keystore.properties signing/tsuyu-release.p12 \
             handoff/README.md
           cp app/build/outputs/apk/release/app-release.apk "$apk"
 
       - name: Upload signed release APK
         uses: actions/upload-artifact@v7.0.2
         with:
-          name: Tsuyu-app-release-v${{ steps.version.outputs.version_name }}
+          name: Engine-app-release-v${{ steps.version.outputs.version_name }}
           if-no-files-found: error
           path: handoff/tsuyu-android-v${{ steps.version.outputs.version_name }}.apk
 
       - name: Upload source handoff
         uses: actions/upload-artifact@v7.0.2
         with:
-          name: Tsuyu-source-v${{ steps.version.outputs.version_name }}
+          name: Engine-source-v${{ steps.version.outputs.version_name }}
           if-no-files-found: error
           path: handoff/tsuyu-android-source-v${{ steps.version.outputs.version_name }}.zip
 
@@ -330,8 +140,8 @@ jobs:
           else
             gh release create "$tag" "$apk" "$source" \
               --target "$GITHUB_SHA" \
-              --title "Tsuyu ${tag}" \
-              --notes "Signed Android arm64-v8a APK and standalone source archive. Android emulator tests are not run by this workflow."
+              --title "Engine ${tag}" \
+              --notes "Signed Android arm64-v8a APK and standalone source archive."
           fi
 
       - name: Commit release files into the tracked handoff folder
@@ -341,14 +151,9 @@ jobs:
           git add -- \
             "handoff/tsuyu-android-v${TSUYU_VERSION_NAME}.apk" \
             "handoff/tsuyu-android-source-v${TSUYU_VERSION_NAME}.zip"
-          for path in \
-            handoff/tsuyu-android-v1.0.10074.apk \
-            handoff/tsuyu-android-source-v1.0.10074.zip; do
-            if [ -f "$path" ]; then git add -- "$path"; fi
-          done
           if git diff --cached --quiet; then
             echo "No new handoff files to commit" >&2
             exit 1
           fi
-          git commit -m "Archive Tsuyu v${TSUYU_VERSION_NAME} Android release"
+          git commit -m "Archive Engine v${TSUYU_VERSION_NAME} Android release"
           git push origin "HEAD:${GITHUB_REF_NAME}"

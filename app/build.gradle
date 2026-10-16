@@ -4,31 +4,31 @@ plugins {
 
 def signingProperties = new Properties()
 def signingPropertiesFile = rootProject.file('signing/keystore.properties')
-if (!signingPropertiesFile.isFile()) {
-    throw new GradleException('Missing persistent Tsuyu release keystore. Keep signing/tsuyu-release.p12 and signing/keystore.properties together.')
+if (signingPropertiesFile.isFile()) {
+    signingPropertiesFile.withInputStream { signingProperties.load(it) }
 }
-signingPropertiesFile.withInputStream { signingProperties.load(it) }
 def buildVersionCode = System.getenv('TSUYU_VERSION_CODE') ? Integer.parseInt(System.getenv('TSUYU_VERSION_CODE')) : 1
-def buildVersionName = findProperty('tsuyuVersionName') ?: '1.1'
+def buildVersionName = findProperty('tsuyuVersionName') ?: '1.49'
 
 android {
-    namespace 'com.tsuyu.messenger'
+    namespace 'com.engine.app'
     compileSdk 36
 
     defaultConfig {
-        applicationId 'com.tsuyu.messenger'
-        minSdk 26
+        applicationId 'com.engine.app'
+        minSdk 28
         targetSdk 36
         versionCode buildVersionCode
         versionName buildVersionName
-        // Ship only the resources the app can actually show: one language and
-        // no library translations. Cuts a large slice of the resource table.
         resourceConfigurations += ['ru']
         testInstrumentationRunner 'androidx.test.runner.AndroidJUnitRunner'
-        // Package only the native ABI used by modern Android phones; a universal APK
-        // bundles every Signal native library and is unnecessarily hundreds of MB.
         ndk {
             abiFilters 'arm64-v8a'
+        }
+        externalNativeBuild {
+            cmake {
+                cppFlags ''
+            }
         }
     }
 
@@ -39,16 +39,24 @@ android {
     compileOptions {
         sourceCompatibility JavaVersion.VERSION_17
         targetCompatibility JavaVersion.VERSION_17
-        coreLibraryDesugaringEnabled true
     }
 
-    signingConfigs {
-        release {
-            storeFile rootProject.file(signingProperties.getProperty('storeFile'))
-            storePassword signingProperties.getProperty('storePassword')
-            keyAlias signingProperties.getProperty('keyAlias')
-            keyPassword signingProperties.getProperty('keyPassword')
-            storeType signingProperties.getProperty('storeType', 'PKCS12')
+    externalNativeBuild {
+        cmake {
+            path 'src/main/cpp/CMakeLists.txt'
+            version '3.22.1'
+        }
+    }
+
+    if (signingPropertiesFile.isFile()) {
+        signingConfigs {
+            release {
+                storeFile rootProject.file(signingProperties.getProperty('storeFile'))
+                storePassword signingProperties.getProperty('storePassword')
+                keyAlias signingProperties.getProperty('keyAlias')
+                keyPassword signingProperties.getProperty('keyPassword')
+                storeType signingProperties.getProperty('storeType', 'PKCS12')
+            }
         }
     }
 
@@ -58,9 +66,9 @@ android {
             versionNameSuffix '-debug'
         }
         release {
-            signingConfig signingConfigs.release
-            // R8 removes unused code and reflection-safe renaming; resource
-            // shrinking then drops every unreachable layout/drawable/string.
+            if (signingPropertiesFile.isFile()) {
+                signingConfig signingConfigs.release
+            }
             minifyEnabled true
             shrinkResources true
             proguardFiles getDefaultProguardFile('proguard-android-optimize.txt'), 'proguard-rules.pro'
@@ -69,59 +77,14 @@ android {
 
     packaging {
         jniLibs {
-            excludes += ['**/libsignal_jni_testing.so']
-            // Deflate the Signal native library inside the APK: extraction at
-            // install time is a fair trade for ~8 MB less to download.
             useLegacyPackaging = true
-        }
-        resources {
-            excludes += [
-                '/META-INF/AL2.0',
-                '/META-INF/LGPL2.1',
-                '**/libsignal_jni_*.so',
-                '**/libsignal_jni*.dylib',
-                '**/signal_jni*.dll'
-            ]
         }
     }
 }
 
 dependencies {
-    coreLibraryDesugaring 'com.android.tools:desugar_jdk_libs:2.1.5'
-
-    implementation platform('com.google.firebase:firebase-bom:34.3.0')
-    implementation 'com.google.firebase:firebase-auth'
-    implementation 'com.google.firebase:firebase-database'
-    implementation 'com.google.firebase:firebase-messaging'
-
     implementation 'androidx.appcompat:appcompat:1.7.0'
-    implementation 'androidx.activity:activity:1.10.1'
     implementation 'androidx.core:core:1.15.0'
-    implementation 'androidx.recyclerview:recyclerview:1.4.0'
-    // Экраны как фрагменты и состояние в моделях (MVVM): официальные библиотеки Android.
-    implementation 'androidx.fragment:fragment:1.8.6'
-    implementation 'androidx.lifecycle:lifecycle-viewmodel:2.8.7'
-    implementation 'androidx.transition:transition:1.5.1'
     implementation 'com.google.android.material:material:1.12.0'
-
-    // Navigation drawer from the web client design.
-    implementation 'androidx.drawerlayout:drawerlayout:1.2.0'
-
-    // In-app circular video notes: camera preview plus MP4 recording.
-    implementation 'androidx.camera:camera-core:1.4.1'
-    implementation 'androidx.camera:camera-camera2:1.4.1'
-    implementation 'androidx.camera:camera-lifecycle:1.4.1'
-    implementation 'androidx.camera:camera-video:1.4.1'
-    implementation 'androidx.camera:camera-view:1.4.1'
-
-    // Official Signal Protocol implementation (PQXDH + Double Ratchet).
-    implementation 'org.signal:libsignal-android:0.105.0'
-    // P2P звонки собраны своими силами (пакет com.tsuyu.messenger.p2p):
-    // прямые UDP-сокеты, свой STUN, AES-256-GCM, голос и видео — средствами Android.
-    // Сторонних P2P/WebRTC-библиотек в проекте нет.
-
-    testImplementation 'junit:junit:4.13.2'
-    androidTestImplementation 'androidx.test:core:1.6.1'
-    androidTestImplementation 'androidx.test.ext:junit:1.2.1'
-    androidTestImplementation 'androidx.test.espresso:espresso-core:3.6.1'
+    implementation 'androidx.constraintlayout:constraintlayout:2.2.0'
 }

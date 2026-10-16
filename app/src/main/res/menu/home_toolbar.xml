@@ -1,4 +1,0 @@
-<menu xmlns:android="http://schemas.android.com/apk/res/android" xmlns:app="http://schemas.android.com/apk/res-auto">
-    <item android:id="@+id/action_search" android:icon="@drawable/ic_search" android:title="@string/nav_search" app:showAsAction="ifRoom" />
-    <item android:id="@+id/action_profile" android:icon="@drawable/ic_person" android:title="Профиль" app:actionLayout="@layout/view_toolbar_avatar" app:showAsAction="always" />
-</menu>
