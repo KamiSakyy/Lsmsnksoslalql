@@ -33,7 +33,7 @@
             android:name=".MainActivity"
             android:configChanges="keyboardHidden|orientation|screenSize"
             android:exported="true"
-            android:screenOrientation="portrait"
+            android:screenOrientation="sensor"
             android:windowSoftInputMode="adjustResize">
             <intent-filter>
                 <action android:name="android.intent.action.MAIN" />
@@ -54,7 +54,7 @@
             android:excludeFromRecents="true"
             android:exported="false"
             android:launchMode="singleTask"
-            android:screenOrientation="portrait"
+            android:screenOrientation="sensor"
             android:windowSoftInputMode="adjustResize" />
         <service
             android:name=".call.CallService"

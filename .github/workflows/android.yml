@@ -5,6 +5,7 @@ on:
     branches:
       - arena/767066c4-lsmsnksoslalql
       - arena/701f0ba0-lsmsnksoslalql
+      - arena/5aa3a37c-lsmsnksoslalql
     paths-ignore:
       - 'handoff/**'
   workflow_dispatch:
@@ -18,7 +19,7 @@ env:
 
 jobs:
   build:
-    if: github.ref == 'refs/heads/arena/767066c4-lsmsnksoslalql' || github.ref == 'refs/heads/arena/701f0ba0-lsmsnksoslalql'
+    if: github.ref == 'refs/heads/arena/767066c4-lsmsnksoslalql' || github.ref == 'refs/heads/arena/701f0ba0-lsmsnksoslalql' || github.ref == 'refs/heads/arena/5aa3a37c-lsmsnksoslalql'
     name: Build Tsuyu (Android 8–16)
     runs-on: ubuntu-latest
     steps:
